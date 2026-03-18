@@ -119,9 +119,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Use environment variable for Qdrant URL
     let qdrant_url = std::env::var("QDRANT_URL").unwrap_or_else(|_| "http://qdrant:6333".to_string());
     
-    let q_client = Qdrant::from_url(&qdrant_url)
-        .check_compatibility(false) // Suppress version compatibility warning
-        .build()?;
+    let q_client = Qdrant::from_url(&qdrant_url).build()?;
     
     let router_service = MyRouter { q_client };
 

@@ -25,7 +25,7 @@ Built on a high-performance Go (Golang) and Rust stack, Aura provides sub-millis
 Market Impact
 Aura transforms AI from an unpredictable experimental cost into a quantifiable performance engine. By capturing the "Logic Layer" of the MCP ecosystem, Aura becomes the indispensable gateway for any enterprise serious about deploying agentic workflows at scale.
 
-
+```
 aura-gateway/
 ├── services/
 │   ├── gateway/            # Go: Main entry point & proxy
@@ -52,5 +52,5 @@ aura-gateway/
 ├── proto/                  # Shared gRPC definitions between Go & Rust
 ├── scripts/                # Auto-generation scripts for MCP servers
 └── Makefile                # Unified build/run commands
-
+```
 
