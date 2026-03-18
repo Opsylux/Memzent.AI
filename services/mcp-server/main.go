@@ -5,13 +5,12 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/metoro-io/mcp-golang"
+	mcp "github.com/metoro-io/mcp-golang"
 	"github.com/metoro-io/mcp-golang/transport"
 	"github.com/valkey-io/valkey-go"
 )
 
 func main() {
-	ctx := context.Background()
 
 	// 1. Initialize Valkey Client (Go Native)
 	valkeyAddr := os.Getenv("VALKEY_URL")
@@ -66,7 +65,6 @@ func main() {
 	})
 
 	// 5. Start the MCP Server
-	// This uses Stdio, allowing Claude/Cursor to send JSON-RPC commands
 	if err := server.Serve(); err != nil {
 		fmt.Fprintf(os.Stderr, "MCP Server Error: %v\n", err)
 		os.Exit(1)
