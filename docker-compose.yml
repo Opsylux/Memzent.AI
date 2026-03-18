@@ -95,7 +95,26 @@ services:
              protoc -I/proto --go_out=internal/router --go_opt=paths=source_relative --go_opt=Mrouter.proto=github.com/nampally/aura/services/gateway/internal/router --go-grpc_out=internal/router --go-grpc_opt=paths=source_relative --go-grpc_opt=Mrouter.proto=github.com/nampally/aura/services/gateway/internal/router /proto/router.proto &&
              go mod tidy &&
              go run main.go"
-
+  dashboard:
+    image: oven/bun:alpine
+    container_name: aura-dashboard
+    volumes:
+      - ./services/dashboard:/app
+    working_dir: /app
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_GATEWAY_URL=http://localhost:8080
+    command: >
+      sh -c "if [ ! -f package.json ]; then
+               echo 'Initializing Next.js with Bun...' &&
+               mkdir -p /tmp/aura_backup &&
+               mv src /tmp/aura_backup/ 2>/dev/null || true &&
+               bun x create-next-app@latest . --typescript --tailwind --eslint --app --src-dir --import-alias '@/*' --yes &&
+               mv /tmp/aura_backup/src/* src/ 2>/dev/null || true &&
+               bun add lucide-react clsx tailwind-merge;
+             fi && 
+             bun dev"
 volumes:
   go_modules:
   cargo_cache:

@@ -15,7 +15,7 @@ pub struct MyRouter {
 
 use qdrant_client::qdrant::{
     Condition, Filter, SearchPointsBuilder, FieldCondition, Match, r#match::MatchValue,
-    condition::ConditionOneOf, Value
+    condition::ConditionOneOf
 };
 
 #[tonic::async_trait]
@@ -35,9 +35,6 @@ impl SemanticRouter for MyRouter {
         // 2. Build Payload Filter for RBAC (allowed_tool_ids)
         let mut filter = None;
         if !req.allowed_tool_ids.is_empty() {
-            // Create a condition for each allowed tool ID
-            // Using a simple 'should' filter (OR logic) for tool IDs
-            // Note: A more precise way in Qdrant is to use `MatchAny`
             let should_conditions: Vec<Condition> = req.allowed_tool_ids.iter().map(|id| {
                 Condition {
                     condition_one_of: Some(ConditionOneOf::Field(FieldCondition {
@@ -97,7 +94,6 @@ impl SemanticRouter for MyRouter {
             });
         }
 
-        // If no tools found but we want to simulate the fallback structure
         if tools.is_empty() {
              tools.push(Tool {
                 id: "tool_fallback".to_string(),
@@ -108,7 +104,7 @@ impl SemanticRouter for MyRouter {
 
         let reply = ToolResponse {
             tools,
-            total_tokens_saved: 450, // Simulated token savings for demo
+            total_tokens_saved: 450,
         };
 
         Ok(Response::new(reply))
@@ -117,12 +113,20 @@ impl SemanticRouter for MyRouter {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let addr = "[::1]:50051".parse()?;
-    let q_client = Qdrant::from_url("http://localhost:6333").build()?;
+    // Docker: Bind to [::]:50051 instead of [::1]:50051
+    let addr = "[::]:50051".parse()?;
+    
+    // Use environment variable for Qdrant URL
+    let qdrant_url = std::env::var("QDRANT_URL").unwrap_or_else(|_| "http://qdrant:6333".to_string());
+    
+    let q_client = Qdrant::from_url(&qdrant_url)
+        .check_compatibility(false) // Suppress version compatibility warning
+        .build()?;
     
     let router_service = MyRouter { q_client };
 
     println!("Aura Semantic Router listening on {}", addr);
+    println!("Connecting to Qdrant at: {}", qdrant_url);
 
     Server::builder()
         .add_service(SemanticRouterServer::new(router_service))
