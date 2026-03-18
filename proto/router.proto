@@ -1,0 +1,28 @@
+syntax = "proto3";
+
+package router;
+
+// Ensure this matches your gateway's internal directory structure
+option go_package = "github.com/nampally/aura/services/gateway/internal/router";
+
+service SemanticRouter {
+  // Selects the most relevant tools for a given user prompt
+  rpc SelectTools (ToolRequest) returns (ToolResponse);
+}
+
+message ToolRequest {
+  string prompt = 1;
+  string user_id = 2;
+  repeated string allowed_tool_ids = 3; // For RBAC-filtered searches
+}
+
+message Tool {
+  string id = 1;
+  string name = 2;
+  float relevance_score = 3;
+}
+
+message ToolResponse {
+  repeated Tool tools = 1;
+  int32 total_tokens_saved = 2; 
+}

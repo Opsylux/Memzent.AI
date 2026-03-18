@@ -1,0 +1,101 @@
+services:
+  # 0. Aura MCP Server (The Tool Provider)
+  mcp-server:
+    build:
+      context: ./services/mcp-server
+      dockerfile: Dockerfile
+    container_name: aura-mcp-server
+    ports:
+      - "50052:50052"
+    depends_on:
+      - valkey
+    environment:
+      VALKEY_ADDR: "valkey:6379"
+    # CRITICAL: Override the default command to run our Go server
+    command: >
+      sh -c "if [ ! -f go.mod ]; then 
+               go mod init aura-mcp && 
+               go get github.com/valkey-io/valkey-go &&
+               go get github.com/metoro-io/mcp-golang;
+             fi && 
+             go mod tidy &&
+             go run main.go"
+
+  # 1. Intelligence Layer (Vector Store)
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: aura-qdrant
+    ports:
+      - "6333:6333"
+    volumes:
+      - ./data/qdrant:/qdrant/storage
+
+  # 2. Semantic Cache Layer (Valkey)
+  valkey:
+    image: valkey/valkey:8.0-alpine
+    container_name: aura-valkey
+    ports:
+      - "6379:6379"
+    command: [ "valkey-server", "--io-threads", "4" ]
+
+  # 3. Governance Layer
+  postgres:
+    image: postgres:16-alpine
+    container_name: aura-postgres
+    environment:
+      POSTGRES_DB: aura_db
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+    ports:
+      - "5432:5432"
+
+  # 4. Aura Semantic Router (Rust) - Auto-Init
+  router:
+    build:
+      context: .
+      dockerfile: ./services/router/Dockerfile
+    container_name: aura-router
+    volumes:
+      - ./services/router:/app
+      - ./proto:/proto
+      - cargo_cache:/usr/local/cargo/registry
+    environment:
+      QDRANT_URL: "http://qdrant:6333"
+    working_dir: /app
+    command: >
+      sh -c "if [ ! -f Cargo.toml ]; then 
+               cargo init --bin . &&
+               cargo add tonic@0.11 prost@0.12 qdrant-client@1.10 tokio@1.0 --features tokio/full &&
+               cargo add serde@1.0 --features serde/derive &&
+               cargo add serde_json;
+             fi && 
+             cargo run"
+    depends_on:
+      - qdrant
+
+  # 5. Aura Gateway (Go) - Auto-Init
+  gateway:
+    build:
+      context: .
+      dockerfile: services/gateway/Dockerfile
+    container_name: aura-gateway
+    volumes:
+      - ./services/gateway:/app
+      - ./proto:/proto
+      - go_modules:/go/pkg/mod
+    working_dir: /app
+    # BOOTSTRAP LOGIC:
+    command: >
+      sh -c "if [ ! -f go.mod ]; then 
+               go mod init aura-gateway && 
+               go get github.com/valkey-io/valkey-go &&
+               go get google.golang.org/grpc &&
+               go get google.golang.org/protobuf;
+             fi && 
+             protoc -I/proto --go_out=internal/router --go_opt=paths=source_relative --go_opt=Mrouter.proto=github.com/nampally/aura/services/gateway/internal/router --go-grpc_out=internal/router --go-grpc_opt=paths=source_relative --go-grpc_opt=Mrouter.proto=github.com/nampally/aura/services/gateway/internal/router /proto/router.proto &&
+             go mod tidy &&
+             go run main.go"
+
+volumes:
+  go_modules:
+  cargo_cache:
