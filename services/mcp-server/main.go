@@ -6,14 +6,13 @@ import (
 	"os"
 
 	mcp "github.com/metoro-io/mcp-golang"
-	"github.com/metoro-io/mcp-golang/transport"
+	"github.com/metoro-io/mcp-golang/transport/http"
 	"github.com/valkey-io/valkey-go"
 )
 
 func main() {
-
-	// 1. Initialize Valkey Client (Go Native)
-	valkeyAddr := os.Getenv("VALKEY_URL")
+	// 1. Initialize Valkey Client
+	valkeyAddr := os.Getenv("VALKEY_ADDR") // Matches compose env var
 	if valkeyAddr == "" {
 		valkeyAddr = "valkey:6379"
 	}
@@ -25,23 +24,20 @@ func main() {
 	}
 	defer vClient.Close()
 
-	// 2. Initialize MCP Server over Stdio
-	server := mcp.NewServer(transport.NewStdioTransport())
+	// 2. Initialize MCP Server over HTTP (for network accessibility)
+	t := http.NewHTTPTransport("/mcp").WithAddr(":50052")
+	server := mcp.NewServer(t)
 
 	// 3. Tool: Get Tools
 	server.RegisterTool("get_aura_tools", "Returns available tools", func(ctx context.Context) (string, error) {
 		valkeyKey := "mcp:tools:list"
 
-		// Check Cache
 		resp := vClient.Do(ctx, vClient.B().Get().Key(valkeyKey).Build())
 		if cached, err := resp.ToString(); err == nil {
 			return fmt.Sprintf("Retrieved from Cache: %s", cached), nil
 		}
 
-		// Mock Tool List
 		tools := "Available: [db_query, get_user]"
-
-		// Set Cache with 5m TTL
 		_ = vClient.Do(ctx, vClient.B().Set().Key(valkeyKey).Value(tools).Ex(300).Build())
 
 		return tools, nil
@@ -65,6 +61,7 @@ func main() {
 	})
 
 	// 5. Start the MCP Server
+	fmt.Fprintln(os.Stderr, "🚀 Aura MCP Server is running...")
 	if err := server.Serve(); err != nil {
 		fmt.Fprintf(os.Stderr, "MCP Server Error: %v\n", err)
 		os.Exit(1)

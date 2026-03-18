@@ -7,15 +7,10 @@ import (
 
 type MockProvider struct{}
 
-func NewMockProvider() Provider {
-	return &MockProvider{}
-}
+func NewMockProvider() Provider { return &MockProvider{} }
 
-func (m *MockProvider) GenerateResponse(ctx context.Context, messages []Message) (string, error) {
-	// Simple mock response that reflects the context
-	return fmt.Sprintf("[Mock %s] I processed your request. Based on the tools selected, I can help you with your query.", m.GetProviderName()), nil
-}
+func (m *MockProvider) GetProviderName() string { return "Mock-Aura" }
 
-func (m *MockProvider) GetProviderName() string {
-	return "Mock-GPT"
+func (m *MockProvider) Generate(ctx context.Context, prompt string, tools []any) (string, error) {
+	return fmt.Sprintf("[Mock] Prompt: %s | Tools: %d active", prompt, len(tools)), nil
 }

@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 
@@ -35,6 +36,21 @@ func NewRBACClient(connStr string) (*RBACClient, error) {
 	db.Exec(`INSERT INTO user_tools (user_id, tool_id) VALUES ('solo-user', 'read_database') ON CONFLICT DO NOTHING`)
 
 	return &RBACClient{db: db}, nil
+}
+
+// CheckPermission verifies if a user has a specific scope/permission
+func (c *RBACClient) CheckPermission(ctx context.Context, userID string, scope string) (bool, error) {
+	// For now, we'll allow 'solo-user' to execute anything
+	if userID == "solo-user" {
+		return true, nil
+	}
+
+	// In a real scenario, we'd query a permissions table
+	// var exists bool
+	// err := c.db.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM user_permissions WHERE user_id = $1 AND scope = $2)", userID, scope).Scan(&exists)
+	// return exists, err
+
+	return false, nil
 }
 
 // GetAllowedTools retrieves the list of tool IDs a user is allowed to access

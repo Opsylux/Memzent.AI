@@ -1,27 +1,29 @@
 services:
-  # 0. Aura MCP Server (The Tool Provider)
+  valkey:
+    image: valkey/valkey:8.0-alpine
+    container_name: valkey
+    ports:
+      - "6379:6379"
+    command: [ "valkey-server", "--io-threads", "4" ]
+
   mcp-server:
     build:
-      context: ./services/mcp-server
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: services/mcp-server/Dockerfile
     container_name: aura-mcp-server
-    ports:
-      - "50052:50052"
     depends_on:
       - valkey
     environment:
-      VALKEY_ADDR: "valkey:6379"
-    # CRITICAL: Override the default command to run our Go server
-    command: >
-      sh -c "if [ ! -f go.mod ]; then 
-               go mod init aura-mcp && 
-               go get github.com/valkey-io/valkey-go &&
-               go get github.com/metoro-io/mcp-golang;
-             fi && 
-             go mod tidy &&
-             go run main.go"
+      - VALKEY_ADDR=valkey:6379
+    ports:
+      - "50052:50052"
+    volumes:
+      - ./services/mcp-server:/app
+    working_dir: /app
+    # If you want to keep your dynamic "run" logic for dev:
 
-  # 1. Intelligence Layer (Vector Store)
+
+    # 1. Intelligence Layer (Vector Store)
   qdrant:
     image: qdrant/qdrant:latest
     container_name: aura-qdrant
@@ -29,14 +31,6 @@ services:
       - "6333:6333"
     volumes:
       - ./data/qdrant:/qdrant/storage
-
-  # 2. Semantic Cache Layer (Valkey)
-  valkey:
-    image: valkey/valkey:8.0-alpine
-    container_name: aura-valkey
-    ports:
-      - "6379:6379"
-    command: [ "valkey-server", "--io-threads", "4" ]
 
   # 3. Governance Layer
   postgres:
