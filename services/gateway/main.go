@@ -4,25 +4,52 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"aura-gateway/internal/auth"
+	"aura-gateway/internal/cache"
+	"aura-gateway/internal/config"
 	"aura-gateway/internal/engine"
 	"aura-gateway/internal/llm"
 	"aura-gateway/internal/mcp"
+	"aura-gateway/internal/metrics"
 	"aura-gateway/internal/router"
 
-	"github.com/valkey-io/valkey-go"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
+
+func metricsMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+		rw := &statusResponseWriter{ResponseWriter: w, status: http.StatusOK}
+		next.ServeHTTP(rw, r)
+		duration := time.Since(start).Seconds()
+
+		metrics.HttpRequestsTotal.WithLabelValues(r.URL.Path, r.Method, fmt.Sprintf("%d", rw.status)).Inc()
+		metrics.RequestDurationSeconds.WithLabelValues(r.URL.Path, r.Method).Observe(duration)
+	})
+}
+
+type statusResponseWriter struct {
+	http.ResponseWriter
+	status int
+}
+
+func (rw *statusResponseWriter) WriteHeader(code int) {
+	rw.status = code
+	rw.ResponseWriter.WriteHeader(code)
+}
 
 func commonMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "*") // Development friendly
+		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
 
 		if r.Method == "OPTIONS" {
 			w.WriteHeader(http.StatusOK)
@@ -33,89 +60,121 @@ func commonMiddleware(next http.Handler) http.Handler {
 }
 
 func main() {
-	ctx := context.Background()
+	// 1. Initialize Config
+	cfg := config.LoadConfig()
 
-	// 1. Initialize Valkey (Cache)
-	valkeyAddr := os.Getenv("VALKEY_URL")
-	if valkeyAddr == "" {
-		valkeyAddr = "valkey:6379"
+	// 2. Initialize Structured Logging
+	var handler slog.Handler
+	if cfg.Environment == "production" {
+		handler = slog.NewJSONHandler(os.Stdout, nil)
+	} else {
+		handler = slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug})
 	}
-	vClient, err := valkey.NewClient(valkey.ClientOption{InitAddress: []string{valkeyAddr}})
-	if err != nil {
-		log.Fatalf("❌ Failed to connect to Valkey: %v", err)
-	}
-	defer vClient.Close()
-	fmt.Println("✅ Aura Gateway: Connected to Valkey")
+	slog.SetDefault(slog.New(handler))
 
-	// 2. Initialize Rust Router Client (gRPC)
-	routerAddr := os.Getenv("ROUTER_URL")
-	if routerAddr == "" {
-		routerAddr = "router:50051"
-	}
-	rClient, err := router.NewRouterClient(routerAddr)
+	slog.Info("Starting Aura Gateway", "port", cfg.Port, "env", cfg.Environment)
+
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	// 3. Initialize Cache
+	vCache, err := cache.NewAuraCache(ctx, cfg.ValkeyURL)
 	if err != nil {
-		log.Fatalf("❌ Failed to connect to Rust Router: %v", err)
+		slog.Error("Failed to connect to Valkey", "error", err)
+		os.Exit(1)
+	}
+	defer vCache.Close()
+	slog.Info("Connected to Valkey")
+
+	// 4. Initialize Router Client
+	rClient, err := router.NewRouterClient(ctx, cfg.RouterURL)
+	if err != nil {
+		slog.Error("Failed to connect to Rust Router", "error", err)
+		os.Exit(1)
 	}
 	defer rClient.Close()
-	fmt.Println("✅ Aura Gateway: Connected to Rust Router")
+	slog.Info("Connected to Rust Router")
 
-	// 3. Initialize Postgres RBAC
-	pgAddr := os.Getenv("POSTGRES_URL")
-	if pgAddr == "" {
-		pgAddr = "postgres://user:password@postgres:5432/aura_db?sslmode=disable"
-	}
-	rbacClient, err := auth.NewRBACClient(pgAddr)
+	// 5. Initialize RBAC Client
+	rbacClient, err := auth.NewRBACClient(cfg.PostgresURL)
 	if err != nil {
-		log.Printf("⚠️ Failed to connect to Postgres RBAC: %v. Starting without it.", err)
+		slog.Warn("Postgres RBAC unavailable, starting with limited permissions", "error", err)
 	} else {
 		defer rbacClient.Close()
-		fmt.Println("✅ Aura Gateway: Connected to Postgres RBAC")
+		slog.Info("Connected to Postgres RBAC")
 	}
 
-	// 4. Initialize MCP Client
+	// 6. Initialize MCP Client
 	mcpClient, err := mcp.NewMCPClient()
 	if err != nil {
-		log.Printf("⚠️ Failed to initialize MCP Client: %v", err)
+		slog.Warn("MCP Client unavailable", "error", err)
 	}
 
-	// 5. Initialize LLM Provider & Engine
+	// 7. Initialize LLM Provider
 	var llmProvider llm.Provider
-	anthropicKey := os.Getenv("ANTHROPIC_API_KEY")
-	if anthropicKey != "" {
-		llmProvider = llm.NewAnthropicProvider(anthropicKey, "")
-		fmt.Println("✅ Aura Gateway: Using Anthropic LLM Provider")
+	if cfg.AnthropicAPIKey != "" {
+		llmProvider = llm.NewAnthropicProvider(cfg.AnthropicAPIKey, "")
+		slog.Info("Using Anthropic LLM Provider")
 	} else {
 		llmProvider = llm.NewMockProvider()
-		fmt.Println("⚠️ Aura Gateway: Using Mock LLM Provider (No API Key found)")
+		slog.Warn("Using Mock LLM Provider (No API Key)")
 	}
-	auraEngine := engine.NewAuraEngine(vClient, rClient, rbacClient, llmProvider, mcpClient)
 
-	// 5. Handlers
-	http.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
-		err := vClient.Do(ctx, vClient.B().Ping().Build()).Error()
-		if err != nil {
-			http.Error(w, "Valkey Unreachable", http.StatusServiceUnavailable)
-			return
-		}
+	// 8. Initialize Engine
+	auraEngine := engine.NewAuraEngine(vCache, rClient, rbacClient, llmProvider, mcpClient, cfg.ToolRelevanceThreshold, cfg.LLMCacheTTL)
+
+	mux := http.NewServeMux()
+
+	// Metrics API
+	mux.Handle("/metrics", promhttp.Handler())
+
+	// Health Checks (Enterprise standard)
+	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
+		status := map[string]string{"status": "healthy", "service": "aura-gateway"}
 		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprintf(w, `{"status": "healthy"}`)
+		json.NewEncoder(w).Encode(status)
 	})
 
-	http.HandleFunc("/v1/chat", func(w http.ResponseWriter, r *http.Request) {
-		prompt := r.URL.Query().Get("prompt")
-		if prompt == "" {
-			http.Error(w, "Missing 'prompt' parameter", http.StatusBadRequest)
+	mux.HandleFunc("/readyz", func(w http.ResponseWriter, r *http.Request) {
+		status := map[string]string{"status": "ready", "time": time.Now().Format(time.RFC3339)}
+		
+		if err := vCache.Ping(r.Context()); err != nil {
+			status["status"] = "not_ready"
+			status["valkey"] = "unreachable"
+			w.WriteHeader(http.StatusServiceUnavailable)
+		} else {
+			status["valkey"] = "online"
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(status)
+	})
+
+	// Chat API (v1)
+	mux.HandleFunc("/v1/chat", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
 			return
 		}
 
-		// Use the Orchestration Engine
-		resp, err := auraEngine.Process(ctx, &engine.PromptRequest{
-			UserID: "solo-user",
-			Prompt: prompt,
-		})
+		var req engine.PromptRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "Invalid Request Body", http.StatusBadRequest)
+			return
+		}
 
+		if req.Prompt == "" {
+			http.Error(w, "Missing 'prompt' field", http.StatusBadRequest)
+			return
+		}
+
+		if req.UserID == "" {
+			req.UserID = "anonymous"
+		}
+
+		resp, err := auraEngine.Process(r.Context(), &req)
 		if err != nil {
-			log.Printf("Engine Error: %v", err)
+			slog.Error("Engine Processing Error", "error", err, "user_id", req.UserID)
 			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 			return
 		}
@@ -129,35 +188,27 @@ func main() {
 		json.NewEncoder(w).Encode(resp)
 	})
 
-	http.HandleFunc("/v1/tools", func(w http.ResponseWriter, r *http.Request) {
-		// This endpoint is used by the Dashboard to list available tools
-
-		// 1. Start with high-level known system capabilities
+	// Tools API (v1)
+	mux.HandleFunc("/v1/tools", func(w http.ResponseWriter, r *http.Request) {
 		allTools := []map[string]any{
 			{"id": "aura_search", "name": "Neural Semantic Search", "provider": "Aura-Core", "status": "online"},
 		}
 
-		// 2. Try to fetch dynamic tools from MCP server
 		if mcpClient != nil {
-			ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+			ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
 			defer cancel()
-
-			// Ensure initialized
 			_ = mcpClient.Initialize(ctx)
-
 			mcpTools, err := mcpClient.ListTools(ctx)
 			if err == nil {
 				for _, t := range mcpTools {
 					allTools = append(allTools, map[string]any{
-						"id":       t.Name, // Using Name as ID for UI simplicity
+						"id":       t.Name,
 						"name":     t.Name,
 						"provider": "Aura-MCP",
 						"status":   "online",
 						"desc":     t.Description,
 					})
 				}
-			} else {
-				log.Printf("⚠️ Dashboard: Failed to list MCP tools: %v", err)
 			}
 		}
 
@@ -165,9 +216,30 @@ func main() {
 		json.NewEncoder(w).Encode(allTools)
 	})
 
-	port := ":8080"
-	fmt.Printf("🚀 Aura Gateway active on %s\n", port)
-	if err := http.ListenAndServe(port, commonMiddleware(http.DefaultServeMux)); err != nil {
-		log.Fatal(err)
+	srv := &http.Server{
+		Addr:    cfg.Port,
+		Handler: auth.JWTMiddleware(cfg.JWTSecret)(metricsMiddleware(commonMiddleware(mux))),
 	}
+
+	// 9. Start Server
+	go func() {
+		slog.Info("Server listening", "addr", cfg.Port)
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			slog.Error("Server failure", "error", err)
+			os.Exit(1)
+		}
+	}()
+
+	// 10. Graceful Shutdown
+	<-ctx.Done()
+	slog.Info("Shutting down Aura Gateway...")
+
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	if err := srv.Shutdown(shutdownCtx); err != nil {
+		slog.Error("Graceful shutdown failed", "error", err)
+	}
+
+	slog.Info("Aura Gateway stopped")
 }

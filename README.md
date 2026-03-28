@@ -1,56 +1,84 @@
-Aura MCP Gateway: Abstract
-Aura is an enterprise-grade infrastructure product designed to eliminate the "Token Tax" and security risks associated with unmanaged AI agent deployments. By acting as an intelligent middleware between Large Language Models (LLMs) and the Model Context Protocol (MCP), Aura ensures that every agent interaction is cost-optimized, secure, and high-performance.
+# Project Aura: Enterprise AI Infrastructure
 
-The Problem
-As companies scale AI agents, they hit three major walls:
+**Aura** is a high-performance, semantic AI gateway designed to eliminate the "Token Tax" and security risks associated with unmanaged LLM deployments. By acting as a secure, intelligent middleware between agents and the **Model Context Protocol (MCP)**, Aura ensures every interaction is cost-optimized, audited, and resilient.
 
-Context Bloat: Agents are overwhelmed by massive tool schemas, leading to high token costs and "lost in the middle" hallucinations.
+---
 
-Security Gaps: Lack of centralized governance for how agents access internal databases and sensitive APIs.
+## 🏗️ Core Architecture
 
-Implementation Friction: High manual effort required to build and maintain specialized MCP servers for every internal data source.
+Aura utilizes a distributed, multi-language architecture to balance high-speed semantic routing with robust business logic.
 
-The Solution: Aura's Core Pillars
-Semantic Tool Routing: Aura uses a lightweight "pre-processor" to analyze user intent and only inject the 3-5 most relevant tools into the LLM's context window, reducing token waste by up to 90%.
+| Service | Language | Port | Role |
+| :--- | :--- | :--- | :--- |
+| **Gateway** | Go 1.25 | `8080` | Entry point, RBAC, JWT Auth, Semantic Caching |
+| **Router** | Rust | `50051` | gRPC service for vector-based tool selection |
+| **Dashboard**| Next.js | `3000` | Administrative control tower & observability |
+| **MCP Server**| Go | `50052` | Tool execution & context protocol adapter |
+| **Website** | Vite 8 | `5173` | Marketing landing page & user portal |
 
-Agentic Auto-Generation: A scanning engine that automatically crawls enterprise repositories (GitHub/GitLab) and OpenAPI specs to generate production-ready, optimized MCP servers.
+---
 
-The Governance Plane: A centralized "Control Tower" providing Role-Based Access Control (RBAC), detailed audit logs, and cost-attribution dashboards for every tool call.
+## 🛡️ Enterprise Pillars
 
-Intelligent Output Compression: Automatically summarizes or prunes long tool responses (like 1,000-line logs) into concise, LLM-ready snippets to save further on input tokens.
+### 1. Semantic Tool Routing (Rust + Qdrant)
+Aura analyzes user intent in real-time and injects only the most relevant tools into the LLM context. This **reduces token waste by up to 90%** and eliminates "Lost in the Middle" hallucinations.
 
-Technical Advantage
-Built on a high-performance Go (Golang) and Rust stack, Aura provides sub-millisecond routing latency. It uses a Vector-based Discovery layer to match user queries to the most efficient tool path in real-time.
+### 2. Bulletproof Governance (Go + Postgres)
+Centralized **Role-Based Access Control (RBAC)** and hardware-backed JWT authentication ensure that AI agents only access the data they are authorized to see.
 
-Market Impact
-Aura transforms AI from an unpredictable experimental cost into a quantifiable performance engine. By capturing the "Logic Layer" of the MCP ecosystem, Aura becomes the indispensable gateway for any enterprise serious about deploying agentic workflows at scale.
+### 3. Deep Observability (Prometheus + OpenTelemetry)
+Monitor latency, success rates, and token flow across your entire agentic fleet. Every decision made by the semantic router is logged and traceable.
 
+### 4. ROI Engine (Valkey + Semantic Cache)
+Avoid redundant LLM calls. Aura caches repeat intents semantically, delivering **sub-15ms response times** for cached queries and zero-cost retrieval.
+
+---
+
+## 🚀 Getting Started
+
+### Prerequisites
+- **Docker & Docker Compose**
+- **Node 24+** (for local development)
+- **Go 1.25+** (for gateway development)
+
+### One-Command Deployment
+The easiest way to start the entire Aura stack is via Docker Compose. This initializes all services including the vector store (Qdrant) and cache (Valkey).
+
+```powershell
+docker-compose up -d --build
 ```
-aura-gateway/
+
+### Service Access
+- **Aura Website**: [http://localhost:5173](http://localhost:5173)
+- **Admin Dashboard**: [http://localhost:3000](http://localhost:3000)
+- **Gateway API**: [http://localhost:8080/v1/chat](http://localhost:8080/v1/chat)
+- **Qdrant UI**: [http://localhost:6333/dashboard](http://localhost:6333/dashboard)
+
+---
+
+## 📂 Project Structure
+
+```bash
+AuraMCP/
 ├── services/
-│   ├── gateway/            # Go: Main entry point & proxy
-│   │   ├── internal/       # Private application code
-│   │   │   ├── auth/       # RBAC & Identity logic
-│   │   │   ├── mcp/        # MCP client & protocol handling
-│   │   │   ├── cache/      # valkey Semantic Cache logic
-│   │   │   └── router/     # Client to talk to the Rust service
-│   │   ├── api/            # API definitions (OpenAPI/gRPC)
-│   │   └── main.go         # Service entry point
-│   │
-│   ├── router/             # Rust: The "Brain" (Semantic Routing)
-│   │   ├── src/
-│   │   │   ├── vector/     # Qdrant client & embedding logic
-│   │   │   ├── intent/     # LLM-lite intent analysis
-│   │   │   └── main.rs     # Service entry point
-│   │   └── Cargo.toml
-│   │
-│   ├── dashboard/          # Next.js: Admin & Observability
-│       ├── components/     # Token savings graphs, tool registry
-│       └── pages/
-│
-├── deploy/                 # Docker, Kubernetes, & Terraform configs
-├── proto/                  # Shared gRPC definitions between Go & Rust
-├── scripts/                # Auto-generation scripts for MCP servers
-└── Makefile                # Unified build/run commands
+│   ├── gateway/      # Go 1.25: Primary Proxy & Auth
+│   ├── router/       # Rust: Semantic Decision Engine
+│   ├── mcp-server/   # Go: Dynamic Tool Provider
+│   ├── dashboard/    # Next.js: Control Tower
+│   └── website/      # Vite 8: Brand & Marketing
+├── proto/            # Shared gRPC Definitions
+├── data/             # Persistent Storage (Postgres/Qdrant)
+└── docker-compose.yml # Orchestration Layer
 ```
 
+---
+
+## 🛠️ Development Workflow
+
+1. **Gateway Logic**: Edit `services/gateway/internal/engine/engine.go` to modify the orchestration flow.
+2. **Branding**: Update `website/src/App.tsx` for marketing and UI improvements.
+3. **Routing**: Enhance the Rust service in `services/router/src/` for better intent matching.
+
+---
+
+**Built by the Aura Engineering Team.** *Securing the future of Agentic Intelligence.*

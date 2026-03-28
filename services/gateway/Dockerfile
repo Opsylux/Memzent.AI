@@ -1,5 +1,5 @@
 # 2026 Standard Go Development Environment
-FROM golang:1.24-alpine
+FROM golang:1.25-alpine
 
 # 1. Install system dependencies
 RUN apk add --no-cache \

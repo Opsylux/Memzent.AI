@@ -1,0 +1,60 @@
+package config
+
+import (
+	"os"
+	"strconv"
+	"time"
+)
+
+type Config struct {
+	Port                   string
+	ValkeyURL              string
+	RouterURL              string
+	PostgresURL            string
+	MCPURL                 string
+	AnthropicAPIKey        string
+	JWTSecret              string
+	LLMCacheTTL            time.Duration
+	ToolRelevanceThreshold float64
+	Environment            string
+}
+
+func LoadConfig() *Config {
+	return &Config{
+		Port:                   getEnv("PORT", ":8080"),
+		ValkeyURL:              getEnv("VALKEY_URL", "valkey:6379"),
+		RouterURL:              getEnv("ROUTER_URL", "router:50051"),
+		PostgresURL:            getEnv("POSTGRES_URL", "postgres://user:password@postgres:5432/aura_db?sslmode=disable"),
+		MCPURL:                 getEnv("MCP_SERVER_URL", "http://aura-mcp-server:50052/mcp"),
+		AnthropicAPIKey:        getEnv("ANTHROPIC_API_KEY", ""),
+		JWTSecret:              getEnv("JWT_SECRET", "aura-enterprise-secret-2026"),
+		LLMCacheTTL:            getEnvDuration("LLM_CACHE_TTL", 1*time.Hour),
+		ToolRelevanceThreshold: getEnvFloat("TOOL_RELEVANCE_THRESHOLD", 0.7),
+		Environment:            getEnv("ENVIRONMENT", "development"),
+	}
+}
+
+func getEnv(key, fallback string) string {
+	if value, exists := os.LookupEnv(key); exists {
+		return value
+	}
+	return fallback
+}
+
+func getEnvDuration(key string, fallback time.Duration) time.Duration {
+	if value, exists := os.LookupEnv(key); exists {
+		if d, err := time.ParseDuration(value); err == nil {
+			return d
+		}
+	}
+	return fallback
+}
+
+func getEnvFloat(key string, fallback float64) float64 {
+	if value, exists := os.LookupEnv(key); exists {
+		if f, err := strconv.ParseFloat(value, 64); err == nil {
+			return f
+		}
+	}
+	return fallback
+}
