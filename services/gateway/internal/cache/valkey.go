@@ -36,6 +36,10 @@ func (c *AuraCache) SetResult(ctx context.Context, key, value string, ttl time.D
 	return c.client.Do(ctx, c.client.B().Set().Key(key).Value(value).Px(ttl).Build()).Error()
 }
 
+func (c *AuraCache) Ping(ctx context.Context) error {
+	return c.client.Do(ctx, c.client.B().Ping().Build()).Error()
+}
+
 func (c *AuraCache) Close() {
 	c.client.Close()
 }

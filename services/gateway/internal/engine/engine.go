@@ -3,113 +3,134 @@ package engine
 import (
 	"context"
 	"fmt"
+	"log/slog"
+	"sync"
 	"time"
 
 	"aura-gateway/internal/auth"
+	"aura-gateway/internal/cache"
 	"aura-gateway/internal/llm"
 	"aura-gateway/internal/mcp"
 	"aura-gateway/internal/router"
-	"log"
-
-	"github.com/valkey-io/valkey-go"
+	"golang.org/x/time/rate"
 )
 
+// PromptRequest defines the incoming user payload
 type PromptRequest struct {
-	UserID string
-	Prompt string
+	UserID string `json:"user_id"`
+	Prompt string `json:"prompt"`
 }
 
+// PromptResponse defines the gateway's response to the client
 type PromptResponse struct {
-	Text   string `json:"text"`
-	Cached bool   `json:"cached"`
-	Tools  []any  `json:"tools,omitempty"`
+	Text      string `json:"text"`
+	Cached    bool   `json:"cached"`
+	Tools     []any  `json:"tools,omitempty"`
+	RequestID string `json:"request_id,omitempty"`
 }
 
+// AuraEngine orchestrates the flow between Cache, RBAC, Router, MCP, and LLM
 type AuraEngine struct {
-	cache  valkey.Client
-	router *router.RouterClient
-	rbac   *auth.RBACClient
-	llm    llm.Provider
-	mcp    *mcp.MCPClient
+	cache         *cache.AuraCache
+	router        *router.RouterClient
+	rbac          *auth.RBACClient
+	llm           llm.Provider
+	mcp           *mcp.MCPClient
+	toolThreshold float64
+	cacheTTL      time.Duration
+	rateLimiters  sync.Map
 }
 
-func NewAuraEngine(c valkey.Client, r *router.RouterClient, auth *auth.RBACClient, p llm.Provider, m *mcp.MCPClient) *AuraEngine {
-	return &AuraEngine{cache: c, router: r, rbac: auth, llm: p, mcp: m}
+// NewAuraEngine initializes the engine with its required dependencies
+func NewAuraEngine(c *cache.AuraCache, r *router.RouterClient, auth *auth.RBACClient, p llm.Provider, m *mcp.MCPClient, threshold float64, ttl time.Duration) *AuraEngine {
+	return &AuraEngine{
+		cache:         c,
+		router:        r,
+		rbac:          auth,
+		llm:           p,
+		mcp:           m,
+		toolThreshold: threshold,
+		cacheTTL:      ttl,
+	}
 }
 
 func (e *AuraEngine) Process(ctx context.Context, req *PromptRequest) (*PromptResponse, error) {
-	// A. Semantic Cache Check (Valkey)
-	// We use the prompt as a key for now. In 2026, we'd use a vector hash.
-	resp, err := e.cache.Do(ctx, e.cache.B().Get().Key(req.Prompt).Build()).ToString()
-	if err == nil && resp != "" {
-		return &PromptResponse{Text: resp, Cached: true}, nil
+	// A. Rate Limiting (10 requests per minute per user)
+	limiter, _ := e.rateLimiters.LoadOrStore(req.UserID, rate.NewLimiter(rate.Every(time.Minute/10), 10))
+	if !limiter.(*rate.Limiter).Allow() {
+		return nil, fmt.Errorf("rate limit exceeded: please wait a moment")
 	}
 
-	// B. RBAC Check (Postgres)
-	// Ensure the user has "execute" permissions before routing
+	// B. Semantic Cache Check
+	if e.cache != nil {
+		cachedResp, err := e.cache.GetSemanticResult(ctx, req.Prompt)
+		if err == nil && cachedResp != "" {
+			slog.Info("Cache HIT", "prompt", req.Prompt)
+			return &PromptResponse{Text: cachedResp, Cached: true}, nil
+		}
+	}
+
+	// C. RBAC Check
+	var allowedTools []string
 	if e.rbac != nil {
-		allowed, _ := e.rbac.CheckPermission(ctx, req.UserID, "chat:execute")
+		allowed, err := e.rbac.CheckPermission(ctx, req.UserID, "chat:execute")
+		if err != nil {
+			slog.Error("RBAC check failed", "error", err, "user_id", req.UserID)
+		}
 		if !allowed {
 			return nil, fmt.Errorf("unauthorized: insufficient scope")
 		}
+		// Get tools specifically allowed for this user
+		allowedTools, _ = e.rbac.GetAllowedTools(req.UserID)
 	}
 
-	// C. Semantic Routing (Rust gRPC)
-	// Ask the Rust router: "Which tools do I need for this prompt?"
-	var allowedTools []string
-	if e.rbac != nil {
-		var err error
-		allowedTools, err = e.rbac.GetAllowedTools(req.UserID)
-		if err != nil {
-			log.Printf("RBAC allowed tools error: %v", err)
-		}
-	}
-
+	// D. Semantic Routing
 	tools, err := e.router.GetBestTools(ctx, req.Prompt, req.UserID, allowedTools)
 	if err != nil {
-		log.Printf("Router fallback: %v", err)
+		slog.Warn("Router fallback engaged", "error", err)
 	}
 
-	// D. Tool Execution (MCP Integration)
+	// E. Tool Execution (MCP)
 	var toolResults []string
 	if e.mcp != nil && len(tools) > 0 {
 		for _, t := range tools {
-			// Threshold check: only execute if relevance > 0.7
-			if t.RelevanceScore > 0.7 {
-				log.Printf("Executing tool: %s (Score: %.2f)", t.Id, t.RelevanceScore)
+			if t.RelevanceScore > float32(e.toolThreshold) {
+				slog.Info("Executing tool", "tool_id", t.Id, "score", t.RelevanceScore)
 
-				// Initialize MCP client if needed (stateful)
-				_ = e.mcp.Initialize(ctx)
-
-				// Prepare arguments
+				// Use a sub-context for the tool call to prevent hanging
+				toolCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
+				
 				args := map[string]string{
 					"tool_id": t.Id,
 					"user_id": req.UserID,
 				}
 
-				resp, err := e.mcp.CallTool(ctx, "execute_aura_tool", args)
+				resp, err := e.mcp.CallTool(toolCtx, "execute_aura_tool", args)
+				cancel() // Release context
+
 				if err != nil {
-					log.Printf("MCP tool execution error for %s: %v", t.Id, err)
+					slog.Error("MCP tool execution error", "tool_id", t.Id, "error", err)
 					continue
 				}
 
-				for _, content := range resp.Content {
-					if content.Type == "text" {
-						toolResults = append(toolResults, content.Text)
+				// Extract text content safely
+				if resp != nil {
+					for _, content := range resp.Content {
+						if content.TextContent != nil {
+							toolResults = append(toolResults, content.TextContent.Text)
+						}
 					}
 				}
 			}
 		}
 	}
 
-	// E. LLM Synthesis
-	// Pass the prompt, selected tools, AND executed results to the LLM
+	// F. LLM Synthesis
 	contextPrompt := req.Prompt
 	if len(toolResults) > 0 {
-		contextPrompt = fmt.Sprintf("User Prompt: %s\n\nExecuted Tool Data:\n%s", req.Prompt, toolResults)
+		contextPrompt = fmt.Sprintf("User Prompt: %s\n\nExecuted Tool Data:\n%v", req.Prompt, toolResults)
 	}
 
-	// Convert tools for LLM interface
 	var llmTools []any
 	for _, t := range tools {
 		llmTools = append(llmTools, t)
@@ -117,11 +138,14 @@ func (e *AuraEngine) Process(ctx context.Context, req *PromptRequest) (*PromptRe
 
 	aiResp, err := e.llm.Generate(ctx, contextPrompt, llmTools)
 	if err != nil {
+		slog.Error("LLM generation failed", "error", err)
 		return nil, err
 	}
 
-	// E. Populate Cache for next time (1 hour TTL)
-	e.cache.Do(ctx, e.cache.B().Set().Key(req.Prompt).Value(aiResp).Ex(1*time.Hour).Build())
+	// G. Populate Cache for future requests
+	if e.cache != nil {
+		_ = e.cache.SetResult(ctx, req.Prompt, aiResp, e.cacheTTL)
+	}
 
 	return &PromptResponse{
 		Text:   aiResp,
