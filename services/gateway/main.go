@@ -108,6 +108,15 @@ func main() {
 	mcpClient, err := mcp.NewMCPClient()
 	if err != nil {
 		slog.Warn("MCP Client unavailable", "error", err)
+	} else {
+		// Eagerly initialize the stateful mcp-golang client handshake
+		initCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		defer cancel()
+		if initErr := mcpClient.Initialize(initCtx); initErr != nil {
+			slog.Warn("MCP Handshake failed", "error", initErr)
+		} else {
+			slog.Info("Connected to Internal MCP Network")
+		}
 	}
 
 	// 7. Initialize LLM Provider
@@ -203,7 +212,6 @@ func main() {
 		if mcpClient != nil {
 			ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
 			defer cancel()
-			_ = mcpClient.Initialize(ctx)
 			mcpTools, err := mcpClient.ListTools(ctx)
 			if err == nil {
 				for _, t := range mcpTools {
@@ -220,6 +228,22 @@ func main() {
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(allTools)
+	})
+
+	// Stats API (v1)
+	startupTime := time.Now()
+	mux.HandleFunc("/v1/stats", func(w http.ResponseWriter, r *http.Request) {
+		uptime := time.Since(startupTime)
+		
+		stats := map[string]any{
+			"total_requests": auraEngine.TotalRequests.Load(),
+			"cache_hits":     auraEngine.CacheHits.Load(),
+			"uptime_seconds": int(uptime.Seconds()),
+			"status":         "online",
+		}
+		
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(stats)
 	})
 
 	srv := &http.Server{

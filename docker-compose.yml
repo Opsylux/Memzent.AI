@@ -52,7 +52,7 @@ services:
       - ./proto:/proto
       - cargo_cache:/usr/local/cargo/registry
     environment:
-      QDRANT_URL: "http://qdrant:6333"
+      QDRANT_URL: "http://qdrant:6334"
     working_dir: /app
     command: >
       sh -c "if [ ! -f Cargo.toml ]; then 
@@ -83,7 +83,7 @@ services:
       - JWT_SECRET=aura-enterprise-secret-2026
       - OLLAMA_ENABLED=true
       - OLLAMA_URL=http://ollama:11434
-      - OLLAMA_MODEL=llama3.2:3b
+      - OLLAMA_MODEL=llama3.2
     # BOOTSTRAP LOGIC:
     command: >
       sh -c "if [ ! -f go.mod ]; then 
@@ -141,6 +141,8 @@ services:
       - "11434:11434"
     volumes:
       - ollama_data:/root/.ollama
+    #docker exec aura-ollama ollama pull llama3.2
+
       
 volumes:
   go_modules:

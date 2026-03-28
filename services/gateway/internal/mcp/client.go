@@ -2,6 +2,7 @@ package mcp
 
 import (
 	"context"
+	"fmt"
 	"os"
 
 	mcp "github.com/metoro-io/mcp-golang"
@@ -41,5 +42,20 @@ func (c *MCPClient) ListTools(ctx context.Context) ([]mcp.ToolRetType, error) {
 }
 
 func (c *MCPClient) CallTool(ctx context.Context, name string, arguments any) (*mcp.ToolResponse, error) {
-	return c.client.CallTool(ctx, name, arguments)
+    // 1. Ensure the client isn't nil
+    if c.client == nil {
+        return nil, fmt.Errorf("mcp client not configured")
+    }
+
+    // 2. Wrap the call with a recovery or specific timeout if needed
+    // The "key: 0" error often means the server received the request 
+    // but the client-side transport layer didn't assign a sequence ID correctly.
+    resp, err := c.client.CallTool(ctx, name, arguments)
+    if err != nil {
+        // Log the specific name of the tool that failed to help narrow down 
+        // if it's ONLY 'read_database' or all tools.
+        return nil, fmt.Errorf("mcp call tool [%s] failed: %w", name, err)
+    }
+
+    return resp, nil
 }

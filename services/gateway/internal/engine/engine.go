@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"aura-gateway/internal/auth"
@@ -39,6 +40,9 @@ type AuraEngine struct {
 	toolThreshold float64
 	cacheTTL      time.Duration
 	rateLimiters  sync.Map
+	
+	TotalRequests atomic.Uint64
+	CacheHits     atomic.Uint64
 }
 
 // NewAuraEngine initializes the engine with its required dependencies
@@ -55,6 +59,8 @@ func NewAuraEngine(c *cache.AuraCache, r *router.RouterClient, auth *auth.RBACCl
 }
 
 func (e *AuraEngine) Process(ctx context.Context, req *PromptRequest) (*PromptResponse, error) {
+	e.TotalRequests.Add(1)
+
 	// A. Rate Limiting (10 requests per minute per user)
 	limiter, _ := e.rateLimiters.LoadOrStore(req.UserID, rate.NewLimiter(rate.Every(time.Minute/10), 10))
 	if !limiter.(*rate.Limiter).Allow() {
@@ -65,6 +71,7 @@ func (e *AuraEngine) Process(ctx context.Context, req *PromptRequest) (*PromptRe
 	if e.cache != nil {
 		cachedResp, err := e.cache.GetSemanticResult(ctx, req.Prompt)
 		if err == nil && cachedResp != "" {
+			e.CacheHits.Add(1)
 			slog.Info("Cache HIT", "prompt", req.Prompt)
 			return &PromptResponse{Text: cachedResp, Cached: true}, nil
 		}

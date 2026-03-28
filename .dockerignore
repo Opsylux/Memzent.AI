@@ -1,0 +1,8 @@
+node_modules
+services/dashboard/node_modules
+services/dashboard/.next
+services/dashboard/.swc
+website/node_modules
+.git
+.env
+data/

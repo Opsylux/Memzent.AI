@@ -19,7 +19,7 @@ func main() {
 
 	vClient, err := valkey.NewClient(valkey.ClientOption{InitAddress: []string{valkeyAddr}})
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "❌ Failed to connect to Valkey: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Failed to connect to Valkey: %v\n", err)
 		os.Exit(1)
 	}
 	defer vClient.Close()
@@ -52,16 +52,18 @@ func main() {
 	server.RegisterTool("execute_aura_tool", "Runs a specific Aura tool", func(ctx context.Context, args ToolArgs) (string, error) {
 		switch args.ToolID {
 		case "db_query":
-			return "✅ SQL query executed successfully via Aura Gateway.", nil
+			return "SQL query executed successfully via Aura Gateway.", nil
 		case "get_user":
-			return fmt.Sprintf("👤 User data for ID %s fetched from Postgres.", args.UserID), nil
+			return fmt.Sprintf("User data for ID %s fetched from Postgres.", args.UserID), nil
+		case "read_database":
+			return "Mock Database Trace: Successfully indexed 1,241 cluster metrics and active node streams via Aura Core.", nil
 		default:
 			return "", fmt.Errorf("tool %s not found", args.ToolID)
 		}
 	})
 
 	// 5. Start the MCP Server
-	fmt.Fprintln(os.Stderr, "🚀 Aura MCP Server is running...")
+	fmt.Fprintln(os.Stderr, "Aura MCP Server is running...")
 	if err := server.Serve(); err != nil {
 		fmt.Fprintf(os.Stderr, "MCP Server Error: %v\n", err)
 		os.Exit(1)

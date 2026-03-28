@@ -210,7 +210,7 @@ const file_router_proto_rawDesc = "" +
 	"\x05tools\x18\x01 \x03(\v2\f.router.ToolR\x05tools\x12,\n" +
 	"\x12total_tokens_saved\x18\x02 \x01(\x05R\x10totalTokensSaved2J\n" +
 	"\x0eSemanticRouter\x128\n" +
-	"\vSelectTools\x12\x13.router.ToolRequest\x1a\x14.router.ToolResponseB;Z9github.com/nampally/aura/services/gateway/internal/routerb\x06proto3"
+	"\vSelectTools\x12\x13.router.ToolRequest\x1a\x14.router.ToolResponseB:Z8github.com/Opsylux/aura/services/gateway/internal/routerb\x06proto3"
 
 var (
 	file_router_proto_rawDescOnce sync.Once

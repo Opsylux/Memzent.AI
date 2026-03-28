@@ -1,4 +1,4 @@
-import { getAuraTools } from "./actions";
+import { getAuraTools, getAuraStats } from "./actions";
 import { MetricCard } from "@/components/metric-card";
 import { 
   Zap, 
@@ -14,7 +14,15 @@ import { RoutingVisualizer } from "@/components/routing-visualizer";
 import Link from 'next/link';
 
 export default async function Page() {
-  const initialTools = await getAuraTools();
+  const [initialTools, stats] = await Promise.all([
+    getAuraTools(),
+    getAuraStats()
+  ]);
+
+  const total = stats.total_requests || 0;
+  const hits = stats.cache_hits || 0;
+  const semanticSavings = total > 0 ? ((hits / total) * 100).toFixed(1) : "0.0";
+  const uptimeHours = Math.floor((stats.uptime_seconds || 0) / 3600);
 
   return (
     <div className="space-y-12">
@@ -22,37 +30,36 @@ export default async function Page() {
       <section className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <MetricCard 
           label="Semantic Savings" 
-          value="92.4%" 
-          trend="+4.2%" 
+          value={`${semanticSavings}%`} 
+          trend="Cache Hits"
           trendDirection="up"
           icon={<Zap size={24} />}
           color="cyan"
-          detail="ROI via Semantic Caching"
+          detail={`${hits} requests saved from LLM`}
         />
         <MetricCard 
-          label="Total Throughput" 
-          value="1.2M" 
-          trend="Tokens/Min" 
+          label="Total Engine Throughput" 
+          value={total.toLocaleString()} 
+          trend="Requests" 
           icon={<Layers size={24} />}
           color="purple"
           detail="Organization-wide Flow"
         />
         <MetricCard 
-          label="Tool Reliability" 
-          value="99.9%" 
-          trend="Healthy" 
+          label="Aura Tools Registry" 
+          value={`${initialTools?.length || 0}`} 
+          trend="Online" 
           icon={<ShieldCheck size={24} />}
           color="cyan"
-          detail="Active MCP Health Checks"
+          detail="Active Context Bindings"
         />
         <MetricCard 
-          label="Routing Latency" 
-          value="0.42ms" 
-          trend="-12ms" 
-          trendDirection="up" // Up is good for negative latency improvement
+          label="Gateway Uptime" 
+          value={`${uptimeHours}h`} 
+          trend="Stable" 
           icon={<Activity size={24} />}
           color="purple"
-          detail="Rust-Router P95 Speed"
+          detail="High-Speed Engine Status"
         />
       </section>
 
