@@ -20,10 +20,8 @@ services:
     volumes:
       - ./services/mcp-server:/app
     working_dir: /app
-    # If you want to keep your dynamic "run" logic for dev:
 
-
-    # 1. Intelligence Layer (Vector Store)
+  # 1. Intelligence Layer (Vector Store)
   qdrant:
     image: qdrant/qdrant:latest
     container_name: aura-qdrant
