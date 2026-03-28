@@ -13,6 +13,11 @@ type Config struct {
 	PostgresURL            string
 	MCPURL                 string
 	AnthropicAPIKey        string
+	OpenAIAPIKey           string
+	OpenAIModel            string
+	OllamaEnabled          bool
+	OllamaURL              string
+	OllamaModel            string
 	JWTSecret              string
 	LLMCacheTTL            time.Duration
 	ToolRelevanceThreshold float64
@@ -27,6 +32,11 @@ func LoadConfig() *Config {
 		PostgresURL:            getEnv("POSTGRES_URL", "postgres://user:password@postgres:5432/aura_db?sslmode=disable"),
 		MCPURL:                 getEnv("MCP_SERVER_URL", "http://aura-mcp-server:50052/mcp"),
 		AnthropicAPIKey:        getEnv("ANTHROPIC_API_KEY", ""),
+		OpenAIAPIKey:           getEnv("OPENAI_API_KEY", ""),
+		OpenAIModel:            getEnv("OPENAI_MODEL", "gpt-4o-mini"),
+		OllamaEnabled:          getEnv("OLLAMA_ENABLED", "false") == "true",
+		OllamaURL:              getEnv("OLLAMA_URL", "http://host.docker.internal:11434"),
+		OllamaModel:            getEnv("OLLAMA_MODEL", "llama3.2"),
 		JWTSecret:              getEnv("JWT_SECRET", "aura-enterprise-secret-2026"),
 		LLMCacheTTL:            getEnvDuration("LLM_CACHE_TTL", 1*time.Hour),
 		ToolRelevanceThreshold: getEnvFloat("TOOL_RELEVANCE_THRESHOLD", 0.7),

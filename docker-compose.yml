@@ -73,11 +73,19 @@ services:
       context: .
       dockerfile: services/gateway/Dockerfile
     container_name: aura-gateway
+    ports:
+      - "8080:8080"
     volumes:
       - ./services/gateway:/app
       - ./proto:/proto
       - go_modules:/go/pkg/mod
-    working_dir: /app
+    environment:
+      # - OPENAI_API_KEY=your_key_here
+      - OPENAI_MODEL=gpt-4o-mini
+      - JWT_SECRET=aura-enterprise-secret-2026
+      - OLLAMA_ENABLED=true
+      - OLLAMA_URL=http://ollama:11434
+      - OLLAMA_MODEL=llama3.2:3b
     # BOOTSTRAP LOGIC:
     command: >
       sh -c "if [ ! -f go.mod ]; then 
@@ -127,6 +135,16 @@ services:
     command: >
       sh -c "npm install && npm run dev"
 
+  # 6. Open-Source Local Meta LLM Engine
+  ollama:
+    image: ollama/ollama:latest
+    container_name: aura-ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+      
 volumes:
   go_modules:
   cargo_cache:
+  ollama_data:

@@ -112,7 +112,13 @@ func main() {
 
 	// 7. Initialize LLM Provider
 	var llmProvider llm.Provider
-	if cfg.AnthropicAPIKey != "" {
+	if cfg.OllamaEnabled {
+		llmProvider = llm.NewOllamaProvider(cfg.OllamaURL, cfg.OllamaModel)
+		slog.Info("Using Local Open-Source LLM via Ollama", "model", cfg.OllamaModel)
+	} else if cfg.OpenAIAPIKey != "" {
+		llmProvider = llm.NewOpenAIProvider(cfg.OpenAIAPIKey, cfg.OpenAIModel)
+		slog.Info("Using OpenAI LLM Provider", "model", cfg.OpenAIModel)
+	} else if cfg.AnthropicAPIKey != "" {
 		llmProvider = llm.NewAnthropicProvider(cfg.AnthropicAPIKey, "")
 		slog.Info("Using Anthropic LLM Provider")
 	} else {
