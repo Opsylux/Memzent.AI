@@ -1,3 +1,5 @@
+"use client"
+
 import { CheckCircle2, Cpu, Database, ArrowRight, Terminal } from "lucide-react";
 
 export function RoutingVisualizer({ steps }: { steps?: any[] }) {

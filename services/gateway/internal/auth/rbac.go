@@ -31,17 +31,19 @@ func NewRBACClient(connStr string) (*RBACClient, error) {
 		return nil, fmt.Errorf("failed to ensure user_tools table exists: %w", err)
 	}
 
-	// Insert mock data if we are testing with 'solo-user'
+	// Insert mock data if we are testing with 'solo-user' or 'admin-01'
 	db.Exec(`INSERT INTO user_tools (user_id, tool_id) VALUES ('solo-user', 'tool_123') ON CONFLICT DO NOTHING`)
 	db.Exec(`INSERT INTO user_tools (user_id, tool_id) VALUES ('solo-user', 'read_database') ON CONFLICT DO NOTHING`)
+	db.Exec(`INSERT INTO user_tools (user_id, tool_id) VALUES ('admin-01', 'aura_search') ON CONFLICT DO NOTHING`)
+	db.Exec(`INSERT INTO user_tools (user_id, tool_id) VALUES ('admin-01', 'read_database') ON CONFLICT DO NOTHING`)
 
 	return &RBACClient{db: db}, nil
 }
 
 // CheckPermission verifies if a user has a specific scope/permission
 func (c *RBACClient) CheckPermission(ctx context.Context, userID string, scope string) (bool, error) {
-	// For now, we'll allow 'solo-user' to execute anything
-	if userID == "solo-user" {
+	// For testing, we'll allow 'solo-user' and 'admin-01' to execute anything
+	if userID == "solo-user" || userID == "admin-01" {
 		return true, nil
 	}
 

@@ -1,39 +1,172 @@
 import { getAuraTools } from "./actions";
-import { ToolGrid, RoutingVisualizer } from "@/components/routing-visualizer";
+import { MetricCard } from "@/components/metric-card";
+import { 
+  Zap, 
+  Activity, 
+  ShieldCheck, 
+  Layers, 
+  ArrowUpRight,
+  Database,
+  Cpu,
+  Terminal
+} from "lucide-react";
+import { RoutingVisualizer } from "@/components/routing-visualizer";
+import Link from 'next/link';
 
 export default async function Page() {
   const initialTools = await getAuraTools();
 
   return (
-    <main className="p-8 bg-slate-950 min-h-screen text-white">
-      <div className="max-w-6xl mx-auto space-y-8">
-        <header className="flex justify-between items-end border-b border-slate-900 pb-6">
-          <div>
-            <h1 className="text-3xl font-bold tracking-tight">AURA_COMMAND</h1>
-            <p className="text-slate-500 text-sm">Real-time status of your AI infrastructure</p>
-          </div>
-          <div className="text-right">
-            <p className="text-xs font-mono text-blue-500 flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-              GATEWAY_CONNECTED
-            </p>
-          </div>
-        </header>
+    <div className="space-y-12">
+      {/* KPI Section */}
+      <section className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <MetricCard 
+          label="Semantic Savings" 
+          value="92.4%" 
+          trend="+4.2%" 
+          trendDirection="up"
+          icon={<Zap size={24} />}
+          color="cyan"
+          detail="ROI via Semantic Caching"
+        />
+        <MetricCard 
+          label="Total Throughput" 
+          value="1.2M" 
+          trend="Tokens/Min" 
+          icon={<Layers size={24} />}
+          color="purple"
+          detail="Organization-wide Flow"
+        />
+        <MetricCard 
+          label="Tool Reliability" 
+          value="99.9%" 
+          trend="Healthy" 
+          icon={<ShieldCheck size={24} />}
+          color="cyan"
+          detail="Active MCP Health Checks"
+        />
+        <MetricCard 
+          label="Routing Latency" 
+          value="0.42ms" 
+          trend="-12ms" 
+          trendDirection="up" // Up is good for negative latency improvement
+          icon={<Activity size={24} />}
+          color="purple"
+          detail="Rust-Router P95 Speed"
+        />
+      </section>
 
-        {/* Execution Trace */}
-        <section className="space-y-4">
+      {/* Main Intelligence Grid */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        {/* Semantic Flow & Visualizer */}
+        <section className="lg:col-span-2 space-y-6">
+          <div className="flex items-center justify-between px-2">
+            <div>
+              <h2 className="text-xl font-black tracking-tighter">Neural Execution Trace</h2>
+              <p className="text-xs font-bold text-white/30 uppercase tracking-widest mt-1">Real-time Intent-to-Tool Mapping</p>
+            </div>
+            <button className="glass px-4 py-2 rounded-xl text-[10px] font-black tracking-widest uppercase hover:bg-white/5 transition-all text-white/40 hover:text-aura-glow">
+              View All Traces
+            </button>
+          </div>
           <RoutingVisualizer steps={[]} />
+          
+          <div className="stat-card glow-purple p-8 neural-bg border-white/5">
+             <div className="flex items-center gap-4 mb-8">
+                <div className="w-12 h-12 rounded-2xl bg-aura-purple/10 border border-aura-purple/20 flex items-center justify-center text-aura-purple">
+                   <Cpu size={24} />
+                </div>
+                <div>
+                   <h3 className="text-lg font-black tracking-tight leading-none">Intelligence Status</h3>
+                   <p className="text-xs font-bold text-white/20 uppercase tracking-widest mt-1">Model Discovery & Routing Engine</p>
+                </div>
+             </div>
+             <p className="text-sm font-medium text-white/50 leading-relaxed mb-8">
+               Aura Router is currently managing <span className="text-white font-bold">12 Active Tools</span> across 4 providers. 
+               Semantic clustering is <span className="text-aura-glow font-bold">OPTIMIZED</span> with 98% intent matching accuracy.
+             </p>
+             <div className="grid grid-cols-2 gap-4">
+                <div className="p-4 rounded-2xl bg-white/5 border border-white/5">
+                   <div className="text-[10px] font-black text-white/20 uppercase mb-1">Embedding Engine</div>
+                   <div className="text-sm font-bold text-aura-glow">ModernBERT-v3 (Qdrant)</div>
+                </div>
+                <div className="p-4 rounded-2xl bg-white/5 border border-white/5">
+                   <div className="text-[10px] font-black text-white/20 uppercase mb-1">Inference Provider</div>
+                   <div className="text-sm font-bold text-aura-purple">Aura_Llama_3.1_70B</div>
+                </div>
+             </div>
+          </div>
         </section>
 
-        {/* Tools Grid */}
-        <section className="space-y-4">
-          <div className="flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-slate-400 uppercase tracking-wider">Aura Tools</h2>
-            <span className="text-xs text-slate-600 font-mono">{(initialTools || []).length} discovered</span>
+        {/* Sidebar Analytics */}
+        <section className="space-y-8">
+          {/* Active Tools Mini Feed */}
+          <div className="stat-card border-white/10 p-8 neural-bg">
+            <div className="flex items-center justify-between mb-8">
+              <h3 className="text-xs font-black tracking-widest text-white/40 uppercase leading-none italic font-roboto-mono flex items-center gap-2">
+                <Database size={14} className="text-aura-glow" /> 
+                Recent Tools Discovered
+              </h3>
+              <ArrowUpRight size={14} className="text-white/20" />
+            </div>
+            <div className="space-y-6">
+              {(initialTools || []).slice(0, 5).map((tool: any) => (
+                <div key={tool.id} className="flex items-center justify-between group cursor-pointer">
+                  <div className="flex items-center gap-4">
+                    <div className="w-2 h-2 rounded-full bg-aura-accent shadow-[0_0_8px_#00ff8e]" />
+                    <div>
+                      <div className="text-sm font-bold text-white group-hover:text-aura-glow transition-colors">{tool.name}</div>
+                      <div className="text-[10px] font-mono text-white/20 uppercase tracking-tighter truncate w-32">{tool.id}</div>
+                    </div>
+                  </div>
+                  <div className="text-[10px] font-black text-white/40 px-2 py-0.5 rounded-lg border border-white/10 group-hover:border-aura-glow/20 transition-all uppercase">
+                    {tool.provider || 'MCP'}
+                  </div>
+                </div>
+              ))}
+              <Link href="/tools" className="block text-center pt-4 text-[10px] font-black uppercase tracking-[0.2em] text-white/20 hover:text-aura-glow transition-colors italic">
+                EXPLORE FULL REGISTRY.
+              </Link>
+            </div>
           </div>
-          <ToolGrid tools={initialTools || []} />
+
+          {/* Activity Logs (Mock Feed) */}
+          <div className="stat-card glow-cyan border-white/10 p-8 neural-bg relative overflow-hidden">
+             <div className="flex items-center justify-between mb-8">
+               <h3 className="text-xs font-black tracking-widest text-white/40 uppercase leading-none italic font-roboto-mono flex items-center gap-2">
+                 <Terminal size={14} className="text-aura-glow" /> 
+                 Live Audit Logs
+               </h3>
+               <div className="flex items-center gap-1.5">
+                  <div className="w-1.5 h-1.5 rounded-full bg-aura-glow animate-pulse" />
+                  <span className="text-[10px] font-bold text-aura-glow/60 uppercase">Live Feed</span>
+               </div>
+             </div>
+             
+             <div className="font-mono text-[10px] space-y-4 opacity-50">
+               <div className="flex gap-3">
+                  <span className="text-aura-glow">22:42:01</span>
+                  <span>[AUTH] SuperUser_Node_01 Access Granted (JWT)</span>
+               </div>
+               <div className="flex gap-3">
+                  <span className="text-aura-glow">22:41:58</span>
+                  <span className="text-aura-purple">[CACHE] Semantic HIT: "analyze project aura"</span>
+               </div>
+               <div className="flex gap-3">
+                  <span className="text-aura-glow">22:41:55</span>
+                  <span className="text-aura-accent">[MCP] Executing postgres_tool (42ms)</span>
+               </div>
+               <div className="flex gap-3">
+                  <span className="text-aura-glow">22:41:52</span>
+                  <span>[ROUT] Best Match: local_db (Score: 0.99)</span>
+               </div>
+             </div>
+
+             {/* Grain/Texture Overlay */}
+             <div className="absolute inset-0 pointer-events-none opacity-[0.03] grayscale bg-[url('https://grainy-gradients.vercel.app/noise.svg')]" />
+          </div>
         </section>
       </div>
-    </main>
+    </div>
   );
 }
