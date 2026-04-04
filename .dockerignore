@@ -6,3 +6,15 @@ website/node_modules
 .git
 .env
 data/
+
+# Ignore heavy ML model caches
+**/.fastembed_cache
+**/.cache
+
+# Ignore local target and package lockups
+**/target
+**/node_modules
+**/.next
+
+# Ignore data folders
+data/qdrant

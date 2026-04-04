@@ -1,3 +1,4 @@
+// proto/router.proto
 syntax = "proto3";
 
 package router;
@@ -25,4 +26,9 @@ message Tool {
 message ToolResponse {
   repeated Tool tools = 1;
   int32 total_tokens_saved = 2; 
+  string compressed_prompt = 3;
+  string similar_prompt_hash = 4; // Hash of a previously seen similar prompt (if any)
+  string current_prompt_hash = 5; // Canonical hash of the incoming prompt
 }
+
+

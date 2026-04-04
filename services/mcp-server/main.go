@@ -68,28 +68,32 @@ func main() {
 	})
 
 	// --- TOOL: EXECUTE TOOL ---
-	server.RegisterTool("execute_aura_tool", "Runs a specific Aura tool (db_query, get_user, read_database)", func(ctx context.Context, args ToolArgs) (string, error) {
-		// Validation: If ToolID is missing, return a clean error instead of a zero-value crash
-		if args.ToolID == "" {
-			return "", fmt.Errorf("missing required parameter: tool_id")
-		}
+    server.RegisterTool("execute_aura_tool", "Runs a specific Aura tool", func(ctx context.Context, args map[string]any) (string, error) {
+        // 1. Manually extract arguments from the map safely
+        toolID, _ := args["tool_id"].(string)
+        userID, _ := args["user_id"].(string)
 
-		logger.Printf("Executing Tool: %s (User: %s)", args.ToolID, args.UserID)
+        // Validation: If ToolID is missing, return a clean error
+        if toolID == "" {
+            return "", fmt.Errorf("missing required parameter: tool_id")
+        }
 
-		switch args.ToolID {
-		case "db_query":
-			return "SQL query executed successfully via Aura Gateway.", nil
-		case "get_user":
-			if args.UserID == "" {
-				return "", fmt.Errorf("user_id is required for get_user tool")
-			}
-			return fmt.Sprintf("User data for ID %s fetched from Postgres.", args.UserID), nil
-		case "read_database":
-			return "Mock Database Trace: Successfully indexed 1,241 cluster metrics via Aura Core.", nil
-		default:
-			return "", fmt.Errorf("unknown tool_id: %s. Use get_aura_tools to see valid options", args.ToolID)
-		}
-	})
+        logger.Printf("Executing Tool: %s (User: %s)", toolID, userID)
+
+        switch toolID {
+        case "db_query":
+            return "SQL query executed successfully via Aura Gateway.", nil
+        case "get_user":
+            if userID == "" {
+                return "", fmt.Errorf("user_id is required for get_user tool")
+            }
+            return fmt.Sprintf("User data for ID %s fetched from Postgres.", userID), nil
+        case "read_database":
+            return "Mock Database Trace: Successfully indexed 1,241 cluster metrics via Aura Core.", nil
+        default:
+            return "", fmt.Errorf("unknown tool_id: %s. Use get_aura_tools to see valid options", toolID)
+        }
+    })
 
 	// 4. Graceful Shutdown Handling
 	// This prevents the "Key: 0" error by closing connections before the process dies.

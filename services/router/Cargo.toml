@@ -1,19 +1,32 @@
+# services/router/Cargo.toml
 [package]
 name = "aura-router"
 version = "0.1.0"
-edition = "2021" # Change 2024 back to 2021
+edition = "2021" 
 
 [dependencies]
 # Async runtime
 tokio = { version = "1.0", features = ["full"] }
+
 # gRPC framework
 tonic = "0.11"
 prost = "0.12"
+
 # Vector DB Client
 qdrant-client = "1.10"
+
+# Local Semantic Embeddings
+fastembed = "4.0" # Keeps it perfectly stable with tonic 0.11
+
 # Utilities
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+compression_prompt = "0.1.2"
+stop-words = "0.8.0"
+sha2 = "0.10"
+uuid = { version = "1.0", features = ["v4"] }
+
+
 
 [build-dependencies]
 tonic-build = "0.11"

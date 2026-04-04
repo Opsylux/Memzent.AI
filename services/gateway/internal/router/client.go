@@ -1,3 +1,4 @@
+// service/gateway/internal/router/client.go
 package router
 
 import (
@@ -18,23 +19,22 @@ type RouterClient struct {
 func NewRouterClient(ctx context.Context, addr string) (*RouterClient, error) {
 	// retryPolicy defines the gRPC retry strategy for enterprise resilience
 	retryPolicy := `{
-		"methodConfig": [{
-			"name": [{"service": "router.SemanticRouter"}],
-			"retryPolicy": {
-				"maxAttempts": 3,
-				"initialBackoff": "0.1s",
-				"maxBackoff": "1s",
-				"backoffMultiplier": 2,
-				"retryableStatusCodes": ["UNAVAILABLE"]
-			}
-		}]
-	}`
+        "methodConfig": [{
+            "name": [{"service": "router.SemanticRouter"}],
+            "retryPolicy": {
+                "maxAttempts": 3,
+                "initialBackoff": "0.1s",
+                "maxBackoff": "1s",
+                "backoffMultiplier": 2,
+                "retryableStatusCodes": ["UNAVAILABLE"]
+            }
+        }]
+    }`
 
-	// Connect to the Rust service over the internal Docker network
-	conn, err := grpc.DialContext(ctx, addr,
+	// ✅ UPGRADED: Using the non-blocking grpc.NewClient
+	conn, err := grpc.NewClient(addr,
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 		grpc.WithDefaultServiceConfig(retryPolicy),
-		grpc.WithBlock(),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("could not connect to router at %s: %w", addr, err)
@@ -47,7 +47,7 @@ func NewRouterClient(ctx context.Context, addr string) (*RouterClient, error) {
 }
 
 // GetBestTools calls the Rust Router to find relevant tools for a prompt
-func (rc *RouterClient) GetBestTools(ctx context.Context, prompt string, userID string, allowedToolIDs []string) ([]*Tool, error) {
+func (rc *RouterClient) GetBestTools(ctx context.Context, prompt string, userID string, allowedToolIDs []string) ([]*Tool, string, string, string, error) {
 	req := &ToolRequest{
 		Prompt:         prompt,
 		UserId:         userID,
@@ -57,11 +57,13 @@ func (rc *RouterClient) GetBestTools(ctx context.Context, prompt string, userID 
 	// Call the gRPC method defined in your .proto file
 	resp, err := rc.client.SelectTools(ctx, req)
 	if err != nil {
-		return nil, fmt.Errorf("gRPC SelectTools failed: %w", err)
+		return nil, "", "", "", fmt.Errorf("gRPC SelectTools failed: %w", err)
 	}
 
-	return resp.Tools, nil
+	return resp.Tools, resp.CompressedPrompt, resp.SimilarPromptHash, resp.CurrentPromptHash, nil
 }
+
+
 
 // Close cleans up the gRPC connection
 func (rc *RouterClient) Close() {

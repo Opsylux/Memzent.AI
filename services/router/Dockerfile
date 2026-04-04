@@ -6,6 +6,7 @@ RUN apt-get update && apt-get install -y \
     libprotobuf-dev \
     pkg-config \
     libssl-dev \
+    g++ \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app

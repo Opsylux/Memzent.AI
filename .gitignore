@@ -34,4 +34,14 @@ go.work.sum
 #qdrant data
 data/qdrant
 
+# react, bun ignore
 target/
+node_modules
+dist
+
+# rust ignore
+
+debug
+.cache
+
+.fastembed_cache

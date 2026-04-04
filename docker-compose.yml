@@ -1,4 +1,5 @@
 services:
+  # Valkey Caching Layer
   valkey:
     image: valkey/valkey:8.0-alpine
     container_name: valkey
@@ -6,6 +7,7 @@ services:
       - "6379:6379"
     command: [ "valkey-server", "--io-threads", "4" ]
 
+  # Aura MCP Server (Go)
   mcp-server:
     build:
       context: .
@@ -21,7 +23,7 @@ services:
       - ./services/mcp-server:/app
     working_dir: /app
 
-  # 1. Intelligence Layer (Vector Store)
+  # Intelligence Layer (Vector Store)
   qdrant:
     image: qdrant/qdrant:latest
     container_name: aura-qdrant
@@ -30,7 +32,7 @@ services:
     volumes:
       - ./data/qdrant:/qdrant/storage
 
-  # 3. Governance Layer
+  # Governance Layer (Structured Data)
   postgres:
     image: postgres:16-alpine
     container_name: aura-postgres
@@ -41,31 +43,28 @@ services:
     ports:
       - "5432:5432"
 
-  # 4. Aura Semantic Router (Rust) - Auto-Init
+  # Aura Semantic Router (Rust)
   router:
     build:
       context: .
       dockerfile: ./services/router/Dockerfile
     container_name: aura-router
     volumes:
+      # Keep these to share source files
       - ./services/router:/app
       - ./proto:/proto
-      - cargo_cache:/usr/local/cargo/registry
+      # Cache for ML models mapped to avoid redownloading
+      - ./.cache/huggingface:/root/.cache
+      # Keeps heavy compilation artifacts strictly inside the fast Linux container
+      - /app/target
     environment:
       QDRANT_URL: "http://qdrant:6334"
     working_dir: /app
-    command: >
-      sh -c "if [ ! -f Cargo.toml ]; then 
-               cargo init --bin . &&
-               cargo add tonic@0.11 prost@0.12 qdrant-client@1.10 tokio@1.0 --features tokio/full &&
-               cargo add serde@1.0 --features serde/derive &&
-               cargo add serde_json;
-             fi && 
-             cargo run"
+    command: cargo run
     depends_on:
       - qdrant
 
-  # 5. Aura Gateway (Go) - Auto-Init
+  # Aura Gateway (Go) - Optimized
   gateway:
     build:
       context: .
@@ -78,23 +77,22 @@ services:
       - ./proto:/proto
       - go_modules:/go/pkg/mod
     environment:
-      # - OPENAI_API_KEY=your_key_here
       - OPENAI_MODEL=gpt-4o-mini
       - JWT_SECRET=aura-enterprise-secret-2026
       - OLLAMA_ENABLED=true
       - OLLAMA_URL=http://ollama:11434
       - OLLAMA_MODEL=llama3.2
-    # BOOTSTRAP LOGIC:
+    # OPTIMIZED: Checks for mod file, compiles to binary, and fires up instantly!
     command: >
-      sh -c "if [ ! -f go.mod ]; then 
-               go mod init aura-gateway && 
-               go get github.com/valkey-io/valkey-go &&
-               go get google.golang.org/grpc &&
-               go get google.golang.org/protobuf;
-             fi && 
-             protoc -I/proto --go_out=internal/router --go_opt=paths=source_relative --go_opt=Mrouter.proto=github.com/nampally/aura/services/gateway/internal/router --go-grpc_out=internal/router --go-grpc_opt=paths=source_relative --go-grpc_opt=Mrouter.proto=github.com/nampally/aura/services/gateway/internal/router /proto/router.proto &&
-             go mod tidy &&
-             go run main.go"
+      sh -c "if [ ! -f go.mod ]; then go mod init aura-gateway; fi &&
+             protoc -I/proto --go_out=internal/router --go_opt=paths=source_relative --go-grpc_out=internal/router --go-grpc_opt=paths=source_relative /proto/router.proto &&
+             go build -o aura-gateway-bin main.go &&
+             ./aura-gateway-bin"
+    depends_on:
+      - router
+      - mcp-server
+
+  # UI Dashboard (Bun/Next.js)
   dashboard:
     image: oven/bun:alpine
     container_name: aura-dashboard
@@ -118,6 +116,7 @@ services:
              fi && 
              bun dev"
 
+  # Marketing Website (Node/Vite)
   website:
     build:
       context: ./website
@@ -133,7 +132,7 @@ services:
     command: >
       sh -c "npm install && npm run dev"
 
-  # 6. Open-Source Local Meta LLM Engine
+  # Open-Source Local Meta LLM Engine
   ollama:
     image: ollama/ollama:latest
     container_name: aura-ollama
@@ -141,9 +140,14 @@ services:
       - "11434:11434"
     volumes:
       - ollama_data:/root/.ollama
-    #docker exec aura-ollama ollama pull llama3.2
+    # Overriding the default entrypoint lets us use shell scripting
+    entrypoint: ["/usr/bin/sh", "-c"]
+    command: >
+      "ollama serve & 
+       sleep 5 && 
+       ollama pull llama3.2 && 
+       wait"
 
-      
 volumes:
   go_modules:
   cargo_cache:
