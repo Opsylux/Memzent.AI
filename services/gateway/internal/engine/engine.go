@@ -143,9 +143,14 @@ func (e *AuraEngine) Process(ctx context.Context, req *PromptRequest) (*PromptRe
 				// Use a sub-context for the tool call to prevent hanging
 				toolCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
 
-				args := map[string]any{
-"tool_id": t.Id,
-					"user_id": req.UserID,
+				type ToolArgs struct {
+					ToolID string `json:"tool_id"`
+					UserID string `json:"user_id,omitempty"`
+				}
+
+				args := ToolArgs{
+					ToolID:  t.Id,
+					UserID: req.UserID,
 				}
 
 				resp, err := e.mcp.CallTool(toolCtx, "execute_aura_tool", args)
