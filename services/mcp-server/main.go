@@ -68,17 +68,16 @@ func main() {
 	})
 
 	// --- TOOL: EXECUTE TOOL ---
-    server.RegisterTool("execute_aura_tool", "Runs a specific Aura tool", func(ctx context.Context, args map[string]any) (string, error) {
-        // 1. Manually extract arguments from the map safely
-        toolID, _ := args["tool_id"].(string)
-        userID, _ := args["user_id"].(string)
+	server.RegisterTool("execute_aura_tool", "Runs a specific Aura tool", func(ctx context.Context, args ToolArgs) (string, error) {
+		toolID := args.ToolID
+		userID := args.UserID
 
-        // Validation: If ToolID is missing, return a clean error
-        if toolID == "" {
-            return "", fmt.Errorf("missing required parameter: tool_id")
-        }
+		// Validation: If ToolID is missing, return a clean error
+		if toolID == "" {
+			return "", fmt.Errorf("missing required parameter: tool_id")
+		}
 
-        logger.Printf("Executing Tool: %s (User: %s)", toolID, userID)
+		logger.Printf("Executing Tool: %s (User: %s)", toolID, userID)
 
         switch toolID {
         case "db_query":
