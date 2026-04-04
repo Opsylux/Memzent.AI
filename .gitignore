@@ -45,3 +45,4 @@ debug
 .cache
 
 .fastembed_cache
+*.log

@@ -10,9 +10,10 @@ import (
 
 	"aura-gateway/internal/auth"
 	cch "aura-gateway/internal/cache"
-	lp  "aura-gateway/internal/llm"
-	mc  "aura-gateway/internal/mcp"
+	lp "aura-gateway/internal/llm"
+	mc "aura-gateway/internal/mcp"
 	rtr "aura-gateway/internal/router"
+
 	"golang.org/x/time/rate"
 )
 
@@ -40,7 +41,7 @@ type AuraEngine struct {
 	toolThreshold float64
 	cacheTTL      time.Duration
 	rateLimiters  sync.Map
-	
+
 	TotalRequests atomic.Uint64
 	CacheHits     atomic.Uint64
 }
@@ -67,15 +68,28 @@ func (e *AuraEngine) Process(ctx context.Context, req *PromptRequest) (*PromptRe
 		return nil, fmt.Errorf("rate limit exceeded: please wait a moment")
 	}
 
-	// B. Semantic Cache Check
+	// B. Stage 1: Exact Match (Hash)
 	if e.cache != nil {
 		cachedResp, err := e.cache.GetSemanticResult(ctx, req.Prompt)
 		if err == nil && cachedResp != "" {
 			e.CacheHits.Add(1)
-			slog.Info("Cache HIT", "prompt", req.Prompt)
+			slog.Info("🎯 Stage 1 Cache HIT (Literal)", "prompt", req.Prompt)
 			return &PromptResponse{Text: cachedResp, Cached: true}, nil
 		}
+
+		// Stage 1.5: Canonical Match (Normalized)
+		// Mask IDs, lowercase, and stabilize to catch write011 vs write111
+		canonical, cHash := NormalizePrompt(req.Prompt)
+		cachedCanon, err := e.cache.GetSemanticResult(ctx, cHash)
+		if err == nil && cachedCanon != "" {
+			e.CacheHits.Add(1)
+			slog.Info("🎯 Stage 1.5 Cache HIT (Canonical)", "original", req.Prompt, "canonical", canonical)
+			// Map the original literal string to this hit for faster Stage 1 next time
+			_ = e.cache.SetResult(ctx, req.Prompt, cachedCanon, e.cacheTTL)
+			return &PromptResponse{Text: cachedCanon, Cached: true}, nil
+		}
 	}
+
 
 	// C. RBAC Check
 	var allowedTools []string
@@ -91,24 +105,28 @@ func (e *AuraEngine) Process(ctx context.Context, req *PromptRequest) (*PromptRe
 		allowedTools, _ = e.rbac.GetAllowedTools(req.UserID)
 	}
 
-	// D. Semantic Routing (includes Semantic Cache Lookup & Prompt Compression)
+	// D. Semantic Routing (includes Vector Search & Prompt Compression via Rust)
 	tools, compressedPrompt, similarPromptHash, currentPromptHash, err := e.router.GetBestTools(ctx, req.Prompt, req.UserID, allowedTools)
 	if err != nil {
 		slog.Warn("Router fallback engaged", "error", err)
 	}
 
-
-	// NEW: Stage 2 Cache Check (Semantic Match)
-	// If the Rust router found a highly similar prompt, we check Valkey using its hash.
+	// NEW: Stage 2 Cache Check (Fuzzy Vector Semantic Match)
+	// If the Rust router found a highly similar prompt hash, we check Valkey using it.
 	if similarPromptHash != "" && e.cache != nil {
 		cachedResp, err := e.cache.GetSemanticResult(ctx, similarPromptHash)
 		if err == nil && cachedResp != "" {
-			e.CacheHits.Add(1)
-			slog.Info("Semantic Cache HIT", "original", req.Prompt, "similar_hash", similarPromptHash)
+			slog.Info("🎯 Stage 2 Cache HIT (Vector)", "original", req.Prompt, "similar_hash", similarPromptHash)
+
+			// Repopulate Literal (Stage 1) and Canonical (Stage 1.5) for next time
+			_ = e.cache.SetResult(ctx, req.Prompt, cachedResp, e.cacheTTL)
+			_, cHash := NormalizePrompt(req.Prompt)
+			_ = e.cache.SetResult(ctx, cHash, cachedResp, e.cacheTTL)
+
 			return &PromptResponse{Text: cachedResp, Cached: true}, nil
+
 		}
 	}
-
 
 	// E. Tool Execution (MCP)
 	var toolResults []string
@@ -119,14 +137,14 @@ func (e *AuraEngine) Process(ctx context.Context, req *PromptRequest) (*PromptRe
 
 				// Use a sub-context for the tool call to prevent hanging
 				toolCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
-				
+
 				args := map[string]string{
 					"tool_id": t.Id,
 					"user_id": req.UserID,
 				}
 
 				resp, err := e.mcp.CallTool(toolCtx, "execute_aura_tool", args)
-				cancel() // Release context
+				cancel() // Release context immediately
 
 				if err != nil {
 					slog.Error("MCP tool execution error", "tool_id", t.Id, "error", err)
@@ -156,7 +174,7 @@ func (e *AuraEngine) Process(ctx context.Context, req *PromptRequest) (*PromptRe
 		contextPrompt = fmt.Sprintf("User Prompt: %s\n\nExecuted Tool Data:\n%v", contextPrompt, toolResults)
 	}
 
-
+	// Mapping *router.Tool to any slice for the prompt response payload
 	var llmTools []any
 	for _, t := range tools {
 		llmTools = append(llmTools, t)
@@ -170,12 +188,17 @@ func (e *AuraEngine) Process(ctx context.Context, req *PromptRequest) (*PromptRe
 
 	// G. Populate Cache for future requests
 	if e.cache != nil {
-		// Use the canonical hash if available, otherwise fallback to the prompt string
-		cacheKey := currentPromptHash
-		if cacheKey == "" {
-			cacheKey = req.Prompt
+		// Layer 1: Literal Match
+		_ = e.cache.SetResult(ctx, req.Prompt, aiResp, e.cacheTTL)
+
+		// Layer 2: Canonical Match (Masking IDs/Numbers)
+		_, cHash := NormalizePrompt(req.Prompt)
+		_ = e.cache.SetResult(ctx, cHash, aiResp, e.cacheTTL)
+
+		// Layer 3: Semantic Match (Representative Hash from Router)
+		if currentPromptHash != "" && currentPromptHash != cHash {
+			_ = e.cache.SetResult(ctx, currentPromptHash, aiResp, e.cacheTTL)
 		}
-		_ = e.cache.SetResult(ctx, cacheKey, aiResp, e.cacheTTL)
 	}
 
 

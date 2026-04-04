@@ -47,6 +47,7 @@ func NewRouterClient(ctx context.Context, addr string) (*RouterClient, error) {
 }
 
 // GetBestTools calls the Rust Router to find relevant tools for a prompt
+// ✅ PRESERVED: Returning tools, compressed prompt, similar hash, and current hash!
 func (rc *RouterClient) GetBestTools(ctx context.Context, prompt string, userID string, allowedToolIDs []string) ([]*Tool, string, string, string, error) {
 	req := &ToolRequest{
 		Prompt:         prompt,
@@ -62,8 +63,6 @@ func (rc *RouterClient) GetBestTools(ctx context.Context, prompt string, userID 
 
 	return resp.Tools, resp.CompressedPrompt, resp.SimilarPromptHash, resp.CurrentPromptHash, nil
 }
-
-
 
 // Close cleans up the gRPC connection
 func (rc *RouterClient) Close() {
