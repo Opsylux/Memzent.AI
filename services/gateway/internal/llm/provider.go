@@ -8,7 +8,7 @@ type Message struct {
 }
 
 type Provider interface {
-	// The Engine calls this. It handles turning tools into a system prompt internally.
-	Generate(ctx context.Context, prompt string, tools []any) (string, error)
+	// Generate produces an LLM response. Model may be empty to use the provider default.
+	Generate(ctx context.Context, prompt string, tools []any, model string) (string, error)
 	GetProviderName() string
 }

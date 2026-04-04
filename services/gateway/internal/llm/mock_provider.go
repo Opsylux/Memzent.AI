@@ -11,7 +11,7 @@ func NewMockProvider() Provider { return &MockProvider{} }
 
 func (m *MockProvider) GetProviderName() string { return "Mock-Aura" }
 
-func (m *MockProvider) Generate(ctx context.Context, prompt string, tools []any) (string, error) {
+func (m *MockProvider) Generate(ctx context.Context, prompt string, tools []any, model string) (string, error) {
 	response := fmt.Sprintf("Aura Local Engine (Zero-Cost Execution)\n")
 	response += fmt.Sprintf("====================================================\n")
 	response += fmt.Sprintf("Intent Analyzed: '%s'\n", prompt)

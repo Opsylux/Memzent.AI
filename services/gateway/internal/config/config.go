@@ -15,6 +15,8 @@ type Config struct {
 	AnthropicAPIKey        string
 	OpenAIAPIKey           string
 	OpenAIModel            string
+	GeminiAPIKey           string
+	GeminiModel            string
 	OllamaEnabled          bool
 	OllamaURL              string
 	OllamaModel            string
@@ -34,7 +36,9 @@ func LoadConfig() *Config {
 		AnthropicAPIKey:        getEnv("ANTHROPIC_API_KEY", ""),
 		OpenAIAPIKey:           getEnv("OPENAI_API_KEY", ""),
 		OpenAIModel:            getEnv("OPENAI_MODEL", "gpt-4o-mini"),
-		OllamaEnabled:          getEnv("OLLAMA_ENABLED", "false") == "true",
+		GeminiAPIKey:           getEnv("GEMINI_API_KEY", ""),
+		GeminiModel:            getEnv("GEMINI_MODEL", "gemini-2.0-flash"),
+		OllamaEnabled:          getEnv("OLLAMA_ENABLED", "true") == "true",
 		OllamaURL:              getEnv("OLLAMA_URL", "http://host.docker.internal:11434"),
 		OllamaModel:            getEnv("OLLAMA_MODEL", "llama3.2"),
 		JWTSecret:              getEnv("JWT_SECRET", "aura-enterprise-secret-2026"),

@@ -49,7 +49,7 @@ func commonMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Aura-Provider, X-Aura-Model, X-Skip-Cache")
 
 		if r.Method == "OPTIONS" {
 			w.WriteHeader(http.StatusOK)
@@ -119,24 +119,29 @@ func main() {
 		}
 	}
 
-	// 7. Initialize LLM Provider
-	var llmProvider llm.Provider
-	if cfg.OllamaEnabled {
-		llmProvider = llm.NewOllamaProvider(cfg.OllamaURL, cfg.OllamaModel)
-		slog.Info("Using Local Open-Source LLM via Ollama", "model", cfg.OllamaModel)
-	} else if cfg.OpenAIAPIKey != "" {
-		llmProvider = llm.NewOpenAIProvider(cfg.OpenAIAPIKey, cfg.OpenAIModel)
-		slog.Info("Using OpenAI LLM Provider", "model", cfg.OpenAIModel)
-	} else if cfg.AnthropicAPIKey != "" {
-		llmProvider = llm.NewAnthropicProvider(cfg.AnthropicAPIKey, "")
-		slog.Info("Using Anthropic LLM Provider")
-	} else {
-		llmProvider = llm.NewMockProvider()
-		slog.Warn("Using Mock LLM Provider (No API Key)")
+	// 7. Initialize LLM Provider Registry
+	// All enabled providers are registered. Ollama is always present as the default.
+	providers := make(map[string]llm.Provider)
+	defaultProvider := "ollama"
+
+	providers["ollama"] = llm.NewOllamaProvider(cfg.OllamaURL, cfg.OllamaModel)
+	slog.Info("Provider registered: Ollama", "model", cfg.OllamaModel)
+
+	if cfg.OpenAIAPIKey != "" {
+		providers["openai"] = llm.NewOpenAIProvider(cfg.OpenAIAPIKey, cfg.OpenAIModel)
+		slog.Info("Provider registered: OpenAI", "model", cfg.OpenAIModel)
+	}
+	if cfg.AnthropicAPIKey != "" {
+		providers["anthropic"] = llm.NewAnthropicProvider(cfg.AnthropicAPIKey, "")
+		slog.Info("Provider registered: Anthropic")
+	}
+	if cfg.GeminiAPIKey != "" {
+		providers["gemini"] = llm.NewGeminiProvider(cfg.GeminiAPIKey, "")
+		slog.Info("Provider registered: Gemini")
 	}
 
 	// 8. Initialize Engine
-	auraEngine := engine.NewAuraEngine(vCache, rClient, rbacClient, llmProvider, mcpClient, cfg.ToolRelevanceThreshold, cfg.LLMCacheTTL)
+	auraEngine := engine.NewAuraEngine(vCache, rClient, rbacClient, providers, defaultProvider, mcpClient, cfg.ToolRelevanceThreshold, cfg.LLMCacheTTL)
 
 	mux := http.NewServeMux()
 
@@ -182,9 +187,19 @@ func main() {
 			http.Error(w, "Missing 'prompt' field", http.StatusBadRequest)
 			return
 		}
-
 		if req.UserID == "" {
 			req.UserID = "anonymous"
+		}
+
+		// Headers override body for cache/provider/model control
+		if p := r.Header.Get("X-Aura-Provider"); p != "" && req.Provider == "" {
+			req.Provider = p
+		}
+		if m := r.Header.Get("X-Aura-Model"); m != "" && req.Model == "" {
+			req.Model = m
+		}
+		if r.Header.Get("X-Skip-Cache") == "true" || r.Header.Get("X-Skip-Cache") == "1" {
+			req.SkipCache = true
 		}
 
 		resp, err := auraEngine.Process(r.Context(), &req)
@@ -200,6 +215,7 @@ func main() {
 		} else {
 			w.Header().Set("X-Cache", "MISS")
 		}
+		w.Header().Set("X-Aura-Provider", resp.Provider)
 		json.NewEncoder(w).Encode(resp)
 	})
 

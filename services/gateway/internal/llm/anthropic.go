@@ -22,8 +22,14 @@ func NewAnthropicProvider(apiKey, model string) Provider {
 
 func (a *AnthropicProvider) GetProviderName() string { return "Anthropic" }
 
-func (a *AnthropicProvider) Generate(ctx context.Context, prompt string, tools []any) (string, error) {
+func (a *AnthropicProvider) Generate(ctx context.Context, prompt string, tools []any, model string) (string, error) {
 	url := "https://api.anthropic.com/v1/messages"
+
+	// Resolve model: per-request override takes priority over configured default
+	activeModel := a.Model
+	if model != "" {
+		activeModel = model
+	}
 
 	// 1. Build System Message with Tool Context
 	system := "You are Aura, an AI Gateway. "
@@ -33,7 +39,7 @@ func (a *AnthropicProvider) Generate(ctx context.Context, prompt string, tools [
 
 	// 2. Prepare Request
 	reqBody := map[string]interface{}{
-		"model":      a.Model,
+		"model":      activeModel,
 		"system":     system,
 		"max_tokens": 1024,
 		"messages": []Message{

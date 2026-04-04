@@ -19,14 +19,18 @@ import (
 
 // PromptRequest defines the incoming user payload
 type PromptRequest struct {
-	UserID string `json:"user_id"`
-	Prompt string `json:"prompt"`
+	UserID    string `json:"user_id"`
+	Prompt    string `json:"prompt"`
+	Provider  string `json:"provider,omitempty"`  // e.g. "ollama", "openai", "anthropic", "gemini"
+	Model     string `json:"model,omitempty"`     // optional per-request model override
+	SkipCache bool   `json:"skip_cache,omitempty"` // set by X-Skip-Cache header
 }
 
 // PromptResponse defines the gateway's response to the client
 type PromptResponse struct {
 	Text      string `json:"text"`
 	Cached    bool   `json:"cached"`
+	Provider  string `json:"provider,omitempty"`
 	Tools     []any  `json:"tools,omitempty"`
 	RequestID string `json:"request_id,omitempty"`
 }
@@ -36,7 +40,8 @@ type AuraEngine struct {
 	cache         *cch.AuraCache
 	router        *rtr.RouterClient
 	rbac          *auth.RBACClient
-	llm           lp.Provider
+	providers     map[string]lp.Provider // keyed by provider name e.g. "ollama"
+	defaultProvider string               // key used when no X-Aura-Provider header is set
 	mcp           *mc.MCPClient
 	toolThreshold float64
 	cacheTTL      time.Duration
@@ -46,16 +51,18 @@ type AuraEngine struct {
 	CacheHits     atomic.Uint64
 }
 
-// NewAuraEngine initializes the engine with its required dependencies
-func NewAuraEngine(c *cch.AuraCache, r *rtr.RouterClient, auth *auth.RBACClient, p lp.Provider, m *mc.MCPClient, threshold float64, ttl time.Duration) *AuraEngine {
+// NewAuraEngine initializes the engine with its required dependencies.
+// providers is a map of name->Provider; defaultProvider is the key used when no provider is specified.
+func NewAuraEngine(c *cch.AuraCache, r *rtr.RouterClient, auth *auth.RBACClient, providers map[string]lp.Provider, defaultProvider string, m *mc.MCPClient, threshold float64, ttl time.Duration) *AuraEngine {
 	return &AuraEngine{
-		cache:         c,
-		router:        r,
-		rbac:          auth,
-		llm:           p,
-		mcp:           m,
-		toolThreshold: threshold,
-		cacheTTL:      ttl,
+		cache:           c,
+		router:          r,
+		rbac:            auth,
+		providers:       providers,
+		defaultProvider: defaultProvider,
+		mcp:             m,
+		toolThreshold:   threshold,
+		cacheTTL:        ttl,
 	}
 }
 
@@ -68,8 +75,8 @@ func (e *AuraEngine) Process(ctx context.Context, req *PromptRequest) (*PromptRe
 		return nil, fmt.Errorf("rate limit exceeded: please wait a moment")
 	}
 
-	// B. Stage 1: Exact Match (Hash)
-	if e.cache != nil {
+	// B. Stage 1-2 Cache Lookup — skipped if client requests a fresh response
+	if e.cache != nil && !req.SkipCache {
 		cachedResp, err := e.cache.GetSemanticResult(ctx, req.Prompt)
 		if err == nil && cachedResp != "" {
 			e.CacheHits.Add(1)
@@ -111,9 +118,8 @@ func (e *AuraEngine) Process(ctx context.Context, req *PromptRequest) (*PromptRe
 		slog.Warn("Router fallback engaged", "error", err)
 	}
 
-	// NEW: Stage 2 Cache Check (Fuzzy Vector Semantic Match)
-	// If the Rust router found a highly similar prompt hash, we check Valkey using it.
-	if similarPromptHash != "" && e.cache != nil {
+	// NEW: Stage 2 Cache Check (Fuzzy Vector Semantic Match) — also skipped on SkipCache
+	if similarPromptHash != "" && e.cache != nil && !req.SkipCache {
 		cachedResp, err := e.cache.GetSemanticResult(ctx, similarPromptHash)
 		if err == nil && cachedResp != "" {
 			slog.Info("🎯 Stage 2 Cache HIT (Vector)", "original", req.Prompt, "similar_hash", similarPromptHash)
@@ -124,7 +130,6 @@ func (e *AuraEngine) Process(ctx context.Context, req *PromptRequest) (*PromptRe
 			_ = e.cache.SetResult(ctx, cHash, cachedResp, e.cacheTTL)
 
 			return &PromptResponse{Text: cachedResp, Cached: true}, nil
-
 		}
 	}
 
@@ -138,8 +143,8 @@ func (e *AuraEngine) Process(ctx context.Context, req *PromptRequest) (*PromptRe
 				// Use a sub-context for the tool call to prevent hanging
 				toolCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
 
-				args := map[string]string{
-					"tool_id": t.Id,
+				args := map[string]any{
+"tool_id": t.Id,
 					"user_id": req.UserID,
 				}
 
@@ -163,13 +168,13 @@ func (e *AuraEngine) Process(ctx context.Context, req *PromptRequest) (*PromptRe
 		}
 	}
 
-	// F. LLM Synthesis
+
+	// F. Build LLM context from compressed prompt + tool results
 	// Use the compressed prompt from the Rust layer to save costs and latency.
 	contextPrompt := compressedPrompt
 	if contextPrompt == "" {
 		contextPrompt = req.Prompt // Fallback
 	}
-
 	if len(toolResults) > 0 {
 		contextPrompt = fmt.Sprintf("User Prompt: %s\n\nExecuted Tool Data:\n%v", contextPrompt, toolResults)
 	}
@@ -180,14 +185,28 @@ func (e *AuraEngine) Process(ctx context.Context, req *PromptRequest) (*PromptRe
 		llmTools = append(llmTools, t)
 	}
 
-	aiResp, err := e.llm.Generate(ctx, contextPrompt, llmTools)
+	// G. Provider Selection
+
+	providerKey := req.Provider
+	if providerKey == "" {
+		providerKey = e.defaultProvider
+	}
+	selectedProvider, ok := e.providers[providerKey]
+	if !ok {
+		slog.Warn("Unknown provider requested, falling back to default", "requested", providerKey, "default", e.defaultProvider)
+		selectedProvider = e.providers[e.defaultProvider]
+	}
+
+	slog.Info("🤖 LLM Provider selected", "provider", selectedProvider.GetProviderName(), "model_override", req.Model, "skip_cache", req.SkipCache)
+
+	aiResp, err := selectedProvider.Generate(ctx, contextPrompt, llmTools, req.Model)
 	if err != nil {
-		slog.Error("LLM generation failed", "error", err)
+		slog.Error("LLM generation failed", "error", err, "provider", selectedProvider.GetProviderName())
 		return nil, err
 	}
 
-	// G. Populate Cache for future requests
-	if e.cache != nil {
+	// G. Populate Cache for future requests (skipped if SkipCache was requested)
+	if e.cache != nil && !req.SkipCache {
 		// Layer 1: Literal Match
 		_ = e.cache.SetResult(ctx, req.Prompt, aiResp, e.cacheTTL)
 
@@ -201,10 +220,10 @@ func (e *AuraEngine) Process(ctx context.Context, req *PromptRequest) (*PromptRe
 		}
 	}
 
-
 	return &PromptResponse{
-		Text:   aiResp,
-		Cached: false,
-		Tools:  llmTools,
+		Text:     aiResp,
+		Cached:   false,
+		Provider: selectedProvider.GetProviderName(),
+		Tools:    llmTools,
 	}, nil
 }

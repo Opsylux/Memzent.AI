@@ -1,6 +1,6 @@
-# Project Aura: Enterprise AI Infrastructure
+# Project Aura: Enterprise AI Infrastructure Mesh
 
-**Aura** is a high-performance, semantic AI gateway designed to eliminate the "Token Tax" and security risks associated with unmanaged LLM deployments. By acting as a secure, intelligent middleware between agents and the **Model Context Protocol (MCP)**, Aura ensures every interaction is cost-optimized, audited, and resilient.
+**Aura** is a high-performance, triple-layer semantic AI gateway designed to eliminate the "Token Tax" and security risks of unmanaged LLM deployments. It acts as an **Intelligent Semantic Proxy** sitting between user clients, MCP tools, and external/local LLM endpoints — routing with intent, caching with precision, and governing with enterprise-grade RBAC.
 
 ---
 
@@ -10,27 +10,51 @@ Aura utilizes a distributed, multi-language architecture to balance high-speed s
 
 | Service | Language | Port | Role |
 | :--- | :--- | :--- | :--- |
-| **Gateway** | Go 1.25 | `8080` | Entry point, RBAC, JWT Auth, Semantic Caching |
-| **Router** | Rust | `50051` | gRPC service for vector-based tool selection |
-| **Dashboard**| Next.js | `3000` | Administrative control tower & observability |
-| **MCP Server**| Go | `50052` | Tool execution & context protocol adapter |
-| **Website** | Vite 8 | `5173` | Marketing landing page & user portal |
+| **Gateway** | Go 1.25 | `8080` | Entry point, RBAC, JWT Auth, Triple-Layer Semantic Cache, Provider Routing |
+| **Router** | Rust (Tonic) | `50051` | gRPC service for vector-based tool selection & prompt compression |
+| **Dashboard** | Next.js 15+ | `3000` | Administrative control tower & observability |
+| **MCP Server** | Go | `50052` | Tool execution & context protocol adapter |
+| **Website** | Vite / React 19 | `5173` | Marketing landing page & user portal |
+
+> See [ARCHITECTURE.md](./ARCHITECTURE.md) for the full sequence diagram and service topology.
 
 ---
 
 ## 🛡️ Enterprise Pillars
 
-### 1. Semantic Tool Routing (Rust + Qdrant)
-Aura analyzes user intent in real-time and injects only the most relevant tools into the LLM context. This **reduces token waste by up to 90%** and eliminates "Lost in the Middle" hallucinations.
+### 1. Triple-Layer Semantic Caching (Valkey + Qdrant)
+Aura uses a three-stage cache hierarchy before ever touching an LLM:
+- **L1 – Literal**: SHA-256 exact hash match. `<5ms`.
+- **L1.5 – Canonical**: Numeric noise (`write011`, `write202`) is masked to a stable form. Catches logically identical queries. `<5ms`.
+- **L2 – Semantic (Vector)**: Cosine similarity via Qdrant at ≥0.88 threshold. `~10-30ms`.
 
-### 2. Bulletproof Governance (Go + Postgres)
-Centralized **Role-Based Access Control (RBAC)** and hardware-backed JWT authentication ensure that AI agents only access the data they are authorized to see.
+Cache hits at any layer short-circuit to instant responses. On a semantic hit, all lower layers are back-filled for future precision hits.
 
-### 3. Deep Observability (Prometheus + OpenTelemetry)
-Monitor latency, success rates, and token flow across your entire agentic fleet. Every decision made by the semantic router is logged and traceable.
+### 2. Multi-Provider LLM Routing
+Target any supported LLM backend per request via HTTP headers — no restart required.
 
-### 4. ROI Engine (Valkey + Semantic Cache)
-Avoid redundant LLM calls. Aura caches repeat intents semantically, delivering **sub-15ms response times** for cached queries and zero-cost retrieval.
+```powershell
+# Use OpenAI with a specific model
+$headers = @{
+    "Authorization" = "Bearer <token>"
+    "X-Aura-Provider" = "openai"
+    "X-Aura-Model" = "gpt-4o"
+}
+
+# Bypass cache for a real-time fresh response
+$headers["X-Skip-Cache"] = "true"
+```
+
+**Supported providers**: `ollama` (default), `openai`, `anthropic`, `gemini`
+
+### 3. Bulletproof Governance (Go + Postgres)
+Centralized **Role-Based Access Control (RBAC)** and hardware-backed JWT authentication ensure AI agents only access the data they're authorized to see.
+
+### 4. Semantic Tool Routing (Rust + Qdrant)
+Aura analyzes user intent in real-time and injects only the most relevant MCP tools into the LLM context — **reducing token waste by up to 90%** and eliminating hallucinations.
+
+### 5. Deep Observability (Prometheus)
+Every request is tracked via Prometheus metrics at `/metrics`. Monitor latency, cache hit rates, and token flow across your agentic fleet.
 
 ---
 
@@ -38,46 +62,102 @@ Avoid redundant LLM calls. Aura caches repeat intents semantically, delivering *
 
 ### Prerequisites
 - **Docker & Docker Compose**
-- **Node 24+** (for local development)
-- **Go 1.25+** (for gateway development)
+- **Go 1.24+** (for gateway development)
+- **Rust** (for router development)
+- **Ollama** running locally at `http://localhost:11434` with `llama3.2` pulled
 
 ### One-Command Deployment
-The easiest way to start the entire Aura stack is via Docker Compose. This initializes all services including the vector store (Qdrant) and cache (Valkey).
 
 ```powershell
-docker-compose up -d --build
+docker compose up -d --build
 ```
 
 ### Service Access
-- **Aura Website**: [http://localhost:5173](http://localhost:5173)
-- **Admin Dashboard**: [http://localhost:3000](http://localhost:3000)
 - **Gateway API**: [http://localhost:8080/v1/chat](http://localhost:8080/v1/chat)
+- **Admin Dashboard**: [http://localhost:3000](http://localhost:3000)
+- **Aura Website**: [http://localhost:5173](http://localhost:5173)
 - **Qdrant UI**: [http://localhost:6333/dashboard](http://localhost:6333/dashboard)
+- **Metrics**: [http://localhost:8080/metrics](http://localhost:8080/metrics)
+
+---
+
+## 📡 API Reference
+
+### POST `/v1/chat`
+
+**Headers:**
+
+| Header | Description |
+| :--- | :--- |
+| `Authorization: Bearer <jwt>` | Required. JWT token |
+| `X-Aura-Provider` | Optional. `ollama` / `openai` / `anthropic` / `gemini` |
+| `X-Aura-Model` | Optional. Model override (e.g. `gpt-4o`, `llama3.2:1b`) |
+| `X-Skip-Cache` | Optional. `true` to bypass all 3 cache layers |
+
+**Request Body:**
+
+```json
+{
+  "user_id": "admin-01",
+  "prompt": "how to reduce wal_buffer_waits in Aurora Postgres?",
+  "provider": "openai",
+  "model": "gpt-4o",
+  "skip_cache": false
+}
+```
+
+**Response:**
+
+```json
+{
+  "text": "To reduce wal_buffer_waits...",
+  "cached": false,
+  "provider": "OpenAI"
+}
+```
+
+**Response Headers:**
+
+| Header | Value |
+| :--- | :--- |
+| `X-Cache` | `HIT` or `MISS` |
+| `X-Aura-Provider` | Active provider name |
 
 ---
 
 ## 📂 Project Structure
 
-```bash
+```
 AuraMCP/
 ├── services/
-│   ├── gateway/      # Go 1.25: Primary Proxy & Auth
-│   ├── router/       # Rust: Semantic Decision Engine
-│   ├── mcp-server/   # Go: Dynamic Tool Provider
-│   ├── dashboard/    # Next.js: Control Tower
-│   └── website/      # Vite 8: Brand & Marketing
-├── proto/            # Shared gRPC Definitions
-├── data/             # Persistent Storage (Postgres/Qdrant)
-└── docker-compose.yml # Orchestration Layer
+│   ├── gateway/        # Go 1.25: Primary Proxy, Auth, Cache, Provider Router
+│   │   └── internal/
+│   │       ├── engine/        # Orchestration engine (Triple-Layer Cache logic)
+│   │       ├── llm/           # Provider implementations (Ollama, OpenAI, Anthropic, Gemini)
+│   │       ├── router/        # gRPC client to Rust Router
+│   │       ├── cache/         # Valkey semantic cache
+│   │       ├── auth/          # JWT middleware + RBAC
+│   │       └── mcp/           # MCP client
+│   ├── router/         # Rust: Semantic Decision Engine (Qdrant + Tonic)
+│   ├── mcp-server/     # Go: MCP Tool Provider
+│   ├── dashboard/      # Next.js 15: Control Tower
+│   └── website/        # Vite 8: Brand & Marketing
+├── proto/              # Shared gRPC Definitions (router.proto)
+├── data/               # Persistent Storage (Postgres/Qdrant volumes)
+├── ARCHITECTURE.md     # Full system architecture & sequence diagrams
+└── docker-compose.yml  # Orchestration Layer
 ```
 
 ---
 
-## 🛠️ Development Workflow
+## 🔑 Generating a JWT Token
 
-1. **Gateway Logic**: Edit `services/gateway/internal/engine/engine.go` to modify the orchestration flow.
-2. **Branding**: Update `website/src/App.tsx` for marketing and UI improvements.
-3. **Routing**: Enhance the Rust service in `services/router/src/` for better intent matching.
+```powershell
+cd services/gateway
+go run scripts/make_token.go
+```
+
+JWT secret: `aura-enterprise-secret-2026` (configurable via `JWT_SECRET` env var).
 
 ---
 

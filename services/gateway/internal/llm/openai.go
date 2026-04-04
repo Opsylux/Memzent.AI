@@ -22,8 +22,14 @@ func NewOpenAIProvider(apiKey, model string) Provider {
 
 func (o *OpenAIProvider) GetProviderName() string { return "OpenAI" }
 
-func (o *OpenAIProvider) Generate(ctx context.Context, prompt string, tools []any) (string, error) {
+func (o *OpenAIProvider) Generate(ctx context.Context, prompt string, tools []any, model string) (string, error) {
 	url := "https://api.openai.com/v1/chat/completions"
+
+	// Resolve model: per-request override takes priority over configured default
+	activeModel := o.Model
+	if model != "" {
+		activeModel = model
+	}
 
 	// 1. Build System Message with Tool Context
 	system := "You are Aura, an enterprise-grade AI Gateway. "
@@ -33,7 +39,7 @@ func (o *OpenAIProvider) Generate(ctx context.Context, prompt string, tools []an
 
 	// 2. Prepare OpenAI Request Body
 	reqBody := map[string]interface{}{
-		"model": o.Model,
+		"model": activeModel,
 		"messages": []Message{
 			{Role: "system", Content: system},
 			{Role: "user", Content: prompt},

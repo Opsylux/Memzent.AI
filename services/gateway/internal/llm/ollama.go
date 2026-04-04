@@ -26,8 +26,14 @@ func NewOllamaProvider(baseURL, model string) Provider {
 
 func (o *OllamaProvider) GetProviderName() string { return "Ollama (" + o.Model + ")" }
 
-func (o *OllamaProvider) Generate(ctx context.Context, prompt string, tools []any) (string, error) {
+func (o *OllamaProvider) Generate(ctx context.Context, prompt string, tools []any, model string) (string, error) {
 	url := fmt.Sprintf("%s/api/chat", o.BaseURL)
+
+	// Resolve model: per-request override takes priority over configured default
+	activeModel := o.Model
+	if model != "" {
+		activeModel = model
+	}
 
 	// 1. Build System Context map for Tool Execution
 	system := "You are Aura, an enterprise-grade open-source AI Gateway. "
@@ -39,7 +45,7 @@ func (o *OllamaProvider) Generate(ctx context.Context, prompt string, tools []an
 
 	// 2. Prepare Ollama Request Body
 	reqBody := map[string]interface{}{
-		"model": o.Model,
+		"model": activeModel,
 		"messages": []map[string]string{
 			{"role": "system", "content": system},
 			{"role": "user", "content": prompt},
