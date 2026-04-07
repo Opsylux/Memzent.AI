@@ -31,10 +31,9 @@ func (a *AnthropicProvider) Generate(ctx context.Context, prompt string, tools [
 		activeModel = model
 	}
 
-	// 1. Build System Message with Tool Context
 	system := "You are Aura, an AI Gateway. "
 	if len(tools) > 0 {
-		system += fmt.Sprintf("Selected tools: %v. Use this context to answer.", tools)
+		system += "\nYour request has been supplemented with data from semantic tools. Use this context ONLY if it is directly relevant to the user's prompt. If the tool data is irrelevant, ignore it and answer the user's prompt normally."
 	}
 
 	// 2. Prepare Request

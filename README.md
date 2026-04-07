@@ -78,6 +78,7 @@ docker compose up -d --build
 - **Aura Website**: [http://localhost:5173](http://localhost:5173)
 - **Qdrant UI**: [http://localhost:6333/dashboard](http://localhost:6333/dashboard)
 - **Metrics**: [http://localhost:8080/metrics](http://localhost:8080/metrics)
+- **Dashboard Gateway URL**: set `NEXT_PUBLIC_GATEWAY_URL=http://localhost:8080` when running dashboard outside Docker
 
 ---
 

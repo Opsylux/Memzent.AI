@@ -35,10 +35,9 @@ func (o *OllamaProvider) Generate(ctx context.Context, prompt string, tools []an
 		activeModel = model
 	}
 
-	// 1. Build System Context map for Tool Execution
 	system := "You are Aura, an enterprise-grade open-source AI Gateway. "
 	if len(tools) > 0 {
-		system += fmt.Sprintf("\nThe user request triggered the executing of semantic tools. Here is the raw context retrieved: %v\n\nPlease output a concise, professional synthesis of this data.", tools)
+		system += "\nYour request has been supplemented with data from semantic tools. Use this context ONLY if it is directly relevant to the user's prompt. If the tool data is irrelevant (e.g. database metrics for a math question), ignore it and answer the user's prompt normally."
 	} else {
 		system += "\nProvide a helpful, concise response to the user's prompt."
 	}

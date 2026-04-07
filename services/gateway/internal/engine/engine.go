@@ -10,6 +10,7 @@ import (
 
 	"aura-gateway/internal/auth"
 	cch "aura-gateway/internal/cache"
+	"aura-gateway/internal/connectors"
 	lp "aura-gateway/internal/llm"
 	mc "aura-gateway/internal/mcp"
 	rtr "aura-gateway/internal/router"
@@ -37,15 +38,16 @@ type PromptResponse struct {
 
 // AuraEngine orchestrates the flow between Cache, RBAC, Router, MCP, and LLM
 type AuraEngine struct {
-	cache         *cch.AuraCache
-	router        *rtr.RouterClient
-	rbac          *auth.RBACClient
-	providers     map[string]lp.Provider // keyed by provider name e.g. "ollama"
-	defaultProvider string               // key used when no X-Aura-Provider header is set
-	mcp           *mc.MCPClient
-	toolThreshold float64
-	cacheTTL      time.Duration
-	rateLimiters  sync.Map
+	cache               *cch.AuraCache
+	router              *rtr.RouterClient
+	rbac                *auth.RBACClient
+	providers           map[string]lp.Provider // keyed by provider name e.g. "ollama"
+	defaultProvider     string                 // key used when no X-Aura-Provider header is set
+	mcp                 *mc.MCPClient
+	connectorRegistry   *connectors.ConnectorRegistry // Phase 3: Multi-connector framework
+	toolThreshold       float64
+	cacheTTL            time.Duration
+	rateLimiters        sync.Map
 
 	TotalRequests atomic.Uint64
 	CacheHits     atomic.Uint64
@@ -53,17 +55,37 @@ type AuraEngine struct {
 
 // NewAuraEngine initializes the engine with its required dependencies.
 // providers is a map of name->Provider; defaultProvider is the key used when no provider is specified.
-func NewAuraEngine(c *cch.AuraCache, r *rtr.RouterClient, auth *auth.RBACClient, providers map[string]lp.Provider, defaultProvider string, m *mc.MCPClient, threshold float64, ttl time.Duration) *AuraEngine {
+func NewAuraEngine(c *cch.AuraCache, r *rtr.RouterClient, auth *auth.RBACClient, providers map[string]lp.Provider, defaultProvider string, m *mc.MCPClient, connReg *connectors.ConnectorRegistry, threshold float64, ttl time.Duration) *AuraEngine {
 	return &AuraEngine{
-		cache:           c,
-		router:          r,
-		rbac:            auth,
-		providers:       providers,
-		defaultProvider: defaultProvider,
-		mcp:             m,
-		toolThreshold:   threshold,
-		cacheTTL:        ttl,
+		cache:             c,
+		router:            r,
+		rbac:              auth,
+		providers:         providers,
+		defaultProvider:   defaultProvider,
+		mcp:               m,
+		connectorRegistry: connReg,
+		toolThreshold:     threshold,
+		cacheTTL:          ttl,
 	}
+}
+
+func (e *AuraEngine) ActiveProviderNames() []string {
+	providers := make([]string, 0, len(e.providers))
+	for _, provider := range e.providers {
+		providers = append(providers, provider.GetProviderName())
+	}
+	return providers
+}
+
+func (e *AuraEngine) DefaultProviderName() string {
+	if p, ok := e.providers[e.defaultProvider]; ok {
+		return p.GetProviderName()
+	}
+	return "unknown"
+}
+
+func (e *AuraEngine) ProviderCount() int {
+	return len(e.providers)
 }
 
 func (e *AuraEngine) Process(ctx context.Context, req *PromptRequest) (*PromptResponse, error) {
@@ -133,9 +155,78 @@ func (e *AuraEngine) Process(ctx context.Context, req *PromptRequest) (*PromptRe
 		}
 	}
 
-	// E. Tool Execution (MCP)
+	// E. Tool Execution (Multi-Connector: Phase 3)
+	// Supports MCP, REST, SQL, GraphQL, gRPC, Webhooks (connectors.ConnectorRegistry)
 	var toolResults []string
-	if e.mcp != nil && len(tools) > 0 {
+	if e.connectorRegistry != nil && len(tools) > 0 {
+		for _, t := range tools {
+			if t.RelevanceScore > float32(e.toolThreshold) {
+				slog.Info("Executing tool via connector", "tool_id", t.Id, "score", t.RelevanceScore)
+
+				// HYBRID STRATEGY: 
+				// 1. Try Core (Internal) first for zero-latency
+				// 2. Fall back to MCP for external/registry tools
+				var connector connectors.Connector
+				if core, ok := e.connectorRegistry.Get(connectors.TypeCore); ok {
+					// Check if this specific tool is registered in Core
+					if cc, ok := core.(*connectors.CoreConnector); ok && cc.HasTool(t.Id) {
+						connector = core
+					}
+				}
+
+				if connector == nil {
+					// Default to MCP if not a core tool
+					var ok bool
+					connector, ok = e.connectorRegistry.Get(connectors.TypeMCP)
+					if !ok {
+						slog.Warn("No connector available for tool", "tool_id", t.Id)
+						continue
+					}
+				}
+
+				// Build execution request
+				execReq := &connectors.ExecutionRequest{
+					ToolID:  t.Id,
+					UserID:  req.UserID,
+					Inputs:  make(map[string]interface{}),
+					Timeout: 15,
+				}
+
+				// Execute via connector
+				toolCtx, cancel := context.WithTimeout(ctx, 16*time.Second)
+				execResp, err := connector.Execute(toolCtx, execReq)
+				cancel()
+
+				if err != nil {
+					slog.Error("Connector execution error", "tool_id", t.Id, "error", err)
+					continue
+				}
+
+				if execResp.Status != "success" {
+					slog.Warn("Tool execution failed", "tool_id", t.Id, "status", execResp.Status, "error", execResp.Error)
+					continue
+				}
+
+				// Extract results from connector response
+				if execResp.Data != nil {
+					switch v := execResp.Data.(type) {
+					case []string:
+						toolResults = append(toolResults, v...)
+					case string:
+						toolResults = append(toolResults, v)
+					case []interface{}:
+						for _, item := range v {
+							toolResults = append(toolResults, fmt.Sprintf("%v", item))
+						}
+					default:
+						toolResults = append(toolResults, fmt.Sprintf("%v", v))
+					}
+				}
+			}
+		}
+	} else if e.mcp != nil && len(tools) > 0 {
+		// Fall back to direct MCP for backward compatibility (no connector registry)
+		slog.Info("Using legacy MCP execution (connector registry not available)")
 		for _, t := range tools {
 			if t.RelevanceScore > float32(e.toolThreshold) {
 				slog.Info("Executing tool", "tool_id", t.Id, "score", t.RelevanceScore)
@@ -181,7 +272,7 @@ func (e *AuraEngine) Process(ctx context.Context, req *PromptRequest) (*PromptRe
 		contextPrompt = req.Prompt // Fallback
 	}
 	if len(toolResults) > 0 {
-		contextPrompt = fmt.Sprintf("User Prompt: %s\n\nExecuted Tool Data:\n%v", contextPrompt, toolResults)
+		contextPrompt = fmt.Sprintf("%s\n\n### SUPPLEMENTARY TOOL CONTEXT\n%v\n--- END TOOL CONTEXT ---", contextPrompt, toolResults)
 	}
 
 	// Mapping *router.Tool to any slice for the prompt response payload
@@ -210,8 +301,8 @@ func (e *AuraEngine) Process(ctx context.Context, req *PromptRequest) (*PromptRe
 		return nil, err
 	}
 
-	// G. Populate Cache for future requests (skipped if SkipCache was requested)
-	if e.cache != nil && !req.SkipCache {
+	// G. Populate Cache for future requests (Force Refresh Pattern)
+	if e.cache != nil {
 		// Layer 1: Literal Match
 		_ = e.cache.SetResult(ctx, req.Prompt, aiResp, e.cacheTTL)
 

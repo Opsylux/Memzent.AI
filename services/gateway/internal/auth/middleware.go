@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/golang-jwt/jwt/v5"
 )
@@ -57,7 +58,27 @@ func JWTMiddleware(secret string) func(http.Handler) http.Handler {
 
 			// Inject user info into context
 			ctx := context.WithValue(r.Context(), UserClaimsKey, claims)
+			ctx = context.WithValue(ctx, "user_role", claims["role"])
+			ctx = context.WithValue(ctx, "user_id", claims["sub"])
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
+}
+
+// GenerateJWT creates a signed JWT token with standard claims
+func GenerateJWT(userID, role, secret string, duration time.Duration) (string, error) {
+	claims := jwt.MapClaims{
+		"sub":  userID,
+		"role": role,
+		"exp":  time.Now().Add(duration).Unix(),
+		"iat":  time.Now().Unix(),
+	}
+
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	tokenString, err := token.SignedString([]byte(secret))
+	if err != nil {
+		return "", fmt.Errorf("failed to sign token: %w", err)
+	}
+
+	return tokenString, nil
 }

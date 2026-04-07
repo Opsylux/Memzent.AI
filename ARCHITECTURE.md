@@ -17,7 +17,7 @@ The system operates as an **Intelligent Proxy** between user clients, MCP-enable
    - **Layer 2 – Semantic (Vector)**: Gateway calls Rust Router via gRPC; Router performs cosine similarity search in Qdrant at ≥ 0.88 threshold.
 4. **RBAC Check**: Postgres query for user permissions and allowed tool list.
 5. **Semantic Routing**: gRPC call to the Rust Router returns the best-matched tools + compressed prompt.
-6. **Tool Orchestration**: Gateway executes matched tools against the MCP server using JSON-RPC over HTTP.
+6. **Tool Orchestration** *(Extensible Platform)*: Gateway executes matched tools. *Current: MCP protocol. Future: Dynamic tool registry with REST/GraphQL/SQL/webhook connectors (to be implemented)*.
 7. **Provider Selection**: Gateway routes to Ollama / OpenAI / Anthropic / Gemini based on `X-Aura-Provider` header or `provider` field in request body.
 8. **LLM Synthesis**: The compressed prompt + tool context is dispatched to the selected LLM.
 9. **Cache Population**: Synthesized answer is stored in all three cache layers (Literal, Canonical, Semantic).
@@ -31,7 +31,7 @@ The system operates as an **Intelligent Proxy** between user clients, MCP-enable
 | **Go Gateway** | Go 1.25 | Orchestration, Auth, RBAC, Caching, Provider Routing | 8080 | `:8080` |
 | **Rust Router** | Rust (Tonic) | High-speed Vector Math, Semantic Scoring, Prompt Compression | 50051 | N/A |
 | **Command Center** | Next.js 15+ | Dashboard & Audit Log UI | 3000 | `:3000` |
-| **MCP Server** | Go | Tool execution & context adapter | 50052 | N/A |
+| **MCP Server** | Go | Tool protocol adapter (Phase 1); future: one of many tool connectors | 50052 | N/A |
 | **Website** | React 19 / Vite | Public Marketing Page | 5173 | `:5173` |
 | **Valkey** | Valkey | Multi-layer in-memory semantic cache | 6379 | N/A |
 | **Qdrant** | Qdrant | Vector embedding DB for tool descriptions | 6333 | N/A |
@@ -137,3 +137,70 @@ sequenceDiagram
 
     Gateway-->>User: Response + X-Cache + X-Aura-Provider headers
 ```
+
+---
+
+## 7. Roadmap & Implementation Phases
+
+Aura is architected as a **Universal AI Gateway** with pluggable tool connectors. The system evolves in phases to support arbitrary AI agents, not just database queries.
+
+### Phase 1: Core Foundation (✅ COMPLETE)
+- Triple-layer semantic caching (Literal, Canonical, Semantic)
+- RBAC per-user tool filtering via Postgres
+- Multi-provider LLM routing (Ollama, OpenAI, Anthropic, Gemini)
+- MCP protocol integration + tool execution
+- Rust-based semantic routing with Qdrant vector search
+- Dashboard REST API integration
+
+### Phase 2: Dynamic Tool Registry (🚀 IN PROGRESS)
+**Goal**: Enable tool registration without gateway/MCP restarts
+- [ ] Create Postgres schema: `tools` table with metadata + connection details
+- [ ] Implement `POST /v1/tools/register` endpoint (admin-only)
+- [ ] Implement `DELETE /v1/tools/{toolId}` endpoint (disable tool)
+- [ ] Load tools from Postgres at startup + periodically refresh
+- [ ] Embed tool metadata in Qdrant for semantic matching
+- [ ] Return tool connector type in `/v1/tools` list
+
+### Phase 3: Multi-Connector Framework (📋 PLANNED Q2)
+**Goal**: Support non-MCP tool types
+- [ ] Add tool connector abstraction layer in engine
+- [ ] REST API connector (HTTP GET/POST with schema validation)
+- [ ] GraphQL connector (query execution + response mapping)
+- [ ] SQL connector (direct DB query routing with RBAC)
+- [ ] gRPC connector (service call marshaling)
+- [ ] Webhook connector (async callbacks with job queue)
+- [ ] ML inference connector (model API calls: Hugging Face, Replicate, etc.)
+
+### Phase 4: Advanced Orchestration (📋 PLANNED Q3)
+**Goal**: Enable multi-step AI workflows
+- [ ] Tool chaining (output of tool N → input of tool N+1)
+- [ ] Async job queue (Bull/RabbitMQ) for long-running tools
+- [ ] Result streaming (SSE/WebSocket for live progress)
+- [ ] Tool composition (input/output schema matching)
+- [ ] Error recovery & retry logic
+
+---
+
+## 8. Dashboard Integration
+
+**Admin Dashboard** communicates with gateway via REST APIs:
+
+| Endpoint | Method | Purpose |
+|---|---|---|
+| `/v1/tools` | GET | List available tools + provider metadata + connector type |
+| `/v1/stats` | GET | Real-time stats (cache hit %, provider count, uptime, tool count) |
+| `/v1/chat` | POST | Execute user prompts + return synthesis |
+| `/v1/healthz` | GET | Service health check |
+| `/v1/readyz` | GET | Readiness probe (Valkey, Router, Postgres connectivity) |
+| `/generate-token` | GET | Issue admin JWT for testing |
+
+---
+
+## 9. Design Principles
+
+1. **Protocol Agnostic**: MCP is current; any tool connector can be swapped in via Phase 3
+2. **Semantic-First**: Vector similarity drives tool matching, never keyword search
+3. **Cache Optimized**: Triple-layer caching guarantees sub-second response on repeated queries
+4. **User Isolated**: RBAC ensures tools execute only within user's permission scope
+5. **Provider Flexible**: Clients choose LLM per-request; gateway routes transparently
+6. **Extensible by Design**: New tool types added without modifying core engine

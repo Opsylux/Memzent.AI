@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"time"
 
 	mcp "github.com/metoro-io/mcp-golang"
 	"github.com/metoro-io/mcp-golang/transport/http"
@@ -29,8 +30,35 @@ func NewMCPClient() (*MCPClient, error) {
 }
 
 func (c *MCPClient) Initialize(ctx context.Context) error {
-	_, err := c.client.Initialize(ctx)
-	return err
+    if c.client == nil {
+        return fmt.Errorf("mcp client not configured")
+    }
+
+    // Retry logic: MCP server might be starting up
+    maxRetries := 5
+    retryDelay := 1 * time.Second
+
+    var lastErr error
+
+    for attempt := 1; attempt <= maxRetries; attempt++ {
+        initCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+        _, err := c.client.Initialize(initCtx)
+        cancel()
+
+        if err == nil {
+            fmt.Fprintf(os.Stderr, "[MCPClient] SUCCESS: Initialized on attempt %d\n", attempt)
+            return nil
+        }
+
+        lastErr = err
+        fmt.Fprintf(os.Stderr, "[MCPClient] RETRY %d/%d: Initialization failed - %v\n", attempt, maxRetries, err)
+
+        if attempt < maxRetries {
+            time.Sleep(retryDelay)
+        }
+    }
+
+    return fmt.Errorf("mcp client initialization failed after %d retries: %w", maxRetries, lastErr)
 }
 
 func (c *MCPClient) ListTools(ctx context.Context) ([]mcp.ToolRetType, error) {
@@ -47,15 +75,22 @@ func (c *MCPClient) CallTool(ctx context.Context, name string, arguments any) (*
         return nil, fmt.Errorf("mcp client not configured")
     }
 
-    // 2. Wrap the call with a recovery or specific timeout if needed
-    // The "key: 0" error often means the server received the request 
-    // but the client-side transport layer didn't assign a sequence ID correctly.
+    // 2. Debug: Log the exact arguments being passed
+    fmt.Fprintf(os.Stderr, "[MCPClient] DEBUG: Calling tool '%s' with arguments: %+v (type: %T)\n", name, arguments, arguments)
+
+    // 3. Call tool with comprehensive error handling
     resp, err := c.client.CallTool(ctx, name, arguments)
     if err != nil {
-        // Log the specific name of the tool that failed to help narrow down 
-        // if it's ONLY 'read_database' or all tools.
+        // Log more details about the error for debugging
+        fmt.Fprintf(os.Stderr, "[MCPClient] ERROR: Tool call failed - Tool: %s, Error: %v, Error Type: %T\n", name, err, err)
         return nil, fmt.Errorf("mcp call tool [%s] failed: %w", name, err)
     }
 
+    // 4. Verify response is not nil
+    if resp == nil {
+        return nil, fmt.Errorf("mcp call tool [%s] returned nil response", name)
+    }
+
+    fmt.Fprintf(os.Stderr, "[MCPClient] SUCCESS: Tool call returned %d content items\n", len(resp.Content))
     return resp, nil
 }

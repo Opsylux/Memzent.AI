@@ -188,14 +188,7 @@ impl SemanticRouter for MyRouter {
             });
         }
 
-        // Hardcoded Fallback if collection is empty or nothing matches
-        if tools.is_empty() {
-             tools.push(Tool {
-                id: "read_database".to_string(), 
-                name: "Database Metrics Reader".to_string(),
-                relevance_score: 0.95, 
-            });
-        }
+        // If no tools match, we return an empty list to the gateway.
 
         let reply = ToolResponse {
             tools,

@@ -69,11 +69,14 @@ func main() {
 
 	// --- TOOL: EXECUTE TOOL ---
 	server.RegisterTool("execute_aura_tool", "Runs a specific Aura tool", func(ctx context.Context, args ToolArgs) (string, error) {
+		logger.Printf("DEBUG: Tool handler invoked with raw args: %+v", args)
+		
 		toolID := args.ToolID
 		userID := args.UserID
 
 		// Validation: If ToolID is missing, return a clean error
 		if toolID == "" {
+			logger.Printf("ERROR: Missing tool_id in request")
 			return "", fmt.Errorf("missing required parameter: tool_id")
 		}
 
@@ -87,8 +90,7 @@ func main() {
                 return "", fmt.Errorf("user_id is required for get_user tool")
             }
             return fmt.Sprintf("User data for ID %s fetched from Postgres.", userID), nil
-        case "read_database":
-            return "Mock Database Trace: Successfully indexed 1,241 cluster metrics via Aura Core.", nil
+        // case "read_database": (MOVED TO CORE CONNECTOR)
         default:
             return "", fmt.Errorf("unknown tool_id: %s. Use get_aura_tools to see valid options", toolID)
         }

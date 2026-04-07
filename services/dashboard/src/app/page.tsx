@@ -23,6 +23,9 @@ export default async function Page() {
   const hits = stats.cache_hits || 0;
   const semanticSavings = total > 0 ? ((hits / total) * 100).toFixed(1) : "0.0";
   const uptimeHours = Math.floor((stats.uptime_seconds || 0) / 3600);
+  const providerCount = stats.provider_count || 0;
+  const defaultProvider = stats.default_provider || "Ollama";
+  const activeProviders = Array.isArray(stats.active_providers) ? stats.active_providers : [];
 
   return (
     <div className="space-y-12">
@@ -89,19 +92,31 @@ export default async function Page() {
                 </div>
              </div>
              <p className="text-sm font-medium text-white/50 leading-relaxed mb-8">
-               Aura Router is currently managing <span className="text-white font-bold">12 Active Tools</span> across 4 providers. 
+               Aura Router is currently managing <span className="text-white font-bold">{initialTools?.length || 0} Active Tools</span> across <span className="text-white font-bold">{providerCount} providers</span>.
                Semantic clustering is <span className="text-aura-glow font-bold">OPTIMIZED</span> with 98% intent matching accuracy.
              </p>
              <div className="grid grid-cols-2 gap-4">
                 <div className="p-4 rounded-2xl bg-white/5 border border-white/5">
                    <div className="text-[10px] font-black text-white/20 uppercase mb-1">Embedding Engine</div>
-                   <div className="text-sm font-bold text-aura-glow">ModernBERT-v3 (Qdrant)</div>
+                   <div className="text-sm font-bold text-aura-glow">Qdrant Semantic Router</div>
                 </div>
                 <div className="p-4 rounded-2xl bg-white/5 border border-white/5">
                    <div className="text-[10px] font-black text-white/20 uppercase mb-1">Inference Provider</div>
-                   <div className="text-sm font-bold text-aura-purple">Aura_Llama_3.1_70B</div>
+                   <div className="text-sm font-bold text-aura-purple">{defaultProvider}</div>
                 </div>
              </div>
+             {activeProviders.length > 0 && (
+               <div className="mt-6 text-sm text-white/50">
+                 <div className="text-[10px] uppercase tracking-widest text-white/30 mb-2">Active LLM Providers</div>
+                 <div className="flex flex-wrap gap-2">
+                   {activeProviders.map((provider: string) => (
+                     <span key={provider} className="text-[10px] px-2 py-1 rounded-full bg-white/5 border border-white/10 uppercase tracking-[0.2em] text-slate-200">
+                       {provider}
+                     </span>
+                   ))}
+                 </div>
+               </div>
+             )}
           </div>
         </section>
 

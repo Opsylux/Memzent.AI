@@ -79,6 +79,12 @@ func (c *RBACClient) GetAllowedTools(userID string) ([]string, error) {
 	return tools, nil
 }
 
+// GetDB returns the underlying postgres connection (for packages that need direct DB access)
+func (c *RBACClient) GetDB() *sql.DB {
+	return c.db
+}
+
+
 // Close closes the database connection
 func (c *RBACClient) Close() {
 	if c.db != nil {

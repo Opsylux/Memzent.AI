@@ -13,6 +13,8 @@ import { motion } from "framer-motion";
 export default async function ToolsPage() {
   const tools = await getAuraTools();
 
+  const providerCount = new Set((tools || []).map((tool: any) => tool.provider || 'Aura_Internal')).size;
+
   return (
     <div className="space-y-12">
       <header className="flex flex-col md:flex-row justify-between items-start md:items-end gap-6 mb-12">
@@ -37,9 +39,9 @@ export default async function ToolsPage() {
           <div className="text-[10px] font-black text-white/20 uppercase mb-1">Total Discovered</div>
           <div className="text-3xl font-black">{(tools || []).length}</div>
         </div>
-        <div className="stat-card border- aura-purple/10">
+        <div className="stat-card border-aura-purple/10">
           <div className="text-[10px] font-black text-white/20 uppercase mb-1">Active Providers</div>
-          <div className="text-3xl font-black">4</div>
+          <div className="text-3xl font-black">{providerCount}</div>
         </div>
         <div className="stat-card border-aura-accent/10">
           <div className="text-[10px] font-black text-white/20 uppercase mb-1">Health Status</div>

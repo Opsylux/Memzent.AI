@@ -31,10 +31,9 @@ func (o *OpenAIProvider) Generate(ctx context.Context, prompt string, tools []an
 		activeModel = model
 	}
 
-	// 1. Build System Message with Tool Context
 	system := "You are Aura, an enterprise-grade AI Gateway. "
 	if len(tools) > 0 {
-		system += fmt.Sprintf("The user has requested actions that triggered the following tools/data: %v. Use this data to provide a precise, professional response.", tools)
+		system += "\nYour request has been supplemented with data from semantic tools. Use this context ONLY if it is directly relevant to the user's prompt. If the tool data is irrelevant, ignore it and answer the user's prompt normally."
 	}
 
 	// 2. Prepare OpenAI Request Body

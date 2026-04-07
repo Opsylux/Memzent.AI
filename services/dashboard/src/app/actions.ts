@@ -1,9 +1,10 @@
 "use server"
 
+const GATEWAY_URL = process.env.NEXT_PUBLIC_GATEWAY_URL || 'http://localhost:8080';
+
 export async function getAuraTools() {
     try {
-        // Internal Docker network URL
-        const res = await fetch("http://aura-gateway:8080/v1/tools", { cache: 'no-store' });
+        const res = await fetch(`${GATEWAY_URL}/v1/tools`, { cache: 'no-store' });
         if (!res.ok) return [];
         return res.json();
     } catch (e) {
@@ -14,7 +15,7 @@ export async function getAuraTools() {
 
 export async function getAuraStats() {
     try {
-        const res = await fetch("http://aura-gateway:8080/v1/stats", { cache: 'no-store' });
+        const res = await fetch(`${GATEWAY_URL}/v1/stats`, { cache: 'no-store' });
         if (!res.ok) return { total_requests: 0, cache_hits: 0, uptime_seconds: 0 };
         return res.json();
     } catch (e) {
@@ -27,7 +28,7 @@ const DEV_TOKEN = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjE3NzQ3NjgxMzks
 
 export async function executeAuraPrompt(prompt: string) {
     try {
-        const res = await fetch("http://aura-gateway:8080/v1/chat", {
+        const res = await fetch(`${GATEWAY_URL}/v1/chat`, {
             method: "POST",
             headers: {
                 "Content-Type": "application/json",

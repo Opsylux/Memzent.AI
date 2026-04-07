@@ -102,7 +102,7 @@ services:
     ports:
       - "3000:3000"
     environment:
-      - NEXT_PUBLIC_GATEWAY_URL=http://localhost:8080
+      - NEXT_PUBLIC_GATEWAY_URL=http://aura-gateway:8080
     command: >
       sh -c "if [ ! -f package.json ]; then
                echo 'Initializing Next.js with Bun...' &&
