@@ -104,6 +104,7 @@ services:
       - "3000:3000"
     environment:
       - NEXT_PUBLIC_GATEWAY_URL=http://localhost:8080
+      - GATEWAY_INTERNAL_URL=http://aura-gateway:8080
       - NEXT_PUBLIC_SUPABASE_URL=https://qjzhikynowfbswcjwvhu.supabase.co
       - NEXT_PUBLIC_SUPABASE_ANON_KEY=sb_publishable_4z4suDUmBfYjxTQNg5WHSA_dq3f88ua
     command: >
