@@ -1,11 +1,14 @@
 node_modules
-services/dashboard/node_modules
-services/dashboard/.next
-services/dashboard/.swc
-website/node_modules
 .git
 .env
 data/
+
+# Exclude entire dashboard from build context (uses pre-built image, not built via Dockerfile)
+# Also prevents Docker failure on Windows due to parentheses in (app) directory name
+services/dashboard
+
+# Exclude website node_modules (has its own Dockerfile)
+website/node_modules
 
 # Ignore heavy ML model caches
 **/.fastembed_cache
