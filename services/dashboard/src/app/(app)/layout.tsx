@@ -1,20 +1,34 @@
 import { Sidebar } from "@/components/sidebar";
 import { AuraTopNav } from "@/components/aura-top-nav";
+import { getCurrentOrg, type OrgContext } from "@/lib/user-context";
+import { redirect } from "next/navigation";
 
-export default function AppLayout({
+export default async function AppLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  const org = await getCurrentOrg();
+
+  // If no session exists, redirect to login
+  if (!org) {
+    redirect('/login');
+  }
+
   return (
     <div className="flex min-h-screen w-full bg-aura-dark relative">
       {/* Sidebar - Fixed width */}
-      <Sidebar />
+      <Sidebar orgName={org.orgName} tier={org.tier} initials={org.initials} />
 
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col min-h-screen relative overflow-hidden">
         {/* Top Navigation - Sits within the main content area, offset by Sidebar */}
-        <AuraTopNav />
+        <AuraTopNav 
+          orgName={org.orgName}
+          email={org.email}
+          initials={org.initials}
+          tier={org.tier}
+        />
         
         {/* Page Content - Padded to avoid overlapping with TopNav */}
         <main className="flex-1 overflow-auto p-8 mt-40">

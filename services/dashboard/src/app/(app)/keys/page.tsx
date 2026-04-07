@@ -6,7 +6,11 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Key, Plus, Trash2, Copy, CheckCircle2, ShieldAlert } from 'lucide-react'
 import { getApiKeys, createApiKey, revokeApiKey } from '../../actions'
-import { supabase } from '@/lib/supabase'
+import { createClient } from '@supabase/supabase-js'
+
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || ''
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
+const supabase = createClient(supabaseUrl, supabaseAnonKey)
 
 export default function ApiKeysPage() {
   const [keys, setKeys] = useState<any[]>([])
@@ -14,15 +18,38 @@ export default function ApiKeysPage() {
   const [newKeyName, setNewKeyName] = useState('')
   const [createdKey, setCreatedKey] = useState<string | null>(null)
   const [orgId, setOrgId] = useState<string | null>(null)
+  const [orgName, setOrgName] = useState<string>('')
 
   useEffect(() => {
     async function load() {
       const { data: { user } } = await supabase.auth.getUser()
       if (user) {
-        const id = user.id
-        setOrgId(id)
-        const data = await getApiKeys(id)
-        setKeys(data)
+        // Try to get org from members table
+        const { data: membership } = await supabase
+          .from('members')
+          .select('org_id, organizations(id, name)')
+          .eq('user_id', user.id)
+          .limit(1)
+          .maybeSingle()
+
+        let resolvedOrgId = user.id  // Fallback: personal org
+        let resolvedOrgName = user.email?.split('@')[0] || 'Personal'
+
+        if (membership?.organizations) {
+          const org = membership.organizations as any
+          resolvedOrgId = org.id
+          resolvedOrgName = org.name
+        }
+
+        setOrgId(resolvedOrgId)
+        setOrgName(resolvedOrgName)
+
+        try {
+          const data = await getApiKeys(resolvedOrgId)
+          setKeys(data)
+        } catch {
+          // Table might not exist yet
+        }
       }
       setLoading(false)
     }
@@ -54,7 +81,7 @@ export default function ApiKeysPage() {
           SECERN_KEYS
         </h1>
         <p className="text-white/20 font-black uppercase tracking-[0.3em] text-[10px] italic">
-          Neural API Access Control & Rotation
+          {orgName ? `${orgName} — ` : ''}Neural API Access Control & Rotation
         </p>
       </header>
 

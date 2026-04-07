@@ -52,7 +52,7 @@ func commonMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Aura-Provider, X-Aura-Model, X-Skip-Cache")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Aura-Provider, X-Aura-Model, X-Skip-Cache, X-Org-ID")
 
 		if r.Method == "OPTIONS" {
 			w.WriteHeader(http.StatusOK)
@@ -259,6 +259,10 @@ func main() {
 		if r.Header.Get("X-Skip-Cache") == "true" || r.Header.Get("X-Skip-Cache") == "1" {
 			req.SkipCache = true
 		}
+		// Org-level scoping from Dashboard
+		if orgID := r.Header.Get("X-Org-ID"); orgID != "" {
+			req.UserID = orgID // Use org as the identity for routing
+		}
 
 		resp, err := auraEngine.Process(r.Context(), &req)
 		if err != nil {
@@ -290,10 +294,14 @@ func main() {
 			return
 		}
 
-		// Fetch from Postgres tool registry (Phase 2)
+		// Fetch from Postgres tool registry (Phase 2) - Org-Scoped
 		var allTools []tools.ToolWithProvider
 		if toolRegistry != nil {
-			orgID, _ := r.Context().Value("org_id").(string)
+			// Priority: X-Org-ID header > JWT context > empty
+			orgID := r.Header.Get("X-Org-ID")
+			if orgID == "" {
+				orgID, _ = r.Context().Value("org_id").(string)
+			}
 			dbTools, err := toolRegistry.ListTools(r.Context(), orgID)
 			if err == nil {
 				for _, t := range dbTools {
@@ -360,6 +368,12 @@ func main() {
 		
 		activeProviders := auraEngine.ActiveProviderNames()
 		defaultProviderName := auraEngine.DefaultProviderName()
+
+		// Org-level scoping
+		orgID := r.Header.Get("X-Org-ID")
+		if orgID == "" {
+			orgID, _ = r.Context().Value("org_id").(string)
+		}
 		
 		stats := map[string]any{
 			"total_requests":      auraEngine.TotalRequests.Load(),
@@ -370,6 +384,7 @@ func main() {
 			"active_providers":     activeProviders,
 			"default_provider":    defaultProviderName,
 			"semantic_engine":      "Qdrant",
+			"org_id":              orgID,
 		}
 		
 		w.Header().Set("Content-Type", "application/json")

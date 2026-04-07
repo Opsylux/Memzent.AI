@@ -1,12 +1,68 @@
 'use client'
 
-import { useState } from 'react'
-import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card'
+import { useState, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { Settings, User, Shield, Bell, Zap, Save, AlertTriangle } from 'lucide-react'
+import { createClient } from '@supabase/supabase-js'
+import { updateOrgProfile, getOrgProfile } from '../../actions'
+
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || ''
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
+const supabase = createClient(supabaseUrl, supabaseAnonKey)
 
 export default function SettingsPage() {
   const [loading, setLoading] = useState(false)
+  const [orgId, setOrgId] = useState<string | null>(null)
+  const [orgName, setOrgName] = useState('Aura Global HQ')
+  const [contactEmail, setContactEmail] = useState('ops@aura.io')
+  const [saved, setSaved] = useState(false)
+
+  useEffect(() => {
+    async function load() {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (user) {
+        // Resolve org membership
+        const { data: membership } = await supabase
+          .from('members')
+          .select('org_id, organizations(id, name)')
+          .eq('user_id', user.id)
+          .limit(1)
+          .maybeSingle()
+
+        if (membership?.organizations) {
+          const org = membership.organizations as any
+          setOrgId(org.id)
+          setOrgName(org.name || '')
+          // Try loading full profile
+          try {
+            const profile = await getOrgProfile(org.id)
+            if (profile) {
+              setOrgName(profile.name || '')
+              setContactEmail(profile.contact_email || user.email || '')
+            }
+          } catch {}
+        } else {
+          setOrgId(user.id)
+          setOrgName(user.user_metadata?.full_name || user.email?.split('@')[0] || 'Personal')
+          setContactEmail(user.email || '')
+        }
+      }
+    }
+    load()
+  }, [])
+
+  const handleSave = async () => {
+    if (!orgId) return
+    setLoading(true)
+    try {
+      await updateOrgProfile(orgId, { name: orgName, contact_email: contactEmail })
+      setSaved(true)
+      setTimeout(() => setSaved(false), 3000)
+    } catch (e) {
+      console.error('Failed to update org profile:', e)
+    }
+    setLoading(false)
+  }
 
   return (
     <div className="space-y-12 pb-20">
@@ -15,7 +71,7 @@ export default function SettingsPage() {
           CORE_SETTINGS
         </h1>
         <p className="text-white/20 font-black uppercase tracking-[0.3em] text-[10px] italic">
-          Global Governance & Infrastructure Configuration
+          {orgName ? `${orgName} — ` : ''}Governance & Infrastructure Configuration
         </p>
       </header>
 
@@ -52,17 +108,32 @@ export default function SettingsPage() {
              <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-10">
                 <div className="space-y-3">
                    <label className="text-[10px] font-black uppercase tracking-widest text-white/40 italic pl-1">Entity Name</label>
-                   <input className="w-full bg-black/40 border border-white/10 rounded-2xl px-5 py-4 text-sm font-bold text-white focus:border-aura-glow outline-none transition-all placeholder:text-white/10 shadow-inner" defaultValue="Aura Global HQ" />
+                   <input 
+                     className="w-full bg-black/40 border border-white/10 rounded-2xl px-5 py-4 text-sm font-bold text-white focus:border-aura-glow outline-none transition-all placeholder:text-white/10 shadow-inner" 
+                     value={orgName}
+                     onChange={(e) => setOrgName(e.target.value)}
+                   />
                 </div>
                 <div className="space-y-3">
                    <label className="text-[10px] font-black uppercase tracking-widest text-white/40 italic pl-1">Technical Contact</label>
-                   <input className="w-full bg-black/40 border border-white/10 rounded-2xl px-5 py-4 text-sm font-bold text-white focus:border-aura-glow outline-none transition-all placeholder:text-white/10 shadow-inner" defaultValue="ops@aura.io" />
+                   <input 
+                     className="w-full bg-black/40 border border-white/10 rounded-2xl px-5 py-4 text-sm font-bold text-white focus:border-aura-glow outline-none transition-all placeholder:text-white/10 shadow-inner" 
+                     value={contactEmail}
+                     onChange={(e) => setContactEmail(e.target.value)}
+                   />
                 </div>
              </div>
 
-             <div className="flex justify-end pt-4 border-t border-white/5">
-                <Button className="bg-aura-glow text-black font-black uppercase tracking-[0.3em] text-[10px] px-8 h-14 rounded-2xl hover:scale-102 hover:shadow-[0_0_20px_rgba(0,243,255,0.3)] transition-all">
-                   <Save size={16} className="mr-2" /> Sync Changes
+             <div className="flex items-center justify-end gap-4 pt-4 border-t border-white/5">
+                {saved && (
+                  <span className="text-[10px] font-black text-aura-accent uppercase tracking-widest animate-pulse">Changes Synchronized</span>
+                )}
+                <Button 
+                  onClick={handleSave}
+                  disabled={loading}
+                  className="bg-aura-glow text-black font-black uppercase tracking-[0.3em] text-[10px] px-8 h-14 rounded-2xl hover:scale-102 hover:shadow-[0_0_20px_rgba(0,243,255,0.3)] transition-all"
+                >
+                   <Save size={16} className="mr-2" /> {loading ? 'Syncing...' : 'Sync Changes'}
                 </Button>
              </div>
              

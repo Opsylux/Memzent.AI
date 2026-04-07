@@ -1,4 +1,5 @@
 import { getAuraTools, getAuraStats } from "../actions";
+import { getCurrentOrg } from "@/lib/user-context";
 import { MetricCard } from "@/components/metric-card";
 import { 
   Zap, 
@@ -16,9 +17,12 @@ import { RoutingVisualizer } from "@/components/routing-visualizer";
 import Link from 'next/link';
 
 export default async function Page() {
+  const org = await getCurrentOrg();
+  const orgId = org?.orgId;
+
   const [initialTools, stats] = await Promise.all([
-    getAuraTools(),
-    getAuraStats()
+    getAuraTools(orgId),
+    getAuraStats(orgId)
   ]);
 
   const total = stats.total_requests || 0;
@@ -31,6 +35,15 @@ export default async function Page() {
 
   return (
     <div className="space-y-12 pb-20">
+      {/* Workspace Header */}
+      <div className="flex items-center gap-4 mb-4">
+        <div className="w-2 h-8 rounded-full bg-gradient-to-b from-aura-glow to-aura-purple" />
+        <div>
+          <h1 className="text-3xl font-black tracking-tighter uppercase">{org?.orgName || 'Dashboard'}</h1>
+          <p className="text-[10px] font-black text-white/20 uppercase tracking-[0.3em] italic">Neural Mesh Overview</p>
+        </div>
+      </div>
+
       {/* KPI Section */}
       <section className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <MetricCard 
@@ -48,7 +61,7 @@ export default async function Page() {
           trend="Requests" 
           icon={<Layers size={24} />}
           color="purple"
-          detail="Organization-wide Flow"
+          detail="Organization-scoped Flow"
         />
         <MetricCard 
           label="Aura Tools Registry" 
@@ -206,7 +219,7 @@ export default async function Page() {
              <div className="font-mono text-[9px] space-y-5">
                <div className="flex gap-4 border-l border-white/5 pl-4 py-1 hover:bg-white/[0.03] transition-colors cursor-help group">
                   <span className="text-aura-glow/40 font-bold">23:14:01</span>
-                  <span className="text-white/40 group-hover:text-white/60 transition-colors">[AUTH] User_Admin_01 Session Active</span>
+                  <span className="text-white/40 group-hover:text-white/60 transition-colors">[AUTH] {org?.email || 'user'} Session Active</span>
                </div>
                <div className="flex gap-4 border-l border-aura-purple/20 pl-4 py-1 hover:bg-white/[0.03] transition-colors cursor-help group">
                   <span className="text-aura-purple/40 font-bold">23:12:45</span>

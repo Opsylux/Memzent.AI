@@ -1,4 +1,5 @@
 import { getAuraTools } from "../../actions";
+import { getCurrentOrg } from "@/lib/user-context";
 import { 
   Database, 
   Search, 
@@ -8,10 +9,10 @@ import {
   ExternalLink,
   ShieldAlert
 } from "lucide-react";
-import { motion } from "framer-motion";
 
 export default async function ToolsPage() {
-  const tools = await getAuraTools();
+  const org = await getCurrentOrg();
+  const tools = await getAuraTools(org?.orgId);
 
   const providerCount = new Set((tools || []).map((tool: any) => tool.provider || 'Aura_Internal')).size;
 
@@ -20,7 +21,9 @@ export default async function ToolsPage() {
       <header className="flex flex-col md:flex-row justify-between items-start md:items-end gap-6 mb-12">
         <div>
           <h1 className="text-4xl font-black tracking-tighter">TOOL_REGISTRY</h1>
-          <p className="text-sm font-bold text-white/20 uppercase tracking-widest mt-1">Managed Model Context Protocol Explorer</p>
+          <p className="text-sm font-bold text-white/20 uppercase tracking-widest mt-1">
+            {org?.orgName ? `${org.orgName} — ` : ''}Managed Model Context Protocol Explorer
+          </p>
         </div>
         <div className="flex items-center gap-4 w-full md:w-auto">
           <button className="glass px-6 py-3 rounded-2xl text-xs font-black tracking-widest uppercase flex items-center gap-2 hover:bg-white/5 transition-all text-white/40 hover:text-white group">
@@ -82,7 +85,7 @@ export default async function ToolsPage() {
               </tr>
             </thead>
             <tbody>
-              {tools.map((tool: any) => (
+              {(tools || []).map((tool: any) => (
                 <tr key={tool.id} className="border-b border-white/5 hover:bg-white/[0.03] transition-all group">
                   <td className="px-8 py-6">
                     <div className="flex items-center gap-4">

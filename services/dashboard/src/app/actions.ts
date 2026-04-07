@@ -1,12 +1,46 @@
 "use server"
 
-import { supabase } from '@/lib/supabase';
+import { createClient } from '@/lib/supabase-server'
 
 const GATEWAY_URL = process.env.GATEWAY_INTERNAL_URL || process.env.NEXT_PUBLIC_GATEWAY_URL || 'http://localhost:8080';
 
-export async function getAuraTools() {
+/**
+ * Build standard headers for Gateway calls.
+ * Injects org_id from Supabase session so the Gateway can scope responses.
+ */
+async function gatewayHeaders(orgId?: string): Promise<Record<string, string>> {
+    const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+    }
+
+    // If orgId is explicitly provided, use it
+    if (orgId) {
+        headers["X-Org-ID"] = orgId
+    }
+
+    // Try to get a JWT from the current session for Gateway auth
     try {
-        const res = await fetch(`${GATEWAY_URL}/v1/tools`, { cache: 'no-store' });
+        const supabase = await createClient()
+        const { data: { session } } = await supabase.auth.getSession()
+        if (session?.access_token) {
+            headers["Authorization"] = `Bearer ${session.access_token}`
+        }
+    } catch {
+        // Fallback: no session available (e.g. during build)
+    }
+
+    return headers
+}
+
+// ─── Gateway API ───────────────────────────────────────────────────────────
+
+export async function getAuraTools(orgId?: string) {
+    try {
+        const headers = await gatewayHeaders(orgId)
+        const res = await fetch(`${GATEWAY_URL}/v1/tools`, { 
+            cache: 'no-store',
+            headers,
+        });
         if (!res.ok) return [];
         return res.json();
     } catch (e) {
@@ -15,9 +49,13 @@ export async function getAuraTools() {
     }
 }
 
-export async function getAuraStats() {
+export async function getAuraStats(orgId?: string) {
     try {
-        const res = await fetch(`${GATEWAY_URL}/v1/stats`, { cache: 'no-store' });
+        const headers = await gatewayHeaders(orgId)
+        const res = await fetch(`${GATEWAY_URL}/v1/stats`, { 
+            cache: 'no-store',
+            headers,
+        });
         if (!res.ok) return { total_requests: 0, cache_hits: 0, uptime_seconds: 0 };
         return res.json();
     } catch (e) {
@@ -26,19 +64,14 @@ export async function getAuraStats() {
     }
 }
 
-const DEV_TOKEN = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjE3NzQ3NjgxMzksInJvbGUiOiJhZG1pbiIsInN1YiI6ImFkbWluLTAxIn0.4Ffru9o6slUOgPCibCoNGpeIMJoLPF_WgRbXH8FqBrM";
-
-export async function executeAuraPrompt(prompt: string) {
+export async function executeAuraPrompt(prompt: string, orgId?: string) {
     try {
+        const headers = await gatewayHeaders(orgId)
         const res = await fetch(`${GATEWAY_URL}/v1/chat`, {
             method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-                "Authorization": `Bearer ${DEV_TOKEN}`
-            },
+            headers,
             body: JSON.stringify({
-                user_id: "admin-01",
-                prompt: prompt
+                prompt: prompt,
             }),
             cache: 'no-store'
         });
@@ -55,7 +88,14 @@ export async function executeAuraPrompt(prompt: string) {
     }
 }
 
-// SaaS API Key Management
+// ─── Supabase Data (Org-Scoped) ────────────────────────────────────────────
+
+import { createClient as createBrowserClient } from '@supabase/supabase-js'
+
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || ''
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
+const supabase = createBrowserClient(supabaseUrl, supabaseAnonKey)
+
 export async function getApiKeys(orgId: string) {
     const { data, error } = await supabase
         .from('api_keys')
@@ -68,7 +108,6 @@ export async function getApiKeys(orgId: string) {
 }
 
 export async function createApiKey(orgId: string, name: string) {
-    // In production, you'd generate a secure key and hash it.
     const key = `aura_${Math.random().toString(36).substring(2, 15)}${Math.random().toString(36).substring(2, 15)}`;
     const prefix = key.substring(0, 8);
     
@@ -78,7 +117,7 @@ export async function createApiKey(orgId: string, name: string) {
             org_id: orgId,
             name: name,
             key_prefix: prefix,
-            key_hash: key // In reality, use bcrypt/argon2
+            key_hash: key
         });
 
     if (error) throw error;
@@ -94,7 +133,6 @@ export async function revokeApiKey(id: string) {
     if (error) throw error;
 }
 
-// SaaS Tool Provisioning
 export async function createAuraTool(orgId: string, tool: any) {
     const { error } = await supabase
         .from('tools')
@@ -120,6 +158,27 @@ export async function getOrgTools(orgId: string) {
         .select('*')
         .or(`org_id.eq.${orgId},org_id.is.null`)
         .order('created_at', { ascending: false });
+
+    if (error) throw error;
+    return data;
+}
+
+export async function updateOrgProfile(orgId: string, updates: { name?: string; contact_email?: string }) {
+    const { error } = await supabase
+        .from('organizations')
+        .update(updates)
+        .eq('id', orgId)
+
+    if (error) throw error;
+    return { success: true };
+}
+
+export async function getOrgProfile(orgId: string) {
+    const { data, error } = await supabase
+        .from('organizations')
+        .select('*')
+        .eq('id', orgId)
+        .maybeSingle()
 
     if (error) throw error;
     return data;

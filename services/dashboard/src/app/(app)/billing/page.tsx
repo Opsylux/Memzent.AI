@@ -1,11 +1,14 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Shield, Check, Zap, Sparkles, Building2, ExternalLink, ArrowRight } from 'lucide-react'
-import { supabase } from '@/lib/supabase'
+import { createClient } from '@supabase/supabase-js'
+
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || ''
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
+const supabase = createClient(supabaseUrl, supabaseAnonKey)
 
 const plans = [
   {
@@ -40,19 +43,26 @@ const plans = [
 
 export default function BillingPage() {
   const [currentTier, setCurrentTier] = useState('free')
+  const [orgName, setOrgName] = useState('')
 
   useEffect(() => {
     async function load() {
       const { data: { user } } = await supabase.auth.getUser()
       if (user) {
-        // In reality, this comes from the database/claims
-        const { data } = await supabase
-          .from('organizations')
-          .select('subscription_tier')
-          .single()
-        
-        if (data) {
-          setCurrentTier(data.subscription_tier)
+        // Resolve org membership
+        const { data: membership } = await supabase
+          .from('members')
+          .select('org_id, organizations(id, name, subscription_tier)')
+          .eq('user_id', user.id)
+          .limit(1)
+          .maybeSingle()
+
+        if (membership?.organizations) {
+          const org = membership.organizations as any
+          setOrgName(org.name || '')
+          setCurrentTier(org.subscription_tier || 'free')
+        } else {
+          setOrgName(user.email?.split('@')[0] || 'Personal')
         }
       }
     }
@@ -71,7 +81,7 @@ export default function BillingPage() {
           SUBSCRIPTION_SECTOR
         </h1>
         <p className="text-white/20 font-black uppercase tracking-[0.3em] text-[10px] italic">
-          Scaling Neural Infrastructure Capacity
+          {orgName ? `${orgName} — ` : ''}Scaling Neural Infrastructure Capacity
         </p>
       </header>
 
@@ -160,7 +170,6 @@ export default function BillingPage() {
                  Contact HQ <ExternalLink size={16} className="group-hover:translate-x-1 group-hover:-translate-y-1 transition-transform" />
               </Button>
           </div>
-          {/* Background Grain/Effect */}
           <div className="absolute inset-x-0 bottom-0 h-64 bg-gradient-to-t from-aura-purple/5 to-transparent pointer-events-none" />
           <div className="absolute inset-0 pointer-events-none opacity-[0.03] grayscale bg-[url('https://grainy-gradients.vercel.app/noise.svg')]" />
       </section>

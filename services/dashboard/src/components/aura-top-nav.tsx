@@ -1,16 +1,22 @@
 "use client"
 
 import { Search, Bell, Cpu, Cloud, Database } from "lucide-react";
-import { motion } from "framer-motion";
 
-export function AuraTopNav() {
+interface AuraTopNavProps {
+  orgName: string
+  email: string
+  initials: string
+  tier: string
+}
+
+export function AuraTopNav({ orgName, email, initials, tier }: AuraTopNavProps) {
   return (
     <header className="sticky top-0 h-32 z-40 p-6 flex items-center justify-between glass border-white/5 rounded-3xl neural-bg m-4">
       <div className="flex-1 max-w-2xl relative group">
         <Search className="absolute left-6 top-1/2 -translate-y-1/2 text-white/20 group-hover:text-aura-glow transition-colors" size={18} />
         <input 
           type="text" 
-          placeholder="Global Neural Search: Tools, Traces, Logs..."
+          placeholder={`Search ${orgName}: Tools, Traces, Logs...`}
           className="w-full h-16 bg-white/[0.03] border border-white/5 rounded-2xl pl-16 pr-6 text-sm font-bold tracking-tight focus:outline-none focus:border-aura-glow/30 focus:bg-white/[0.05] transition-all"
         />
         <div className="absolute right-6 top-1/2 -translate-y-1/2 flex items-center gap-2 opacity-20 group-hover:opacity-100 transition-all font-mono text-[10px] font-bold">
@@ -54,12 +60,12 @@ export function AuraTopNav() {
 
            <div className="flex items-center gap-3 pl-2">
              <div className="text-right">
-                <div className="text-sm font-black tracking-tight">Enterprise_Node_01</div>
-                <div className="text-[10px] font-bold text-white/30 uppercase">SuperUser Auth</div>
+                <div className="text-sm font-black tracking-tight truncate max-w-[140px]">{orgName}</div>
+                <div className="text-[10px] font-bold text-white/30 uppercase truncate max-w-[140px]">{email}</div>
              </div>
              <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-aura-matrix to-aura-dark border border-white/10 flex items-center justify-center p-0.5 shadow-xl">
                <div className="w-full h-full rounded-lg bg-aura-dark flex items-center justify-center">
-                 <span className="text-xs font-black text-aura-glow opacity-80">EX</span>
+                 <span className="text-xs font-black text-aura-glow opacity-80">{initials}</span>
                </div>
              </div>
            </div>
