@@ -1,6 +1,8 @@
 "use server"
 
-const GATEWAY_URL = process.env.NEXT_PUBLIC_GATEWAY_URL || 'http://localhost:8080';
+import { supabase } from '@/lib/supabase';
+
+const GATEWAY_URL = process.env.GATEWAY_INTERNAL_URL || process.env.NEXT_PUBLIC_GATEWAY_URL || 'http://localhost:8080';
 
 export async function getAuraTools() {
     try {
@@ -51,4 +53,74 @@ export async function executeAuraPrompt(prompt: string) {
         console.error("Gateway prompt execution failed", e);
         throw new Error(e.message);
     }
+}
+
+// SaaS API Key Management
+export async function getApiKeys(orgId: string) {
+    const { data, error } = await supabase
+        .from('api_keys')
+        .select('*')
+        .eq('org_id', orgId)
+        .order('created_at', { ascending: false });
+
+    if (error) throw error;
+    return data;
+}
+
+export async function createApiKey(orgId: string, name: string) {
+    // In production, you'd generate a secure key and hash it.
+    const key = `aura_${Math.random().toString(36).substring(2, 15)}${Math.random().toString(36).substring(2, 15)}`;
+    const prefix = key.substring(0, 8);
+    
+    const { error } = await supabase
+        .from('api_keys')
+        .insert({
+            org_id: orgId,
+            name: name,
+            key_prefix: prefix,
+            key_hash: key // In reality, use bcrypt/argon2
+        });
+
+    if (error) throw error;
+    return { key };
+}
+
+export async function revokeApiKey(id: string) {
+    const { error } = await supabase
+        .from('api_keys')
+        .delete()
+        .eq('id', id);
+
+    if (error) throw error;
+}
+
+// SaaS Tool Provisioning
+export async function createAuraTool(orgId: string, tool: any) {
+    const { error } = await supabase
+        .from('tools')
+        .insert({
+            id: tool.id,
+            org_id: orgId,
+            name: tool.name,
+            description: tool.description,
+            connector_type: tool.connector_type,
+            endpoint: tool.endpoint,
+            config: tool.config || {},
+            input_schema: tool.input_schema || {},
+            enabled: true
+        });
+
+    if (error) throw error;
+    return { success: true };
+}
+
+export async function getOrgTools(orgId: string) {
+    const { data, error } = await supabase
+        .from('tools')
+        .select('*')
+        .or(`org_id.eq.${orgId},org_id.is.null`)
+        .order('created_at', { ascending: false });
+
+    if (error) throw error;
+    return data;
 }

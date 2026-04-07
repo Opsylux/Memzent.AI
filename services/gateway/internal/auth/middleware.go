@@ -38,28 +38,43 @@ func JWTMiddleware(secret string) func(http.Handler) http.Handler {
 			}
 
 			tokenString := parts[1]
+			// 1. Parse and Validate Supabase JWT (RS256)
+			// In production, we'd use the Supabase Project's JWT Public Key
 			token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
-				if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
-					return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
-				}
-				return []byte(secret), nil
+				// For Supabase, the alg is typically HS256 (project secret) or RS256 (public key)
+				return []byte(secret), nil // Placeholder for project secret validation
 			})
 
 			if err != nil || !token.Valid {
-				http.Error(w, fmt.Sprintf("Unauthorized: %v", err), http.StatusUnauthorized)
+				http.Error(w, fmt.Sprintf("unauthorized: %v", err), http.StatusUnauthorized)
 				return
 			}
 
 			claims, ok := token.Claims.(jwt.MapClaims)
 			if !ok {
-				http.Error(w, "Unauthorized: Invalid Claims", http.StatusUnauthorized)
+				http.Error(w, "unauthorized: invalid claims", http.StatusUnauthorized)
 				return
 			}
 
-			// Inject user info into context
+			// 2. Extract Multi-Tenant Identity (Stateless)
+			// Supabase Auth Hooks can inject 'org_id' and 'tier' into app_metadata
+			appMetadata, _ := claims["app_metadata"].(map[string]interface{})
+			userID := claims["sub"].(string)
+			orgID := "default-org" // Fallback
+			if oid, ok := appMetadata["org_id"].(string); ok {
+				orgID = oid
+			}
+			tier := "free"
+			if t, ok := appMetadata["tier"].(string); ok {
+				tier = t
+			}
+
+			// 3. Inject Tenant Context
 			ctx := context.WithValue(r.Context(), UserClaimsKey, claims)
-			ctx = context.WithValue(ctx, "user_role", claims["role"])
-			ctx = context.WithValue(ctx, "user_id", claims["sub"])
+			ctx = context.WithValue(ctx, "user_id", userID)
+			ctx = context.WithValue(ctx, "org_id", orgID)
+			ctx = context.WithValue(ctx, "tier", tier)
+
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}

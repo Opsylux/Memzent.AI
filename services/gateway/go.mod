@@ -7,6 +7,7 @@ require (
 	github.com/lib/pq v1.11.2
 	github.com/metoro-io/mcp-golang v0.16.1
 	github.com/prometheus/client_golang v1.23.2
+	github.com/stripe/stripe-go/v78 v78.12.0
 	github.com/valkey-io/valkey-go v1.0.73
 	golang.org/x/time v0.15.0
 	google.golang.org/grpc v1.79.3

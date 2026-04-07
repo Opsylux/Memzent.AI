@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"aura-gateway/internal/auth"
+	"aura-gateway/internal/billing"
 	"aura-gateway/internal/cache"
 	"aura-gateway/internal/config"
 	"aura-gateway/internal/connectors"
@@ -198,7 +199,7 @@ func main() {
 	}
 
 	// 8. Initialize Engine
-	auraEngine := engine.NewAuraEngine(vCache, rClient, rbacClient, providers, defaultProvider, mcpClient, connRegistry, cfg.ToolRelevanceThreshold, cfg.LLMCacheTTL)
+	auraEngine := engine.NewAuraEngine(vCache, rClient, rbacClient, providers, defaultProvider, mcpClient, toolRegistry, connRegistry, cfg.ToolRelevanceThreshold, cfg.LLMCacheTTL)
 
 	mux := http.NewServeMux()
 
@@ -292,13 +293,14 @@ func main() {
 		// Fetch from Postgres tool registry (Phase 2)
 		var allTools []tools.ToolWithProvider
 		if toolRegistry != nil {
-			dbTools, err := toolRegistry.ListTools(r.Context())
+			orgID, _ := r.Context().Value("org_id").(string)
+			dbTools, err := toolRegistry.ListTools(r.Context(), orgID)
 			if err == nil {
 				for _, t := range dbTools {
 					allTools = append(allTools, tools.ToolToAPI(t))
 				}
 			} else {
-				slog.Warn("Failed to fetch tools from registry", "error", err)
+				slog.Warn("Failed to fetch tools from registry", "error", err, "org_id", orgID)
 			}
 		}
 
@@ -390,9 +392,20 @@ func main() {
 	})
 
 
+	// 8.5. Register SaaS Webhooks (Exclude from JWT Middleware)
+	stripeSecret := os.Getenv("STRIPE_WEBHOOK_SECRET")
+	stripeProID := os.Getenv("STRIPE_PRO_ID")
+	stripeBizID := os.Getenv("STRIPE_BIZ_ID")
+	stripeHandler := billing.NewStripeHandler(rbacClient.GetDB(), stripeSecret, stripeProID, stripeBizID)
+	
+	// Separate mux for endpoints that skip JWT middleware (or handle it manually)
+	publicMux := http.NewServeMux()
+	publicMux.HandleFunc("POST /v1/webhooks/stripe", stripeHandler.HandleWebhook)
+	publicMux.Handle("/", auth.JWTMiddleware(cfg.JWTSecret)(metricsMiddleware(commonMiddleware(mux))))
+
 	srv := &http.Server{
 		Addr:    cfg.Port,
-		Handler: auth.JWTMiddleware(cfg.JWTSecret)(metricsMiddleware(commonMiddleware(mux))),
+		Handler: publicMux,
 	}
 
 	// 9. Start Server

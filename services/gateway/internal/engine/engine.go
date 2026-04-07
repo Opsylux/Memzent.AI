@@ -14,6 +14,7 @@ import (
 	lp "aura-gateway/internal/llm"
 	mc "aura-gateway/internal/mcp"
 	rtr "aura-gateway/internal/router"
+	"aura-gateway/internal/tools"
 
 	"golang.org/x/time/rate"
 )
@@ -44,7 +45,8 @@ type AuraEngine struct {
 	providers           map[string]lp.Provider // keyed by provider name e.g. "ollama"
 	defaultProvider     string                 // key used when no X-Aura-Provider header is set
 	mcp                 *mc.MCPClient
-	connectorRegistry   *connectors.ConnectorRegistry // Phase 3: Multi-connector framework
+	registry            *tools.Registry               // Registry for user-provisioned tools
+	connectorRegistry   *connectors.ConnectorRegistry // Core/Native connectors
 	toolThreshold       float64
 	cacheTTL            time.Duration
 	rateLimiters        sync.Map
@@ -54,8 +56,7 @@ type AuraEngine struct {
 }
 
 // NewAuraEngine initializes the engine with its required dependencies.
-// providers is a map of name->Provider; defaultProvider is the key used when no provider is specified.
-func NewAuraEngine(c *cch.AuraCache, r *rtr.RouterClient, auth *auth.RBACClient, providers map[string]lp.Provider, defaultProvider string, m *mc.MCPClient, connReg *connectors.ConnectorRegistry, threshold float64, ttl time.Duration) *AuraEngine {
+func NewAuraEngine(c *cch.AuraCache, r *rtr.RouterClient, auth *auth.RBACClient, providers map[string]lp.Provider, defaultProvider string, m *mc.MCPClient, reg *tools.Registry, connReg *connectors.ConnectorRegistry, threshold float64, ttl time.Duration) *AuraEngine {
 	return &AuraEngine{
 		cache:             c,
 		router:            r,
@@ -63,6 +64,7 @@ func NewAuraEngine(c *cch.AuraCache, r *rtr.RouterClient, auth *auth.RBACClient,
 		providers:         providers,
 		defaultProvider:   defaultProvider,
 		mcp:               m,
+		registry:          reg,
 		connectorRegistry: connReg,
 		toolThreshold:     threshold,
 		cacheTTL:          ttl,
@@ -91,30 +93,45 @@ func (e *AuraEngine) ProviderCount() int {
 func (e *AuraEngine) Process(ctx context.Context, req *PromptRequest) (*PromptResponse, error) {
 	e.TotalRequests.Add(1)
 
-	// A. Rate Limiting (10 requests per minute per user)
-	limiter, _ := e.rateLimiters.LoadOrStore(req.UserID, rate.NewLimiter(rate.Every(time.Minute/10), 10))
-	if !limiter.(*rate.Limiter).Allow() {
-		return nil, fmt.Errorf("rate limit exceeded: please wait a moment")
+	// A. Rate Limiting (Based on Tier extracted from JWT)
+	tier, _ := ctx.Value("tier").(string)
+	orgID, _ := ctx.Value("org_id").(string)
+	if orgID == "" {
+		orgID = "default"
 	}
 
-	// B. Stage 1-2 Cache Lookup — skipped if client requests a fresh response
+	// Dynamic Rate Limiting Based on Tier
+	limit := 10.0 // Free default
+	if tier == "pro" {
+		limit = 100.0
+	} else if tier == "business" {
+		limit = 1000.0
+	}
+
+	limitKey := fmt.Sprintf("rl:%s:%s", orgID, req.UserID)
+	limiter, _ := e.rateLimiters.LoadOrStore(limitKey, rate.NewLimiter(rate.Limit(limit/60), int(limit)))
+	if !limiter.(*rate.Limiter).Allow() {
+		return nil, fmt.Errorf("rate limit exceeded for organization %s (tier: %s)", orgID, tier)
+	}
+
+	// B. Stage 1-2 Cache Lookup (Org-Isolated)
 	if e.cache != nil && !req.SkipCache {
-		cachedResp, err := e.cache.GetSemanticResult(ctx, req.Prompt)
+		cacheKey := fmt.Sprintf("org:%s:p:%s", orgID, req.Prompt)
+		cachedResp, err := e.cache.GetSemanticResult(ctx, cacheKey)
 		if err == nil && cachedResp != "" {
 			e.CacheHits.Add(1)
-			slog.Info("🎯 Stage 1 Cache HIT (Literal)", "prompt", req.Prompt)
+			slog.Info("🎯 Stage 1 Cache HIT (Org-Isolated)", "org_id", orgID, "prompt", req.Prompt)
 			return &PromptResponse{Text: cachedResp, Cached: true}, nil
 		}
 
-		// Stage 1.5: Canonical Match (Normalized)
-		// Mask IDs, lowercase, and stabilize to catch write011 vs write111
-		canonical, cHash := NormalizePrompt(req.Prompt)
-		cachedCanon, err := e.cache.GetSemanticResult(ctx, cHash)
+		// Stage 1.5: Canonical Match (Normalized & Org-Isolated)
+		_, cHash := NormalizePrompt(req.Prompt)
+		canonKey := fmt.Sprintf("org:%s:c:%s", orgID, cHash)
+		cachedCanon, err := e.cache.GetSemanticResult(ctx, canonKey)
 		if err == nil && cachedCanon != "" {
 			e.CacheHits.Add(1)
-			slog.Info("🎯 Stage 1.5 Cache HIT (Canonical)", "original", req.Prompt, "canonical", canonical)
-			// Map the original literal string to this hit for faster Stage 1 next time
-			_ = e.cache.SetResult(ctx, req.Prompt, cachedCanon, e.cacheTTL)
+			slog.Info("🎯 Stage 1.5 Cache HIT (Org-Isolated)", "org_id", orgID, "canonical", cHash)
+			_ = e.cache.SetResult(ctx, cacheKey, cachedCanon, e.cacheTTL)
 			return &PromptResponse{Text: cachedCanon, Cached: true}, nil
 		}
 	}
@@ -140,125 +157,80 @@ func (e *AuraEngine) Process(ctx context.Context, req *PromptRequest) (*PromptRe
 		slog.Warn("Router fallback engaged", "error", err)
 	}
 
-	// NEW: Stage 2 Cache Check (Fuzzy Vector Semantic Match) — also skipped on SkipCache
+	// NEW: Stage 2 Cache Check (Fuzzy Vector Semantic Match) — Org-Isolated
 	if similarPromptHash != "" && e.cache != nil && !req.SkipCache {
-		cachedResp, err := e.cache.GetSemanticResult(ctx, similarPromptHash)
+		simKey := fmt.Sprintf("org:%s:s:%s", orgID, similarPromptHash)
+		cachedResp, err := e.cache.GetSemanticResult(ctx, simKey)
 		if err == nil && cachedResp != "" {
-			slog.Info("🎯 Stage 2 Cache HIT (Vector)", "original", req.Prompt, "similar_hash", similarPromptHash)
-
-			// Repopulate Literal (Stage 1) and Canonical (Stage 1.5) for next time
-			_ = e.cache.SetResult(ctx, req.Prompt, cachedResp, e.cacheTTL)
-			_, cHash := NormalizePrompt(req.Prompt)
-			_ = e.cache.SetResult(ctx, cHash, cachedResp, e.cacheTTL)
-
+			slog.Info("🎯 Stage 2 Cache HIT (Org-Isolated)", "org_id", orgID, "similar_hash", similarPromptHash)
 			return &PromptResponse{Text: cachedResp, Cached: true}, nil
 		}
 	}
 
-	// E. Tool Execution (Multi-Connector: Phase 3)
-	// Supports MCP, REST, SQL, GraphQL, gRPC, Webhooks (connectors.ConnectorRegistry)
+	// E. Tool Execution (Multi-Connector: Universal Provisioning)
 	var toolResults []string
-	if e.connectorRegistry != nil && len(tools) > 0 {
+	if len(tools) > 0 {
 		for _, t := range tools {
 			if t.RelevanceScore > float32(e.toolThreshold) {
-				slog.Info("Executing tool via connector", "tool_id", t.Id, "score", t.RelevanceScore)
+				slog.Info("Resolving tool for execution", "tool_id", t.Id, "score", t.RelevanceScore)
 
-				// HYBRID STRATEGY: 
-				// 1. Try Core (Internal) first for zero-latency
-				// 2. Fall back to MCP for external/registry tools
+				// 1. Fetch full metadata from Registry (to get OrgID and Config)
+				toolMetadata, err := e.registry.GetTool(ctx, t.Id)
+				if err != nil {
+					slog.Error("Failed to fetch tool metadata", "tool_id", t.Id, "error", err)
+					continue
+				}
+
+				if toolMetadata == nil {
+					slog.Warn("Tool not found in registry", "tool_id", t.Id)
+					continue
+				}
+
 				var connector connectors.Connector
-				if core, ok := e.connectorRegistry.Get(connectors.TypeCore); ok {
-					// Check if this specific tool is registered in Core
-					if cc, ok := core.(*connectors.CoreConnector); ok && cc.HasTool(t.Id) {
-						connector = core
+				
+				// 2. Connector Selection & Factory
+				switch toolMetadata.ConnectorType {
+				case "rest":
+					connector = connectors.NewRESTConnector(toolMetadata.Endpoint)
+				case "sql":
+					connector = connectors.NewSQLConnector(toolMetadata.Endpoint)
+				case "mcp":
+					if reg, ok := e.connectorRegistry.Get(connectors.TypeMCP); ok {
+						connector = reg
+					}
+				default:
+					// Try Core Registry
+					if reg, ok := e.connectorRegistry.Get(connectors.TypeCore); ok {
+						if cc, ok := reg.(*connectors.CoreConnector); ok && cc.HasTool(t.Id) {
+							connector = reg
+						}
 					}
 				}
 
 				if connector == nil {
-					// Default to MCP if not a core tool
-					var ok bool
-					connector, ok = e.connectorRegistry.Get(connectors.TypeMCP)
-					if !ok {
-						slog.Warn("No connector available for tool", "tool_id", t.Id)
-						continue
-					}
+					slog.Warn("No connector available for tool", "tool_id", t.Id, "type", toolMetadata.ConnectorType)
+					continue
 				}
 
-				// Build execution request
+				// 3. Execution Phase
 				execReq := &connectors.ExecutionRequest{
 					ToolID:  t.Id,
 					UserID:  req.UserID,
-					Inputs:  make(map[string]interface{}),
-					Timeout: 15,
+					Inputs:  make(map[string]interface{}), // Future: LLM intent injection
+					Timeout: toolMetadata.TimeoutSeconds,
 				}
 
-				// Execute via connector
-				toolCtx, cancel := context.WithTimeout(ctx, 16*time.Second)
+				toolCtx, cancel := context.WithTimeout(ctx, time.Duration(toolMetadata.TimeoutSeconds+1)*time.Second)
 				execResp, err := connector.Execute(toolCtx, execReq)
 				cancel()
 
 				if err != nil {
-					slog.Error("Connector execution error", "tool_id", t.Id, "error", err)
+					slog.Error("Tool execution failed", "tool_id", t.Id, "error", err)
 					continue
 				}
 
-				if execResp.Status != "success" {
-					slog.Warn("Tool execution failed", "tool_id", t.Id, "status", execResp.Status, "error", execResp.Error)
-					continue
-				}
-
-				// Extract results from connector response
-				if execResp.Data != nil {
-					switch v := execResp.Data.(type) {
-					case []string:
-						toolResults = append(toolResults, v...)
-					case string:
-						toolResults = append(toolResults, v)
-					case []interface{}:
-						for _, item := range v {
-							toolResults = append(toolResults, fmt.Sprintf("%v", item))
-						}
-					default:
-						toolResults = append(toolResults, fmt.Sprintf("%v", v))
-					}
-				}
-			}
-		}
-	} else if e.mcp != nil && len(tools) > 0 {
-		// Fall back to direct MCP for backward compatibility (no connector registry)
-		slog.Info("Using legacy MCP execution (connector registry not available)")
-		for _, t := range tools {
-			if t.RelevanceScore > float32(e.toolThreshold) {
-				slog.Info("Executing tool", "tool_id", t.Id, "score", t.RelevanceScore)
-
-				// Use a sub-context for the tool call to prevent hanging
-				toolCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
-
-				type ToolArgs struct {
-					ToolID string `json:"tool_id"`
-					UserID string `json:"user_id,omitempty"`
-				}
-
-				args := ToolArgs{
-					ToolID:  t.Id,
-					UserID: req.UserID,
-				}
-
-				resp, err := e.mcp.CallTool(toolCtx, "execute_aura_tool", args)
-				cancel() // Release context immediately
-
-				if err != nil {
-					slog.Error("MCP tool execution error", "tool_id", t.Id, "error", err)
-					continue
-				}
-
-				// Extract text content safely
-				if resp != nil {
-					for _, content := range resp.Content {
-						if content.TextContent != nil {
-							toolResults = append(toolResults, content.TextContent.Text)
-						}
-					}
+				if execResp.Status == "success" && execResp.Data != nil {
+					toolResults = append(toolResults, fmt.Sprintf("%v", execResp.Data))
 				}
 			}
 		}
@@ -301,18 +273,21 @@ func (e *AuraEngine) Process(ctx context.Context, req *PromptRequest) (*PromptRe
 		return nil, err
 	}
 
-	// G. Populate Cache for future requests (Force Refresh Pattern)
+	// G. Populate Cache for future requests (Org-Isolated & Force Refresh)
 	if e.cache != nil {
 		// Layer 1: Literal Match
-		_ = e.cache.SetResult(ctx, req.Prompt, aiResp, e.cacheTTL)
+		cacheKey := fmt.Sprintf("org:%s:p:%s", orgID, req.Prompt)
+		_ = e.cache.SetResult(ctx, cacheKey, aiResp, e.cacheTTL)
 
-		// Layer 2: Canonical Match (Masking IDs/Numbers)
+		// Layer 2: Canonical Match
 		_, cHash := NormalizePrompt(req.Prompt)
-		_ = e.cache.SetResult(ctx, cHash, aiResp, e.cacheTTL)
+		canonKey := fmt.Sprintf("org:%s:c:%s", orgID, cHash)
+		_ = e.cache.SetResult(ctx, canonKey, aiResp, e.cacheTTL)
 
-		// Layer 3: Semantic Match (Representative Hash from Router)
-		if currentPromptHash != "" && currentPromptHash != cHash {
-			_ = e.cache.SetResult(ctx, currentPromptHash, aiResp, e.cacheTTL)
+		// Layer 3: Semantic Match
+		if currentPromptHash != "" {
+			simKey := fmt.Sprintf("org:%s:s:%s", orgID, currentPromptHash)
+			_ = e.cache.SetResult(ctx, simKey, aiResp, e.cacheTTL)
 		}
 	}
 

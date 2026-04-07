@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
-import { AuraSidebar } from "@/components/aura-sidebar";
+import { Sidebar } from "@/components/sidebar";
 import { AuraTopNav } from "@/components/aura-top-nav";
 
 const geistSans = Geist({
@@ -27,18 +27,10 @@ export default function RootLayout({
   return (
     <html lang="en" className="dark" suppressHydrationWarning>
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased min-h-screen bg-aura-dark text-white`}
+        className={`${geistSans.variable} ${geistMono.variable} antialiased min-h-screen bg-aura-dark text-white selection:bg-aura-glow selection:text-black`}
         suppressHydrationWarning
       >
-        <div className="flex min-h-screen">
-          <AuraSidebar />
-          <div className="flex-1 ml-[320px] transition-all duration-300">
-             <AuraTopNav />
-             <main className="mt-40 p-10 max-w-7xl mx-auto min-h-screen">
-              {children}
-             </main>
-          </div>
-        </div>
+        {children}
       </body>
     </html>
   );

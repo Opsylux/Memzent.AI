@@ -5,7 +5,7 @@ import { motion } from "framer-motion";
 
 export function AuraTopNav() {
   return (
-    <header className="fixed top-0 right-0 left-72 h-32 z-40 p-6 m-4 ml-0 flex items-center justify-between glass border-white/5 rounded-3xl neural-bg">
+    <header className="sticky top-0 h-32 z-40 p-6 flex items-center justify-between glass border-white/5 rounded-3xl neural-bg m-4">
       <div className="flex-1 max-w-2xl relative group">
         <Search className="absolute left-6 top-1/2 -translate-y-1/2 text-white/20 group-hover:text-aura-glow transition-colors" size={18} />
         <input 
