@@ -9,6 +9,8 @@ import {
   ExternalLink,
   ShieldAlert
 } from "lucide-react";
+import { RegisterToolBtn } from "@/components/register-tool-btn";
+import { SyncRegistryBtn } from "@/components/sync-registry-btn";
 
 export default async function ToolsPage() {
   const org = await getCurrentOrg();
@@ -26,13 +28,8 @@ export default async function ToolsPage() {
           </p>
         </div>
         <div className="flex items-center gap-4 w-full md:w-auto">
-          <button className="glass px-6 py-3 rounded-2xl text-xs font-black tracking-widest uppercase flex items-center gap-2 hover:bg-white/5 transition-all text-white/40 hover:text-white group">
-            <RefreshCcw size={14} className="group-hover:rotate-180 transition-transform duration-500" />
-            Sync Registry
-          </button>
-          <button className="bg-aura-glow text-black px-6 py-3 rounded-2xl text-xs font-black tracking-widest uppercase hover:scale-105 transition-all shadow-[0_0_20px_rgba(0,243,255,0.2)]">
-            Register New Tool
-          </button>
+          <SyncRegistryBtn orgId={org?.orgId} />
+          <RegisterToolBtn orgId={org?.orgId} />
         </div>
       </header>
 

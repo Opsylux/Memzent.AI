@@ -90,13 +90,10 @@ export async function executeAuraPrompt(prompt: string, orgId?: string) {
 
 // ─── Supabase Data (Org-Scoped) ────────────────────────────────────────────
 
-import { createClient as createBrowserClient } from '@supabase/supabase-js'
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || ''
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
-const supabase = createBrowserClient(supabaseUrl, supabaseAnonKey)
+// ─── Supabase Data (Org-Scoped) ────────────────────────────────────────────
 
 export async function getApiKeys(orgId: string) {
+    const supabase = await createClient();
     const { data, error } = await supabase
         .from('api_keys')
         .select('*')
@@ -108,6 +105,7 @@ export async function getApiKeys(orgId: string) {
 }
 
 export async function createApiKey(orgId: string, name: string) {
+    const supabase = await createClient();
     const key = `aura_${Math.random().toString(36).substring(2, 15)}${Math.random().toString(36).substring(2, 15)}`;
     const prefix = key.substring(0, 8);
     
@@ -125,6 +123,7 @@ export async function createApiKey(orgId: string, name: string) {
 }
 
 export async function revokeApiKey(id: string) {
+    const supabase = await createClient();
     const { error } = await supabase
         .from('api_keys')
         .delete()
@@ -134,6 +133,7 @@ export async function revokeApiKey(id: string) {
 }
 
 export async function createAuraTool(orgId: string, tool: any) {
+    const supabase = await createClient();
     const { error } = await supabase
         .from('tools')
         .insert({
@@ -153,6 +153,7 @@ export async function createAuraTool(orgId: string, tool: any) {
 }
 
 export async function getOrgTools(orgId: string) {
+    const supabase = await createClient();
     const { data, error } = await supabase
         .from('tools')
         .select('*')
@@ -164,6 +165,7 @@ export async function getOrgTools(orgId: string) {
 }
 
 export async function updateOrgProfile(orgId: string, updates: { name?: string; contact_email?: string }) {
+    const supabase = await createClient();
     const { error } = await supabase
         .from('organizations')
         .update(updates)
@@ -174,6 +176,7 @@ export async function updateOrgProfile(orgId: string, updates: { name?: string; 
 }
 
 export async function getOrgProfile(orgId: string) {
+    const supabase = await createClient();
     const { data, error } = await supabase
         .from('organizations')
         .select('*')
@@ -182,4 +185,93 @@ export async function getOrgProfile(orgId: string) {
 
     if (error) throw error;
     return data;
+}
+
+export async function registerAuraTool(orgId: string, tool: any) {
+    try {
+        const headers = await gatewayHeaders(orgId)
+        const res = await fetch(`${GATEWAY_URL}/v1/tools/register`, {
+            method: "POST",
+            headers,
+            body: JSON.stringify({
+                ...tool,
+                org_id: orgId
+            }),
+            cache: 'no-store'
+        });
+
+        if (!res.ok) {
+            const err = await res.text();
+            throw new Error(err || "Failed to register tool");
+        }
+
+        return res.json();
+    } catch (e: any) {
+        console.error("Gateway tool registration failed", e);
+        throw new Error(e.message);
+    }
+}
+
+export async function syncAuraTools(orgId?: string) {
+    try {
+        const headers = await gatewayHeaders(orgId)
+        const res = await fetch(`${GATEWAY_URL}/v1/tools/sync`, {
+            method: "POST",
+            headers,
+            cache: 'no-store'
+        });
+
+        if (!res.ok) {
+            const err = await res.text();
+            throw new Error(err || "Failed to sync tools");
+        }
+
+        return res.json();
+    } catch (e: any) {
+        console.error("Gateway tools sync failed", e);
+        throw new Error(e.message);
+    }
+}
+
+export async function getAuraAudit(orgId?: string) {
+    try {
+        const headers = await gatewayHeaders(orgId)
+        const res = await fetch(`${GATEWAY_URL}/v1/audit`, {
+            method: "GET",
+            headers,
+            cache: 'no-store'
+        });
+
+        if (!res.ok) {
+            const err = await res.text();
+            throw new Error(err || "Failed to fetch audit logs");
+        }
+
+        return res.json();
+    } catch (e: any) {
+        console.error("Gateway audit fetch failed", e);
+        return [];
+    }
+}
+
+export async function createCheckoutSession(orgId: string, tier: string) {
+    try {
+        const headers = await gatewayHeaders(orgId)
+        const res = await fetch(`${GATEWAY_URL}/v1/billing/checkout`, {
+            method: "POST",
+            headers,
+            body: JSON.stringify({ tier }),
+            cache: 'no-store'
+        });
+
+        if (!res.ok) {
+            const err = await res.text();
+            throw new Error(err || "Failed to create checkout session");
+        }
+
+        return res.json();
+    } catch (e: any) {
+        console.error("Gateway checkout failed", e);
+        throw new Error(e.message);
+    }
 }

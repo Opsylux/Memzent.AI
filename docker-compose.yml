@@ -32,16 +32,7 @@ services:
     volumes:
       - ./data/qdrant:/qdrant/storage
 
-  # Governance Layer (Structured Data)
-  postgres:
-    image: postgres:16-alpine
-    container_name: aura-postgres
-    environment:
-      POSTGRES_DB: aura_db
-      POSTGRES_USER: user
-      POSTGRES_PASSWORD: password
-    ports:
-      - "5432:5432"
+
 
   # Aura Semantic Router (Rust)
   router:
@@ -79,12 +70,14 @@ services:
     environment:
       - OPENAI_MODEL=gpt-4o-mini
       - JWT_SECRET=aura-enterprise-secret-2026
+      - JWKS_URL=https://qjzhikynowfbswcjwvhu.supabase.co/auth/v1/jwks
       - OLLAMA_ENABLED=true
       - OLLAMA_URL=http://ollama:11434
       - OLLAMA_MODEL=llama3.2
       - STRIPE_WEBHOOK_SECRET=whsec_1234567890
       - STRIPE_PRO_ID=prod_1234567890
       - STRIPE_BIZ_ID=prod_1234567890
+      - POSTGRES_URL=postgresql://postgres.qjzhikynowfbswcjwvhu:ZgJg3B0ezU2Z2coO@aws-1-us-east-1.pooler.supabase.com:6543/postgres
     # OPTIMIZED: Checks for mod file, compiles to binary, and fires up instantly!
     command: >
       sh -c "if [ ! -f go.mod ]; then go mod init aura-gateway; fi &&

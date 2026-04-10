@@ -8,6 +8,7 @@ export interface OrgContext {
   orgId: string
   orgName: string
   tier: string
+  role: string
   initials: string
 }
 
@@ -40,12 +41,14 @@ export async function getCurrentOrg(): Promise<OrgContext | null> {
     if (membership?.organizations) {
       const org = membership.organizations as any
       const name = org.name || 'Unnamed Org'
+      const role = membership.role || 'member'
       return {
         userId: user.id,
         email: user.email || '',
         orgId: org.id,
         orgName: name,
         tier: org.subscription_tier || 'free',
+        role: role,
         initials: name.substring(0, 2).toUpperCase(),
       }
     }
@@ -59,6 +62,7 @@ export async function getCurrentOrg(): Promise<OrgContext | null> {
       orgId: user.id,
       orgName: `${displayName}'s Workspace`,
       tier: 'free',
+      role: 'admin', // Owner of personal workspace is admin
       initials: displayName.substring(0, 2).toUpperCase(),
     }
   } catch (e) {

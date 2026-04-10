@@ -16,7 +16,7 @@ const (
 	UserClaimsKey contextKey = "user_claims"
 )
 
-func JWTMiddleware(secret string) func(http.Handler) http.Handler {
+func UnifiedAuthMiddleware(secret string, jwks *JWKSProvider, rbac *RBACClient) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			// Skip for health, metrics, etc.
@@ -25,9 +25,30 @@ func JWTMiddleware(secret string) func(http.Handler) http.Handler {
 				return
 			}
 
+			// 1. Try API Key Authentication (X-API-Key)
+			apiKey := r.Header.Get("X-API-Key")
+			if apiKey != "" && rbac != nil {
+				orgID, err := rbac.VerifyAPIKey(r.Context(), apiKey)
+				if err == nil {
+					// Extract role (default to admin for API Keys for now, or fetch from DB)
+					role := "admin" // API keys represent the organization/admin identity
+					
+					ctx := context.WithValue(r.Context(), "user_id", "api-key-"+orgID[:8])
+					ctx = context.WithValue(ctx, "org_id", orgID)
+					ctx = context.WithValue(ctx, "tier", "pro") // Default tier for API access
+					ctx = context.WithValue(ctx, "user_role", role)
+					ctx = context.WithValue(ctx, "auth_method", "api_key")
+
+					next.ServeHTTP(w, r.WithContext(ctx))
+					return
+				}
+				// If key was provided but invalid, we continue to check JWT or return error later
+			}
+
+			// 2. Try JWT Authentication (Authorization: Bearer <token>)
 			authHeader := r.Header.Get("Authorization")
 			if authHeader == "" {
-				http.Error(w, "Unauthorized: Missing Authorization Header", http.StatusUnauthorized)
+				http.Error(w, "Unauthorized: Missing identity (JWT or API Key)", http.StatusUnauthorized)
 				return
 			}
 
@@ -38,11 +59,37 @@ func JWTMiddleware(secret string) func(http.Handler) http.Handler {
 			}
 
 			tokenString := parts[1]
-			// 1. Parse and Validate Supabase JWT (RS256)
-			// In production, we'd use the Supabase Project's JWT Public Key
+			// Parse and Validate token using dynamic JWKS or static secret
 			token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
-				// For Supabase, the alg is typically HS256 (project secret) or RS256 (public key)
-				return []byte(secret), nil // Placeholder for project secret validation
+				// 1. If JWKS is enabled and token has a Key ID (`kid`), try discovery
+				if jwks != nil {
+					if kid, ok := token.Header["kid"].(string); ok {
+						return jwks.GetKey(kid)
+					}
+				}
+
+				// 2. Fallback to Algorithm-Aware Static Secret (HMAC/ECDSA/RSA)
+				if _, ok := token.Method.(*jwt.SigningMethodHMAC); ok {
+					return []byte(secret), nil
+				}
+
+				if _, ok := token.Method.(*jwt.SigningMethodECDSA); ok {
+					pub, err := jwt.ParseECPublicKeyFromPEM([]byte(secret))
+					if err != nil {
+						return nil, fmt.Errorf("token uses ECDSA but secret is not a valid PEM Public Key: %v", err)
+					}
+					return pub, nil
+				}
+
+				if _, ok := token.Method.(*jwt.SigningMethodRSA); ok {
+					pub, err := jwt.ParseRSAPublicKeyFromPEM([]byte(secret))
+					if err != nil {
+						return nil, fmt.Errorf("token uses RSA but secret is not a valid PEM Public Key: %v", err)
+					}
+					return pub, nil
+				}
+
+				return nil, fmt.Errorf("unsupported signing method: %v", token.Header["alg"])
 			})
 
 			if err != nil || !token.Valid {
@@ -56,11 +103,10 @@ func JWTMiddleware(secret string) func(http.Handler) http.Handler {
 				return
 			}
 
-			// 2. Extract Multi-Tenant Identity (Stateless)
-			// Supabase Auth Hooks can inject 'org_id' and 'tier' into app_metadata
+			// Extract Multi-Tenant Identity
 			appMetadata, _ := claims["app_metadata"].(map[string]interface{})
 			userID := claims["sub"].(string)
-			orgID := "default-org" // Fallback
+			orgID := "default-org"
 			if oid, ok := appMetadata["org_id"].(string); ok {
 				orgID = oid
 			}
@@ -68,12 +114,20 @@ func JWTMiddleware(secret string) func(http.Handler) http.Handler {
 			if t, ok := appMetadata["tier"].(string); ok {
 				tier = t
 			}
+			
+			role := "user"
+			if r, ok := claims["role"].(string); ok {
+				role = r
+			} else if r, ok := appMetadata["role"].(string); ok {
+				role = r
+			}
 
-			// 3. Inject Tenant Context
 			ctx := context.WithValue(r.Context(), UserClaimsKey, claims)
 			ctx = context.WithValue(ctx, "user_id", userID)
 			ctx = context.WithValue(ctx, "org_id", orgID)
 			ctx = context.WithValue(ctx, "tier", tier)
+			ctx = context.WithValue(ctx, "user_role", role)
+			ctx = context.WithValue(ctx, "auth_method", "jwt")
 
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})

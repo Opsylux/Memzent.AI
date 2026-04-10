@@ -14,6 +14,7 @@ import {
   TrendingUp
 } from "lucide-react";
 import { RoutingVisualizer } from "@/components/routing-visualizer";
+import { AuditLogFeed } from "@/components/audit-log-feed";
 import Link from 'next/link';
 
 export default async function Page() {
@@ -203,46 +204,8 @@ export default async function Page() {
             <div className="absolute inset-0 pointer-events-none opacity-[0.03] grayscale bg-[url('https://grainy-gradients.vercel.app/noise.svg')]" />
           </div>
 
-          {/* Activity Logs (Mock Feed) */}
-          <div className="stat-card glow-cyan border-white/10 p-8 neural-bg relative overflow-hidden bg-black/40">
-             <div className="flex items-center justify-between mb-8">
-               <h3 className="text-xs font-black tracking-widest text-white/40 uppercase leading-none italic font-roboto-mono flex items-center gap-2">
-                 <Terminal size={14} className="text-aura-glow" /> 
-                 Live Neural Audit
-               </h3>
-               <div className="flex items-center gap-1.5">
-                  <div className="w-1.5 h-1.5 rounded-full bg-aura-glow animate-pulse shadow-[0_0_8px_#00f3ff]" />
-                  <span className="text-[10px] font-bold text-aura-glow/60 uppercase tracking-widest">Live Feed</span>
-               </div>
-             </div>
-             
-             <div className="font-mono text-[9px] space-y-5">
-               <div className="flex gap-4 border-l border-white/5 pl-4 py-1 hover:bg-white/[0.03] transition-colors cursor-help group">
-                  <span className="text-aura-glow/40 font-bold">23:14:01</span>
-                  <span className="text-white/40 group-hover:text-white/60 transition-colors">[AUTH] {org?.email || 'user'} Session Active</span>
-               </div>
-               <div className="flex gap-4 border-l border-aura-purple/20 pl-4 py-1 hover:bg-white/[0.03] transition-colors cursor-help group">
-                  <span className="text-aura-purple/40 font-bold">23:12:45</span>
-                  <span className="text-white/60 group-hover:text-white transition-colors">[SEMANTIC_HIT] Intent: "analyze gateway latency" - L1.5 Resolved</span>
-               </div>
-               <div className="flex gap-4 border-l border-aura-glow/20 pl-4 py-1 hover:bg-white/[0.03] transition-colors cursor-help group">
-                  <span className="text-aura-glow/40 font-bold">23:11:58</span>
-                  <span className="text-white/40 group-hover:text-white/60 transition-colors">[GATEWAY] Triple-Layer Cache Synchronized</span>
-               </div>
-               <div className="flex gap-4 border-l border-white/5 pl-4 py-1 hover:bg-white/[0.03] transition-colors cursor-help group">
-                  <span className="text-aura-accent/40 font-bold">23:10:22</span>
-                  <span className="text-white/40 group-hover:text-white/60 transition-colors">[REGISTRY] New Tool Discovered: "stripe_billing_connector"</span>
-               </div>
-             </div>
-
-             <div className="mt-8 pt-6 border-t border-white/5">
-                <button className="w-full py-3 rounded-xl bg-white/5 border border-white/10 text-[10px] font-black uppercase tracking-[0.3em] text-white/30 hover:text-white hover:bg-white/10 transition-all">
-                   OPEN INSPECTOR ENGINE
-                </button>
-             </div>
-
-             <div className="absolute inset-x-0 bottom-0 h-32 bg-gradient-to-t from-aura-dark to-transparent pointer-events-none" />
-          </div>
+          {/* Activity Logs (Real Feed) */}
+          <AuditLogFeed orgId={orgId} />
         </section>
       </div>
     </div>

@@ -1,15 +1,17 @@
 "use client"
 
 import { Search, Bell, Cpu, Cloud, Database } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 
 interface AuraTopNavProps {
   orgName: string
   email: string
   initials: string
   tier: string
+  role: string
 }
 
-export function AuraTopNav({ orgName, email, initials, tier }: AuraTopNavProps) {
+export function AuraTopNav({ orgName, email, initials, tier, role }: AuraTopNavProps) {
   return (
     <header className="sticky top-0 h-32 z-40 p-6 flex items-center justify-between glass border-white/5 rounded-3xl neural-bg m-4">
       <div className="flex-1 max-w-2xl relative group">
@@ -26,29 +28,31 @@ export function AuraTopNav({ orgName, email, initials, tier }: AuraTopNavProps) 
       </div>
 
       <div className="flex items-center gap-6">
-        <div className="flex items-center gap-8 border-r border-white/10 pr-8 mr-2 text-[10px] font-black tracking-widest uppercase">
-          <div className="flex flex-col gap-1 items-end">
-             <div className="flex items-center gap-2 text-aura-glow">
-               <Cpu size={12} />
-               <span>ROUTER_RUST</span>
-             </div>
-             <div className="text-white/20">99.2% Uptime</div>
+        {role === 'platform_staff' && (
+          <div className="flex items-center gap-8 border-r border-white/10 pr-8 mr-2 text-[10px] font-black tracking-widest uppercase animate-in fade-in slide-in-from-right-4 duration-1000">
+            <div className="flex flex-col gap-1 items-end">
+               <div className="flex items-center gap-2 text-aura-glow">
+                 <Cpu size={12} />
+                 <span>ROUTER_RUST</span>
+               </div>
+               <div className="text-white/20">99.2% Uptime</div>
+            </div>
+            <div className="flex flex-col gap-1 items-end">
+               <div className="flex items-center gap-2 text-aura-purple">
+                 <Cloud size={12} />
+                 <span>GATEWAY_GO</span>
+               </div>
+               <div className="text-white/20">0.42ms Latency</div>
+            </div>
+            <div className="flex flex-col gap-1 items-end">
+               <div className="flex items-center gap-2 text-aura-accent">
+                 <Database size={12} />
+                 <span>VECTOR_QDRANT</span>
+               </div>
+               <div className="text-white/20">1.21M Points</div>
+            </div>
           </div>
-          <div className="flex flex-col gap-1 items-end">
-             <div className="flex items-center gap-2 text-aura-purple">
-               <Cloud size={12} />
-               <span>GATEWAY_GO</span>
-             </div>
-             <div className="text-white/20">0.42ms Latency</div>
-          </div>
-          <div className="flex flex-col gap-1 items-end">
-             <div className="flex items-center gap-2 text-aura-accent">
-               <Database size={12} />
-               <span>VECTOR_QDRANT</span>
-             </div>
-             <div className="text-white/20">1.21M Points</div>
-          </div>
-        </div>
+        )}
 
         <div className="flex items-center gap-4">
            <div className="relative p-4 rounded-xl hover:bg-white/5 cursor-pointer transition-all border border-transparent hover:border-white/10 group">
@@ -58,17 +62,28 @@ export function AuraTopNav({ orgName, email, initials, tier }: AuraTopNavProps) 
            
            <div className="h-12 w-px bg-white/10 mx-2" />
 
-           <div className="flex items-center gap-3 pl-2">
-             <div className="text-right">
-                <div className="text-sm font-black tracking-tight truncate max-w-[140px]">{orgName}</div>
-                <div className="text-[10px] font-bold text-white/30 uppercase truncate max-w-[140px]">{email}</div>
-             </div>
-             <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-aura-matrix to-aura-dark border border-white/10 flex items-center justify-center p-0.5 shadow-xl">
-               <div className="w-full h-full rounded-lg bg-aura-dark flex items-center justify-center">
-                 <span className="text-xs font-black text-aura-glow opacity-80">{initials}</span>
-               </div>
-             </div>
-           </div>
+            <div className="flex items-center gap-3 pl-2">
+              <div className="text-right">
+                 <div className="flex items-center gap-2 justify-end">
+                   {(role === 'platform_staff' || role === 'admin') && (
+                     <Badge variant="outline" className="text-[8px] font-black px-1.5 py-0 rounded-md border-aura-purple/30 text-aura-purple uppercase tracking-tighter">
+                       {role === 'platform_staff' ? 'PLATFORM_STAFF' : 'ADMIN'}
+                     </Badge>
+                   )}
+                   <div className="text-sm font-black tracking-tight truncate max-w-[140px] uppercase italic">{orgName}</div>
+                 </div>
+                 <div className="text-[10px] font-bold text-white/30 uppercase truncate max-w-[140px] tracking-widest">{email}</div>
+              </div>
+                 <div className={`w-12 h-12 rounded-xl bg-gradient-to-br from-aura-matrix to-aura-dark border flex items-center justify-center p-0.5 shadow-xl transition-all ${
+                role === 'platform_staff' ? 'border-aura-purple/50 shadow-[0_0_15px_rgba(157,0,255,0.2)]' : 'border-white/10'
+              }`}>
+                <div className="w-full h-full rounded-lg bg-aura-dark flex items-center justify-center">
+                  <span className={`text-xs font-black opacity-80 ${
+                    role === 'platform_staff' ? 'text-aura-purple' : 'text-aura-glow'
+                  }`}>{initials}</span>
+                </div>
+              </div>
+            </div>
         </div>
       </div>
     </header>

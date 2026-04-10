@@ -12,11 +12,46 @@ export async function GET(request: Request) {
 
   // Standard PKCE Auth Code Flow
   if (code) {
-    const { error } = await supabase.auth.exchangeCodeForSession(code)
-    if (error) {
+    const { data: { user }, error } = await supabase.auth.exchangeCodeForSession(code)
+    if (error || !user) {
       console.error('Auth code exchange failed:', error)
       return NextResponse.redirect(`${origin}/login?error=auth_exchange_failed`)
     }
+
+    // Provisioning Logic: Ensure user has a default organization
+    const { data: membership } = await supabase
+      .from('members')
+      .select('org_id')
+      .eq('user_id', user.id)
+      .limit(1)
+      .maybeSingle()
+
+    if (!membership) {
+      console.log('Provisioning personal organization for new user:', user.id)
+      
+      // 1. Create Organization
+      const displayName = user.user_metadata?.full_name || user.email?.split('@')[0] || 'Member'
+      const { data: org, error: orgErr } = await supabase
+        .from('organizations')
+        .insert({
+          name: `${displayName}'s Workspace`,
+          subscription_tier: 'free'
+        })
+        .select()
+        .single()
+
+      if (!orgErr && org) {
+        // 2. Add as Admin Member
+        await supabase
+          .from('members')
+          .insert({
+            org_id: org.id,
+            user_id: user.id,
+            role: 'admin'
+          })
+      }
+    }
+
     return NextResponse.redirect(`${origin}/`)
   }
 

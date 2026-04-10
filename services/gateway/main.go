@@ -107,13 +107,17 @@ func main() {
 		slog.Info("Connected to Postgres RBAC")
 	}
 
-	// 5.5. Initialize Tool Registry (Phase 2: Dynamic Tools)
+	// 5.1 Initialize JWKS Provider (Dynamic Auth discovery)
+	var jwksProvider *auth.JWKSProvider
+	if cfg.JWKSURL != "" {
+		jwksProvider = auth.NewJWKSProvider(cfg.JWKSURL, cfg.SupabaseKey)
+		slog.Info("JWKS Provider initialized", "url", cfg.JWKSURL)
+	}
+
+	// 5.5. Initialize Tool Registry
 	var toolRegistry *tools.Registry
 	if rbacClient != nil {
 		toolRegistry = tools.NewRegistry(rbacClient.GetDB())
-		slog.Info("Tool Registry initialized (Postgres)")
-	} else {
-		slog.Warn("Tool Registry unavailable (Postgres connection failed)")
 	}
 
 	// 6. Initialize MCP Client
@@ -201,195 +205,134 @@ func main() {
 	// 8. Initialize Engine
 	auraEngine := engine.NewAuraEngine(vCache, rClient, rbacClient, providers, defaultProvider, mcpClient, toolRegistry, connRegistry, cfg.ToolRelevanceThreshold, cfg.LLMCacheTTL)
 
+	// 8.1 Initialize Stripe Handler (SaaS Billing)
+	stripeHandler := billing.NewStripeHandler(
+		rbacClient.GetDB(),
+		os.Getenv("STRIPE_WEBHOOK_SECRET"),
+		os.Getenv("STRIPE_PRO_ID"),
+		os.Getenv("STRIPE_BIZ_ID"),
+	)
+
 	mux := http.NewServeMux()
 
 	// Metrics API
 	mux.Handle("/metrics", promhttp.Handler())
 
-	// Health Checks (Enterprise standard)
+	// Health Checks
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
-		status := map[string]string{"status": "healthy", "service": "aura-gateway"}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(status)
+		json.NewEncoder(w).Encode(map[string]string{"status": "healthy"})
 	})
 
 	mux.HandleFunc("/readyz", func(w http.ResponseWriter, r *http.Request) {
-		status := map[string]string{"status": "ready", "time": time.Now().Format(time.RFC3339)}
-		
+		status := map[string]string{"status": "ready"}
 		if err := vCache.Ping(r.Context()); err != nil {
 			status["status"] = "not_ready"
-			status["valkey"] = "unreachable"
 			w.WriteHeader(http.StatusServiceUnavailable)
-		} else {
-			status["valkey"] = "online"
 		}
-
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(status)
 	})
 
-	// Chat API (v1)
-	mux.HandleFunc("/v1/chat", func(w http.ResponseWriter, r *http.Request) {
+	// --- Authenticated v1 API ---
+	middleware := auth.UnifiedAuthMiddleware(cfg.JWTSecret, jwksProvider, rbacClient)
+
+	// Chat API
+	mux.Handle("/v1/chat", middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
 			return
 		}
-
 		var req engine.PromptRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			http.Error(w, "Invalid Request Body", http.StatusBadRequest)
 			return
 		}
 
-		if req.Prompt == "" {
-			http.Error(w, "Missing 'prompt' field", http.StatusBadRequest)
-			return
-		}
-		if req.UserID == "" {
-			req.UserID = "anonymous"
+		// Extract identity from Middleware context
+		userID, _ := r.Context().Value("user_id").(string)
+		orgID, _ := r.Context().Value("org_id").(string)
+		
+		req.UserID = userID
+		if orgID != "" {
+			req.UserID = orgID 
 		}
 
-		// Headers override body for cache/provider/model control
-		if p := r.Header.Get("X-Aura-Provider"); p != "" && req.Provider == "" {
-			req.Provider = p
-		}
-		if m := r.Header.Get("X-Aura-Model"); m != "" && req.Model == "" {
-			req.Model = m
-		}
-		if r.Header.Get("X-Skip-Cache") == "true" || r.Header.Get("X-Skip-Cache") == "1" {
-			req.SkipCache = true
-		}
-		// Org-level scoping from Dashboard
-		if orgID := r.Header.Get("X-Org-ID"); orgID != "" {
-			req.UserID = orgID // Use org as the identity for routing
-		}
+		// Headers override
+		if p := r.Header.Get("X-Aura-Provider"); p != "" { req.Provider = p }
+		if m := r.Header.Get("X-Aura-Model"); m != "" { req.Model = m }
 
 		resp, err := auraEngine.Process(r.Context(), &req)
 		if err != nil {
-			slog.Error("Engine Processing Error", "error", err, "user_id", req.UserID)
+			slog.Error("Engine Processing Error", "error", err, "user", req.UserID)
 			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 			return
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		if resp.Cached {
-			w.Header().Set("X-Cache", "HIT")
-		} else {
-			w.Header().Set("X-Cache", "MISS")
-		}
-		w.Header().Set("X-Aura-Provider", resp.Provider)
+		if resp.Cached { w.Header().Set("X-Cache", "HIT") }
 		json.NewEncoder(w).Encode(resp)
-	})
+	})))
 
-	// Tools API (v1) — Lists all available tools (Postgres registry + MCP)
-	mux.HandleFunc("/v1/tools", func(w http.ResponseWriter, r *http.Request) {
+	// Tools API
+	mux.Handle("/v1/tools", middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		orgID, _ := r.Context().Value("org_id").(string)
+		
 		if r.Method == http.MethodPost {
-			// Handle tool registration (delegated to tools package)
 			tools.HandleRegisterTool(toolRegistry)(w, r)
 			return
 		}
 
-		if r.Method != http.MethodGet {
-			http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
-			return
-		}
-
-		// Fetch from Postgres tool registry (Phase 2) - Org-Scoped
 		var allTools []tools.ToolWithProvider
 		if toolRegistry != nil {
-			// Priority: X-Org-ID header > JWT context > empty
-			orgID := r.Header.Get("X-Org-ID")
-			if orgID == "" {
-				orgID, _ = r.Context().Value("org_id").(string)
-			}
-			dbTools, err := toolRegistry.ListTools(r.Context(), orgID)
-			if err == nil {
-				for _, t := range dbTools {
-					allTools = append(allTools, tools.ToolToAPI(t))
-				}
-			} else {
-				slog.Warn("Failed to fetch tools from registry", "error", err, "org_id", orgID)
+			dbTools, _ := toolRegistry.ListTools(r.Context(), orgID)
+			for _, t := range dbTools {
+				allTools = append(allTools, tools.ToolToAPI(t))
 			}
 		}
 
-		// Add MCP tools (Phase 1 compatibility)
 		if mcpClient != nil {
-			ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
-			defer cancel()
-			mcpTools, err := mcpClient.ListTools(ctx)
-			if err == nil {
-				for _, t := range mcpTools {
-					desc := ""
-					if t.Description != nil {
-						desc = *t.Description
-					}
-					allTools = append(allTools, tools.ToolWithProvider{
-						ID:          t.Name,
-						Name:        t.Name,
-						Description: desc,
-						Provider:    "Aura-MCP",
-						Status:      "online",
-					})
-				}
+			mcpTools, _ := mcpClient.ListTools(r.Context())
+			for _, t := range mcpTools {
+				desc := ""
+				if t.Description != nil { desc = *t.Description }
+				allTools = append(allTools, tools.ToolWithProvider{
+					ID: t.Name, Name: t.Name, Description: desc, Provider: "Aura-MCP", Status: "online",
+				})
 			}
 		}
-
-		// Add synthetic "Aura Search" tool
-		allTools = append([]tools.ToolWithProvider{
-			{
-				ID:          "aura_search",
-				Name:        "Neural Semantic Search",
-				Description: "Perform neural semantic vector similarity search",
-				Provider:    "Aura-Core",
-				Status:      "online",
-			},
-		}, allTools...)
-
+		
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(allTools)
-	})
+	})))
 
-	// Tool Management API — Register/disable tools (admin-only)
-	mux.HandleFunc("/v1/tools/register", tools.HandleRegisterTool(toolRegistry))
+	mux.Handle("/v1/tools/sync", middleware(http.HandlerFunc(tools.HandleSyncTools(toolRegistry))))
+	mux.Handle("/v1/tools/register", middleware(http.HandlerFunc(tools.HandleRegisterTool(toolRegistry))))
 
-	// Tool Management API — Disable a tool
-	mux.HandleFunc("/v1/tools/", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodDelete {
-			tools.HandleDisableTool(toolRegistry)(w, r)
-			return
-		}
-		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
-	})
+	// Audit API
+	mux.Handle("/v1/audit", middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		orgID, _ := r.Context().Value("org_id").(string)
+		events := metrics.GlobalAuditBuffer.GetLatest(orgID, 20)
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(events)
+	})))
 
-	// Stats API (v1)
+	// Stats API
 	startupTime := time.Now()
-	mux.HandleFunc("/v1/stats", func(w http.ResponseWriter, r *http.Request) {
-		uptime := time.Since(startupTime)
-		
-		activeProviders := auraEngine.ActiveProviderNames()
-		defaultProviderName := auraEngine.DefaultProviderName()
-
-		// Org-level scoping
-		orgID := r.Header.Get("X-Org-ID")
-		if orgID == "" {
-			orgID, _ = r.Context().Value("org_id").(string)
-		}
-		
+	mux.Handle("/v1/stats", middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		orgID, _ := r.Context().Value("org_id").(string)
 		stats := map[string]any{
-			"total_requests":      auraEngine.TotalRequests.Load(),
-			"cache_hits":          auraEngine.CacheHits.Load(),
-			"uptime_seconds":      int(uptime.Seconds()),
-			"status":              "online",
-			"provider_count":      auraEngine.ProviderCount(),
-			"active_providers":     activeProviders,
-			"default_provider":    defaultProviderName,
-			"semantic_engine":      "Qdrant",
-			"org_id":              orgID,
+			"total_requests": auraEngine.TotalRequests.Load(),
+			"cache_hits":     auraEngine.CacheHits.Load(),
+			"uptime_seconds": int(time.Since(startupTime).Seconds()),
+			"status":         "online",
+			"org_id":         orgID,
 		}
-		
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(stats)
-	})
+	})))
+
+	mux.Handle("/v1/billing/checkout", middleware(http.HandlerFunc(stripeHandler.CreateCheckoutSession)))
 
 	mux.HandleFunc("/generate-token", func(w http.ResponseWriter, r *http.Request) {
 		secret := cfg.JWTSecret
@@ -408,15 +351,14 @@ func main() {
 
 
 	// 8.5. Register SaaS Webhooks (Exclude from JWT Middleware)
-	stripeSecret := os.Getenv("STRIPE_WEBHOOK_SECRET")
-	stripeProID := os.Getenv("STRIPE_PRO_ID")
-	stripeBizID := os.Getenv("STRIPE_BIZ_ID")
-	stripeHandler := billing.NewStripeHandler(rbacClient.GetDB(), stripeSecret, stripeProID, stripeBizID)
 	
 	// Separate mux for endpoints that skip JWT middleware (or handle it manually)
 	publicMux := http.NewServeMux()
 	publicMux.HandleFunc("POST /v1/webhooks/stripe", stripeHandler.HandleWebhook)
-	publicMux.Handle("/", auth.JWTMiddleware(cfg.JWTSecret)(metricsMiddleware(commonMiddleware(mux))))
+	
+	// Checkout session handler is already registered on 'mux' above
+
+	publicMux.Handle("/", auth.UnifiedAuthMiddleware(cfg.JWTSecret, jwksProvider, rbacClient)(metricsMiddleware(commonMiddleware(mux))))
 
 	srv := &http.Server{
 		Addr:    cfg.Port,

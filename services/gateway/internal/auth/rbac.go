@@ -19,45 +19,32 @@ func NewRBACClient(connStr string) (*RBACClient, error) {
 		return nil, fmt.Errorf("failed to open postgres connection: %w", err)
 	}
 
-	// For demonstration purposes, we ensure the table exists
-	_, err = db.Exec(`
-		CREATE TABLE IF NOT EXISTS user_tools (
-			user_id VARCHAR(50) NOT NULL,
-			tool_id VARCHAR(50) NOT NULL,
-			PRIMARY KEY (user_id, tool_id)
-		)
-	`)
-	if err != nil {
-		return nil, fmt.Errorf("failed to ensure user_tools table exists: %w", err)
+	if err := db.Ping(); err != nil {
+		return nil, fmt.Errorf("failed to ping postgres: %w", err)
 	}
-
-	// Insert mock data if we are testing with 'solo-user' or 'admin-01'
-	db.Exec(`INSERT INTO user_tools (user_id, tool_id) VALUES ('solo-user', 'tool_123') ON CONFLICT DO NOTHING`)
-	db.Exec(`INSERT INTO user_tools (user_id, tool_id) VALUES ('solo-user', 'read_database') ON CONFLICT DO NOTHING`)
-	db.Exec(`INSERT INTO user_tools (user_id, tool_id) VALUES ('admin-01', 'aura_search') ON CONFLICT DO NOTHING`)
-	db.Exec(`INSERT INTO user_tools (user_id, tool_id) VALUES ('admin-01', 'read_database') ON CONFLICT DO NOTHING`)
 
 	return &RBACClient{db: db}, nil
 }
 
-// CheckPermission verifies if a user has a specific scope/permission
-func (c *RBACClient) CheckPermission(ctx context.Context, userID string, scope string) (bool, error) {
-	// For testing, we'll allow 'solo-user' and 'admin-01' to execute anything
-	if userID == "solo-user" || userID == "admin-01" {
+// CheckPermission verifies if an organization has access to a specific tool
+func (c *RBACClient) CheckPermission(ctx context.Context, orgID string, toolID string) (bool, error) {
+	// Let's ensure admin-01 fallback for local development if orgID is missing
+	if orgID == "admin-01" {
 		return true, nil
 	}
 
-	// In a real scenario, we'd query a permissions table
-	// var exists bool
-	// err := c.db.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM user_permissions WHERE user_id = $1 AND scope = $2)", userID, scope).Scan(&exists)
-	// return exists, err
+	var exists bool
+	err := c.db.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM org_tools WHERE org_id = $1 AND tool_id = $2)", orgID, toolID).Scan(&exists)
+	if err != nil {
+		return false, fmt.Errorf("failed to check permission: %w", err)
+	}
 
-	return false, nil
+	return exists, nil
 }
 
-// GetAllowedTools retrieves the list of tool IDs a user is allowed to access
-func (c *RBACClient) GetAllowedTools(userID string) ([]string, error) {
-	rows, err := c.db.Query("SELECT tool_id FROM user_tools WHERE user_id = $1", userID)
+// GetAllowedTools retrieves the list of tool IDs an organization is allowed to access
+func (c *RBACClient) GetAllowedTools(orgID string) ([]string, error) {
+	rows, err := c.db.Query("SELECT tool_id FROM org_tools WHERE org_id = $1", orgID)
 	if err != nil {
 		return nil, fmt.Errorf("query failed: %w", err)
 	}
@@ -82,6 +69,19 @@ func (c *RBACClient) GetAllowedTools(userID string) ([]string, error) {
 // GetDB returns the underlying postgres connection (for packages that need direct DB access)
 func (c *RBACClient) GetDB() *sql.DB {
 	return c.db
+}
+
+// VerifyAPIKey checks if an API key is valid and returns the associated OrgID
+func (c *RBACClient) VerifyAPIKey(ctx context.Context, key string) (string, error) {
+	var orgID string
+	err := c.db.QueryRowContext(ctx, "SELECT org_id FROM api_keys WHERE key_hash = $1", key).Scan(&orgID)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return "", fmt.Errorf("invalid API key")
+		}
+		return "", fmt.Errorf("failed to verify API key: %w", err)
+	}
+	return orgID, nil
 }
 
 

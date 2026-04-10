@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Shield, Check, Zap, Sparkles, Building2, ExternalLink, ArrowRight } from 'lucide-react'
 import { createClient } from '@supabase/supabase-js'
+import { createCheckoutSession } from '@/app/actions'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || ''
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
@@ -44,6 +45,8 @@ const plans = [
 export default function BillingPage() {
   const [currentTier, setCurrentTier] = useState('free')
   const [orgName, setOrgName] = useState('')
+  const [orgId, setOrgId] = useState<string | null>(null)
+  const [loading, setLoading] = useState(false)
 
   useEffect(() => {
     async function load() {
@@ -59,9 +62,11 @@ export default function BillingPage() {
 
         if (membership?.organizations) {
           const org = membership.organizations as any
+          setOrgId(org.id)
           setOrgName(org.name || '')
           setCurrentTier(org.subscription_tier || 'free')
         } else {
+          setOrgId(user.id)
           setOrgName(user.email?.split('@')[0] || 'Personal')
         }
       }
@@ -69,9 +74,19 @@ export default function BillingPage() {
     load()
   }, [])
 
-  const handleUpgrade = (planId: string) => {
-    if (planId === currentTier) return
-    alert(`Redirecting to Stripe Checkout for ${planId} subscription...`)
+  const handleUpgrade = async (planId: string) => {
+    if (planId === currentTier || !orgId) return
+    setLoading(true)
+    try {
+      const { url } = await createCheckoutSession(orgId, planId)
+      if (url) {
+        window.location.href = url
+      }
+    } catch (err: any) {
+      alert(`Provisioning Error: ${err.message}`)
+    } finally {
+      setLoading(false)
+    }
   }
 
   return (
@@ -137,17 +152,19 @@ export default function BillingPage() {
               <div className="p-8">
                 <Button 
                   onClick={() => handleUpgrade(plan.id)}
-                  disabled={isCurrent}
+                  disabled={isCurrent || loading}
                   className={`w-full py-7 rounded-2xl text-[10px] font-black uppercase tracking-[0.3em] transition-all h-14 ${
                     isCurrent 
                       ? 'bg-white/5 text-white/20 border border-white/5 cursor-default' 
                       : plan.highlight
                         ? 'bg-aura-purple text-white hover:bg-aura-purple/80 hover:shadow-[0_0_25px_rgba(151,71,255,0.4)]'
                         : 'bg-white text-black hover:bg-aura-glow'
-                  }`}
+                  } ${loading && !isCurrent ? 'opacity-50 cursor-wait' : ''}`}
                 >
                   {isCurrent ? (
                     <span className="flex items-center gap-2 italic"><Shield size={14} /> ACTIVE_SECTOR</span>
+                  ) : loading ? (
+                    <span className="flex items-center gap-2 italic">PROVISIONING...</span>
                   ) : (
                     <span className="flex items-center gap-2">{plan.cta} <ArrowRight size={14} /></span>
                   )}

@@ -21,6 +21,8 @@ type Config struct {
 	OllamaURL              string
 	OllamaModel            string
 	JWTSecret              string
+	JWKSURL                string
+	SupabaseKey            string
 	LLMCacheTTL            time.Duration
 	ToolRelevanceThreshold float64
 	Environment            string
@@ -42,6 +44,8 @@ func LoadConfig() *Config {
 		OllamaURL:              getEnv("OLLAMA_URL", "http://host.docker.internal:11434"),
 		OllamaModel:            getEnv("OLLAMA_MODEL", "llama3.2"),
 		JWTSecret:              getEnv("JWT_SECRET", "aura-enterprise-secret-2026"),
+		JWKSURL:                getEnv("JWKS_URL", ""),
+		SupabaseKey:            getEnv("SUPABASE_ANON_KEY", ""),
 		LLMCacheTTL:            getEnvDuration("LLM_CACHE_TTL", 1*time.Hour),
 		ToolRelevanceThreshold: getEnvFloat("TOOL_RELEVANCE_THRESHOLD", 0.7),
 		Environment:            getEnv("ENVIRONMENT", "development"),

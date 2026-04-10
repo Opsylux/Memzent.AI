@@ -1,5 +1,6 @@
 import { Sidebar } from "@/components/sidebar";
 import { AuraTopNav } from "@/components/aura-top-nav";
+import { NeuralAssistant } from "@/components/neural-assistant";
 import { getCurrentOrg, type OrgContext } from "@/lib/user-context";
 import { redirect } from "next/navigation";
 
@@ -18,7 +19,7 @@ export default async function AppLayout({
   return (
     <div className="flex min-h-screen w-full bg-aura-dark relative">
       {/* Sidebar - Fixed width */}
-      <Sidebar orgName={org.orgName} tier={org.tier} initials={org.initials} />
+      <Sidebar orgName={org.orgName} tier={org.tier} initials={org.initials} role={org.role} />
 
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col min-h-screen relative overflow-hidden">
@@ -28,6 +29,7 @@ export default async function AppLayout({
           email={org.email}
           initials={org.initials}
           tier={org.tier}
+          role={org.role}
         />
         
         {/* Page Content - Padded to avoid overlapping with TopNav */}
@@ -36,6 +38,8 @@ export default async function AppLayout({
             {children}
           </div>
         </main>
+        
+        <NeuralAssistant />
         
         {/* Optional: Static background flair */}
         <div className="fixed top-0 right-0 w-[500px] h-[500px] bg-aura-glow/5 blur-[120px] -z-10 rounded-full" />

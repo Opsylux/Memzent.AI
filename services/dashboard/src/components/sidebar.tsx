@@ -28,13 +28,19 @@ const navItems = [
   { name: 'Settings', href: '/settings', icon: Settings },
 ]
 
+const staffItems = [
+  { name: 'Fleet View', href: '/admin/fleet', icon: Shield },
+  { name: 'All Orgs', href: '/admin/orgs', icon: Building2 },
+]
+
 interface SidebarProps {
   orgName: string
   tier: string
   initials: string
+  role: string
 }
 
-export function Sidebar({ orgName, tier, initials }: SidebarProps) {
+export function Sidebar({ orgName, tier, initials, role }: SidebarProps) {
   const pathname = usePathname()
   const router = useRouter()
 
@@ -77,6 +83,7 @@ export function Sidebar({ orgName, tier, initials }: SidebarProps) {
 
       {/* Navigation */}
       <nav className="flex-1 space-y-2">
+        <div className="text-[10px] font-black uppercase text-white/20 tracking-[0.2em] mb-4 px-4 italic">Neural_Node</div>
         {navItems.map((item) => {
           const isActive = pathname === item.href
           return (
@@ -94,6 +101,29 @@ export function Sidebar({ orgName, tier, initials }: SidebarProps) {
             </Link>
           )
         })}
+
+        {role === 'platform_staff' && (
+          <div className="pt-8 space-y-2">
+            <div className="text-[10px] font-black uppercase text-aura-purple/40 tracking-[0.2em] mb-4 px-4 italic">Infrastructure_Ops</div>
+            {staffItems.map((item) => {
+              const isActive = pathname === item.href
+              return (
+                <Link
+                  key={item.name}
+                  href={item.href}
+                  className={`flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition-all ${
+                    isActive 
+                      ? 'bg-aura-purple/10 text-aura-purple border border-aura-purple/20 shadow-[0_0_20px_rgba(151,71,255,0.05)]' 
+                      : 'text-white/40 hover:text-aura-purple hover:bg-white/5'
+                  }`}
+                >
+                  <item.icon size={18} />
+                  {item.name}
+                </Link>
+              )
+            })}
+          </div>
+        )}
       </nav>
 
       {/* Footer */}
