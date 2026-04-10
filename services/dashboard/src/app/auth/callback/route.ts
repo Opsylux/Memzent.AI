@@ -4,17 +4,36 @@ import { NextResponse } from 'next/server'
 export async function GET(request: Request) {
   const requestUrl = new URL(request.url)
   const code = requestUrl.searchParams.get('code')
+  const accessToken = requestUrl.searchParams.get('access_token')
+  const refreshToken = requestUrl.searchParams.get('refresh_token')
   const origin = requestUrl.origin
 
+  const supabase = await createClient()
+
+  // Standard PKCE Auth Code Flow
   if (code) {
-    const supabase = await createClient()
     const { error } = await supabase.auth.exchangeCodeForSession(code)
     if (error) {
       console.error('Auth code exchange failed:', error)
       return NextResponse.redirect(`${origin}/login?error=auth_exchange_failed`)
     }
+    return NextResponse.redirect(`${origin}/`)
   }
 
-  // URL to redirect to after sign in process completes
+  // Fallback Implicit Auth Flow interception
+  if (accessToken && refreshToken) {
+    console.log('Intercepted Implicit Auth payload on server callback')
+    const { error } = await supabase.auth.setSession({
+      access_token: accessToken,
+      refresh_token: refreshToken,
+    })
+    
+    if (error) {
+      console.error('Auth manual session injection failed:', error)
+      return NextResponse.redirect(`${origin}/login?error=token_injection_failed`)
+    }
+    return NextResponse.redirect(`${origin}/`)
+  }
+
   return NextResponse.redirect(`${origin}/`)
 }

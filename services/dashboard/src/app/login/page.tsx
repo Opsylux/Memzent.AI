@@ -1,6 +1,7 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -11,6 +12,34 @@ export default function LoginPage() {
   const [email, setEmail] = useState('')
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState('')
+  const router = useRouter()
+
+  useEffect(() => {
+    // Manually parse tokens in case Supabase drops us at /login directly
+    const urlParams = new URLSearchParams(
+      window.location.hash.replace('#', '?') + '&' + window.location.search.replace('?', '&')
+    )
+    const accessToken = urlParams.get('access_token')
+    const refreshToken = urlParams.get('refresh_token')
+
+    if (accessToken && refreshToken) {
+      supabase.auth.setSession({
+        access_token: accessToken,
+        refresh_token: refreshToken,
+      }).then(() => {
+        router.push('/')
+        router.refresh()
+      })
+    }
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (session) {
+        router.push('/')
+        router.refresh()
+      }
+    })
+    return () => subscription.unsubscribe()
+  }, [router])
 
   const handleEmailLogin = async (e: React.FormEvent) => {
     e.preventDefault()

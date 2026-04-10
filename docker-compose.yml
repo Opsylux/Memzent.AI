@@ -82,6 +82,9 @@ services:
       - OLLAMA_ENABLED=true
       - OLLAMA_URL=http://ollama:11434
       - OLLAMA_MODEL=llama3.2
+      - STRIPE_WEBHOOK_SECRET=whsec_1234567890
+      - STRIPE_PRO_ID=prod_1234567890
+      - STRIPE_BIZ_ID=prod_1234567890
     # OPTIMIZED: Checks for mod file, compiles to binary, and fires up instantly!
     command: >
       sh -c "if [ ! -f go.mod ]; then go mod init aura-gateway; fi &&
