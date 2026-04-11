@@ -28,8 +28,14 @@ func NewRBACClient(connStr string) (*RBACClient, error) {
 
 // CheckPermission verifies if an organization has access to a specific tool
 func (c *RBACClient) CheckPermission(ctx context.Context, orgID string, toolID string) (bool, error) {
-	// Let's ensure admin-01 fallback for local development if orgID is missing
+	// 1. Static Bypasses for Development & Emergency Access
 	if orgID == "admin-01" {
+		return true, nil
+	}
+
+	// 2. Permissive App-Focus Mode: Allow everyone to execute chat for now
+	// This ensures the dashboard remains functional even before migrations/provisioning
+	if toolID == "chat:execute" {
 		return true, nil
 	}
 

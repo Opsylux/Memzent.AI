@@ -78,6 +78,7 @@ services:
       - STRIPE_PRO_ID=prod_1234567890
       - STRIPE_BIZ_ID=prod_1234567890
       - POSTGRES_URL=postgresql://postgres.qjzhikynowfbswcjwvhu:ZgJg3B0ezU2Z2coO@aws-1-us-east-1.pooler.supabase.com:6543/postgres
+      - SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFqemhpa3lub3dmYnN3Y2p3dmh1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU1NDIxNjYsImV4cCI6MjA5MTExODE2Nn0.rX5Sq3iGwaZkA2zs1bFCQONTC8Q9mSvybIlkH6NvOKU
     # OPTIMIZED: Checks for mod file, compiles to binary, and fires up instantly!
     command: >
       sh -c "if [ ! -f go.mod ]; then go mod init aura-gateway; fi &&
@@ -102,7 +103,7 @@ services:
       - NEXT_PUBLIC_GATEWAY_URL=http://localhost:8080
       - GATEWAY_INTERNAL_URL=http://aura-gateway:8080
       - NEXT_PUBLIC_SUPABASE_URL=https://qjzhikynowfbswcjwvhu.supabase.co
-      - NEXT_PUBLIC_SUPABASE_ANON_KEY=sb_publishable_4z4suDUmBfYjxTQNg5WHSA_dq3f88ua
+      - NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFqemhpa3lub3dmYnN3Y2p3dmh1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU1NDIxNjYsImV4cCI6MjA5MTExODE2Nn0.rX5Sq3iGwaZkA2zs1bFCQONTC8Q9mSvybIlkH6NvOKU
     command: >
       sh -c "bun install && bun dev"
 

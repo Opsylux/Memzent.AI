@@ -47,6 +47,8 @@ func UnifiedAuthMiddleware(secret string, jwks *JWKSProvider, rbac *RBACClient) 
 
 			// 2. Try JWT Authentication (Authorization: Bearer <token>)
 			authHeader := r.Header.Get("Authorization")
+			xOrgID := r.Header.Get("X-Org-ID") // Get X-Org-ID as a potential fallback/override
+
 			if authHeader == "" {
 				http.Error(w, "Unauthorized: Missing identity (JWT or API Key)", http.StatusUnauthorized)
 				return
@@ -105,13 +107,25 @@ func UnifiedAuthMiddleware(secret string, jwks *JWKSProvider, rbac *RBACClient) 
 
 			// Extract Multi-Tenant Identity
 			appMetadata, _ := claims["app_metadata"].(map[string]interface{})
+			userMetadata, _ := claims["user_metadata"].(map[string]interface{})
 			userID := claims["sub"].(string)
-			orgID := "default-org"
+
+			// Resolve Org ID (Priority: JWT app_metadata -> JWT user_metadata -> X-Org-ID Header -> Default Nil)
+			orgID := "00000000-0000-0000-0000-000000000000"
+			
 			if oid, ok := appMetadata["org_id"].(string); ok {
 				orgID = oid
+			} else if oid, ok := userMetadata["org_id"].(string); ok {
+				orgID = oid
+			} else if xOrgID != "" {
+				// Trust X-Org-ID if provided by the dashboard as long as the JWT is valid
+				orgID = xOrgID
 			}
+			
 			tier := "free"
 			if t, ok := appMetadata["tier"].(string); ok {
+				tier = t
+			} else if t, ok := userMetadata["tier"].(string); ok {
 				tier = t
 			}
 			
@@ -119,6 +133,8 @@ func UnifiedAuthMiddleware(secret string, jwks *JWKSProvider, rbac *RBACClient) 
 			if r, ok := claims["role"].(string); ok {
 				role = r
 			} else if r, ok := appMetadata["role"].(string); ok {
+				role = r
+			} else if r, ok := userMetadata["role"].(string); ok {
 				role = r
 			}
 

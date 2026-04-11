@@ -137,22 +137,24 @@ func (e *AuraEngine) Process(ctx context.Context, req *PromptRequest) (*PromptRe
 	}
 
 
-	// C. RBAC Check
+	// C. RBAC Check (Organization Scoped)
 	var allowedTools []string
 	if e.rbac != nil {
-		allowed, err := e.rbac.CheckPermission(ctx, req.UserID, "chat:execute")
+		// Use orgID from context for permission checks
+		allowed, err := e.rbac.CheckPermission(ctx, orgID, "chat:execute")
 		if err != nil {
-			slog.Error("RBAC check failed", "error", err, "user_id", req.UserID)
+			slog.Error("RBAC check failed", "error", err, "org_id", orgID)
 		}
 		if !allowed {
+			slog.Warn("Unauthorized engine access attempted", "org_id", orgID, "user_id", req.UserID)
 			return nil, fmt.Errorf("unauthorized: insufficient scope")
 		}
-		// Get tools specifically allowed for this user
-		allowedTools, _ = e.rbac.GetAllowedTools(req.UserID)
+		// Get tools specifically allowed for this organization
+		allowedTools, _ = e.rbac.GetAllowedTools(orgID)
 	}
 
 	// D. Semantic Routing (includes Vector Search & Prompt Compression via Rust)
-	tools, compressedPrompt, similarPromptHash, currentPromptHash, err := e.router.GetBestTools(ctx, req.Prompt, req.UserID, allowedTools)
+	tools, compressedPrompt, similarPromptHash, currentPromptHash, err := e.router.GetBestTools(ctx, req.Prompt, orgID, allowedTools)
 	if err != nil {
 		slog.Warn("Router fallback engaged", "error", err)
 	}

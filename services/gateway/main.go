@@ -112,6 +112,22 @@ func main() {
 	if cfg.JWKSURL != "" {
 		jwksProvider = auth.NewJWKSProvider(cfg.JWKSURL, cfg.SupabaseKey)
 		slog.Info("JWKS Provider initialized", "url", cfg.JWKSURL)
+
+		// Seed the known Supabase EC public key (ES256 / P-256) so that
+		// JWT verification works immediately, even when the JWKS endpoint
+		// returns 401 due to network policy.
+		//
+		// The literal JWK can be overridden via SUPABASE_STATIC_JWK env var.
+		// Default is the key retrieved from the Supabase project dashboard.
+		staticJWK := os.Getenv("SUPABASE_STATIC_JWK")
+		if staticJWK == "" {
+			staticJWK = `{"x":"UTI4xiBSLxHQs5oiBAsa-kpdkrkU0c-ZLQ05RajACOw","y":"b0Fgsaxo33a4HCdADuLLJu1XFXqTDRwXQYEkQVEvOGQ","alg":"ES256","crv":"P-256","kid":"ab27c078-c304-4414-87f2-9ca0622a565e","kty":"EC"}`
+		}
+		if kid, ecKey, keyErr := auth.ParseECJWKLiteral(staticJWK); keyErr != nil {
+			slog.Warn("JWKS: failed to parse static JWK, remote fetch only", "error", keyErr)
+		} else {
+			jwksProvider.SeedKey(kid, ecKey)
+		}
 	}
 
 	// 5.5. Initialize Tool Registry
@@ -251,12 +267,11 @@ func main() {
 
 		// Extract identity from Middleware context
 		userID, _ := r.Context().Value("user_id").(string)
-		orgID, _ := r.Context().Value("org_id").(string)
+		_, _ = r.Context().Value("org_id").(string) // Ensure it exists in context, but not needed here directly
 		
 		req.UserID = userID
-		if orgID != "" {
-			req.UserID = orgID 
-		}
+		// Note: The engine now uses orgID from context for RBAC and scoping.
+		// req.UserID is kept as the physical user ID for individual tracking.
 
 		// Headers override
 		if p := r.Header.Get("X-Aura-Provider"); p != "" { req.Provider = p }

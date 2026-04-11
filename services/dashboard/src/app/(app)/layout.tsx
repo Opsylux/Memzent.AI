@@ -4,6 +4,8 @@ import { NeuralAssistant } from "@/components/neural-assistant";
 import { getCurrentOrg, type OrgContext } from "@/lib/user-context";
 import { redirect } from "next/navigation";
 
+export const dynamic = "force-dynamic";
+
 export default async function AppLayout({
   children,
 }: {
@@ -11,10 +13,9 @@ export default async function AppLayout({
 }) {
   const org = await getCurrentOrg();
 
-  // If no session exists, redirect to login
-  if (!org) {
-    redirect('/login');
-  }
+  // Middleware now handles the /login redirect.
+  // We just provide the context to children.
+  if (!org) return null;
 
   return (
     <div className="flex min-h-screen w-full bg-aura-dark relative">

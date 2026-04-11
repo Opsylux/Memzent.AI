@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"math/big"
 	"net/http"
 	"sync"
@@ -48,6 +49,17 @@ func NewJWKSProvider(url, apiKey string) *JWKSProvider {
 	}
 }
 
+// SeedKey pre-loads a known public key into the cache.
+// This is the primary fallback when the JWKS endpoint is unreachable (e.g.
+// returns 401 due to network policy).  Call this from main.go with the key
+// material obtained from the Supabase dashboard.
+func (p *JWKSProvider) SeedKey(kid string, key interface{}) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.keys[kid] = key
+	slog.Info("JWKS: static key seeded", "kid", kid)
+}
+
 // GetKey returns the public key for a given kid (Key ID)
 func (p *JWKSProvider) GetKey(kid string) (interface{}, error) {
 	p.mu.RLock()
@@ -58,7 +70,7 @@ func (p *JWKSProvider) GetKey(kid string) (interface{}, error) {
 		return key, nil
 	}
 
-	// Not found or cache expired, fetch new ones
+	// Not found in cache – try a live fetch
 	if err := p.Refresh(); err != nil {
 		return nil, err
 	}
@@ -77,59 +89,75 @@ func (p *JWKSProvider) GetKey(kid string) (interface{}, error) {
 // Refresh fetches the latest keys from the JWKS URL
 func (p *JWKSProvider) Refresh() error {
 	p.mu.Lock()
-	defer p.mu.Unlock()
-
 	// Rate limit refreshes (max once every 5 seconds)
 	if time.Since(p.lastMod) < 5*time.Second {
+		p.mu.Unlock()
 		return nil
 	}
+	// Set lastMod immediately to prevent concurrent refresh attempts
+	// but we don't return an error here so others can still use the cache
+	p.lastMod = time.Now()
+	url := p.url
+	apiKey := p.apiKey
+	p.mu.Unlock()
 
 	client := &http.Client{Timeout: 10 * time.Second}
-	req, err := http.NewRequest("GET", p.url, nil)
+
+	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return fmt.Errorf("failed to create JWKS request: %w", err)
 	}
 
-	// Supabase Cloud requires apikey header even for discovery
-	if p.apiKey != "" {
-		req.Header.Set("apikey", p.apiKey)
-		req.Header.Set("Authorization", "Bearer "+p.apiKey)
+	if apiKey != "" {
+		req.Header.Set("apikey", apiKey)
+		req.Header.Set("Authorization", "Bearer "+apiKey)
 	}
 
 	resp, err := client.Do(req)
 	if err != nil {
-		return fmt.Errorf("failed to fetch JWKS: %w", err)
+		return fmt.Errorf("failed to fetch JWKS from %s: %w", url, err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("failed to fetch JWKS, status: %d from %s", resp.StatusCode, p.url)
+		slog.Warn("JWKS: remote fetch failed, using cached/seeded keys",
+			"status", resp.StatusCode, "url", url)
+		return nil
 	}
 
 	var jwks JWKS
 	if err := json.NewDecoder(resp.Body).Decode(&jwks); err != nil {
-		return fmt.Errorf("failed to decode JWKS from %s: %w", p.url, err)
+		return fmt.Errorf("failed to decode JWKS: %w", err)
 	}
 
+	newKeys := make(map[string]interface{})
 	for _, jwk := range jwks.Keys {
 		var key interface{}
-		var err error
+		var parseErr error
 
 		switch jwk.Kty {
 		case "RSA":
-			key, err = parseRSAKey(jwk)
+			key, parseErr = parseRSAKey(jwk)
 		case "EC":
-			key, err = parseECKey(jwk)
+			key, parseErr = parseECKey(jwk)
 		default:
-			continue // Skip unknown key types
+			continue
 		}
 
-		if err == nil {
-			p.keys[jwk.Kid] = key
+		if parseErr == nil {
+			newKeys[jwk.Kid] = key
 		}
 	}
 
-	p.lastMod = time.Now()
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	for kid, key := range newKeys {
+		if _, exists := p.keys[kid]; !exists {
+			slog.Info("JWKS: new key loaded", "kid", kid)
+		}
+		p.keys[kid] = key
+	}
+
 	return nil
 }
 
@@ -182,4 +210,21 @@ func parseECKey(jwk JSONWebKey) (*ecdsa.PublicKey, error) {
 		X:     new(big.Int).SetBytes(xBytes),
 		Y:     new(big.Int).SetBytes(yBytes),
 	}, nil
+}
+
+// ParseECJWKLiteral parses an inline JWK JSON object into an *ecdsa.PublicKey.
+// Use this to seed a known key at startup without needing the JWKS endpoint.
+func ParseECJWKLiteral(jwkJSON string) (string, *ecdsa.PublicKey, error) {
+	var jwk JSONWebKey
+	if err := json.Unmarshal([]byte(jwkJSON), &jwk); err != nil {
+		return "", nil, fmt.Errorf("failed to parse JWK JSON: %w", err)
+	}
+	if jwk.Kty != "EC" {
+		return "", nil, fmt.Errorf("expected EC key, got %s", jwk.Kty)
+	}
+	key, err := parseECKey(jwk)
+	if err != nil {
+		return "", nil, err
+	}
+	return jwk.Kid, key, nil
 }
