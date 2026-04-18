@@ -336,9 +336,11 @@ func main() {
 	startupTime := time.Now()
 	mux.Handle("/v1/stats", middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		orgID, _ := r.Context().Value("org_id").(string)
+		reqs, hits := auraEngine.GetStats(orgID)
+
 		stats := map[string]any{
-			"total_requests": auraEngine.TotalRequests.Load(),
-			"cache_hits":     auraEngine.CacheHits.Load(),
+			"total_requests": reqs,
+			"cache_hits":     hits,
 			"uptime_seconds": int(time.Since(startupTime).Seconds()),
 			"status":         "online",
 			"org_id":         orgID,

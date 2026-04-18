@@ -29,8 +29,8 @@ const navItems = [
 ]
 
 const staffItems = [
-  { name: 'Fleet View', href: '/admin/fleet', icon: Shield },
-  { name: 'All Orgs', href: '/admin/orgs', icon: Building2 },
+  { name: 'Global Nodes', href: '/admin/nodes', icon: Shield },
+  { name: 'System Logs', href: '/admin/logs', icon: Database },
 ]
 
 interface SidebarProps {

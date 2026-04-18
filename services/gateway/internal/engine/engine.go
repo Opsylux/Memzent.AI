@@ -53,6 +53,8 @@ type AuraEngine struct {
 
 	TotalRequests atomic.Uint64
 	CacheHits     atomic.Uint64
+	orgRequests   sync.Map // Tracks requests per org (map[string]*atomic.Uint64)
+	orgHits       sync.Map // Tracks cache hits per org (map[string]*atomic.Uint64)
 }
 
 // NewAuraEngine initializes the engine with its required dependencies.
@@ -79,6 +81,17 @@ func (e *AuraEngine) ActiveProviderNames() []string {
 	return providers
 }
 
+func (e *AuraEngine) GetStats(orgID string) (uint64, uint64) {
+	var reqs, hits uint64
+	if counter, ok := e.orgRequests.Load(orgID); ok {
+		reqs = counter.(*atomic.Uint64).Load()
+	}
+	if counter, ok := e.orgHits.Load(orgID); ok {
+		hits = counter.(*atomic.Uint64).Load()
+	}
+	return reqs, hits
+}
+
 func (e *AuraEngine) DefaultProviderName() string {
 	if p, ok := e.providers[e.defaultProvider]; ok {
 		return p.GetProviderName()
@@ -100,6 +113,10 @@ func (e *AuraEngine) Process(ctx context.Context, req *PromptRequest) (*PromptRe
 		orgID = "default"
 	}
 
+	// Track per-org requests
+	reqCounter, _ := e.orgRequests.LoadOrStore(orgID, &atomic.Uint64{})
+	reqCounter.(*atomic.Uint64).Add(1)
+
 	// Dynamic Rate Limiting Based on Tier
 	limit := 10.0 // Free default
 	if tier == "pro" {
@@ -120,6 +137,8 @@ func (e *AuraEngine) Process(ctx context.Context, req *PromptRequest) (*PromptRe
 		cachedResp, err := e.cache.GetSemanticResult(ctx, cacheKey)
 		if err == nil && cachedResp != "" {
 			e.CacheHits.Add(1)
+			hitCounter, _ := e.orgHits.LoadOrStore(orgID, &atomic.Uint64{})
+			hitCounter.(*atomic.Uint64).Add(1)
 			slog.Info("🎯 Stage 1 Cache HIT (Org-Isolated)", "org_id", orgID, "prompt", req.Prompt)
 			return &PromptResponse{Text: cachedResp, Cached: true}, nil
 		}
@@ -130,6 +149,8 @@ func (e *AuraEngine) Process(ctx context.Context, req *PromptRequest) (*PromptRe
 		cachedCanon, err := e.cache.GetSemanticResult(ctx, canonKey)
 		if err == nil && cachedCanon != "" {
 			e.CacheHits.Add(1)
+			hitCounter, _ := e.orgHits.LoadOrStore(orgID, &atomic.Uint64{})
+			hitCounter.(*atomic.Uint64).Add(1)
 			slog.Info("🎯 Stage 1.5 Cache HIT (Org-Isolated)", "org_id", orgID, "canonical", cHash)
 			_ = e.cache.SetResult(ctx, cacheKey, cachedCanon, e.cacheTTL)
 			return &PromptResponse{Text: cachedCanon, Cached: true}, nil
@@ -164,6 +185,9 @@ func (e *AuraEngine) Process(ctx context.Context, req *PromptRequest) (*PromptRe
 		simKey := fmt.Sprintf("org:%s:s:%s", orgID, similarPromptHash)
 		cachedResp, err := e.cache.GetSemanticResult(ctx, simKey)
 		if err == nil && cachedResp != "" {
+			e.CacheHits.Add(1)
+			hitCounter, _ := e.orgHits.LoadOrStore(orgID, &atomic.Uint64{})
+			hitCounter.(*atomic.Uint64).Add(1)
 			slog.Info("🎯 Stage 2 Cache HIT (Org-Isolated)", "org_id", orgID, "similar_hash", similarPromptHash)
 			return &PromptResponse{Text: cachedResp, Cached: true}, nil
 		}

@@ -13,9 +13,10 @@ export default async function AppLayout({
 }) {
   const org = await getCurrentOrg();
 
-  // Middleware now handles the /login redirect.
-  // We just provide the context to children.
-  if (!org) return null;
+  // We redirect to /login if no session exists to avoid 404s
+  if (!org) {
+    redirect("/login");
+  }
 
   return (
     <div className="flex min-h-screen w-full bg-aura-dark relative">
