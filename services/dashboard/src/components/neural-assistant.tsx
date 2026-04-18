@@ -37,7 +37,8 @@ export function NeuralAssistant() {
       // For now, we reuse the existing executeAuraPrompt
       // but later we can add a specific 'assistant' flag/intent
       const res = await executeAuraPrompt(userMsg)
-      setMessages(prev => [...prev, { role: 'assistant', content: res.response }])
+      console.log("Chat response:", res)
+      setMessages(prev => [...prev, { role: 'assistant', content: res.text || JSON.stringify(res) }])
     } catch (err: any) {
       setMessages(prev => [...prev, { role: 'assistant', content: `CRITICAL_ERROR: ${err.message}` }])
     } finally {

@@ -27,18 +27,26 @@ export async function proxy(request: NextRequest) {
     }
   )
 
-  const { data: { user } } = await supabase.auth.getUser()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
 
   const { pathname } = request.nextUrl
-  const isAuthPage = pathname.startsWith('/login')
-  const isAuthCallback = pathname.startsWith('/auth/callback')
-  
-  if (!user && !isAuthPage && !isAuthCallback) {
-    return NextResponse.redirect(new URL('/login', request.url))
+
+  if (
+    !user &&
+    !pathname.startsWith('/login') &&
+    !pathname.startsWith('/auth')
+  ) {
+    const url = request.nextUrl.clone()
+    url.pathname = '/login'
+    return NextResponse.redirect(url)
   }
 
-  if (user && isAuthPage) {
-    return NextResponse.redirect(new URL('/', request.url))
+  if (user && pathname.startsWith('/login')) {
+    const url = request.nextUrl.clone()
+    url.pathname = '/'
+    return NextResponse.redirect(url)
   }
 
   return response
