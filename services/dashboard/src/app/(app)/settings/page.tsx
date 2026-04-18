@@ -4,12 +4,8 @@ import { useState, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { Badge } from "@/components/ui/badge";
 import { Settings, User, Shield, Bell, Zap, Save, AlertTriangle } from 'lucide-react'
-import { createClient } from '@supabase/supabase-js'
 import { updateOrgProfile, getOrgProfile } from '../../actions'
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || ''
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
-const supabase = createClient(supabaseUrl, supabaseAnonKey)
+import { supabase } from '@/lib/supabase'
 
 export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState<'profile' | 'security' | 'api' | 'alerts'>('profile')

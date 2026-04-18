@@ -6,11 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Key, Plus, Trash2, Copy, CheckCircle2, ShieldAlert } from 'lucide-react'
 import { getApiKeys, createApiKey, revokeApiKey } from '../../actions'
-import { createClient } from '@supabase/supabase-js'
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || ''
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
-const supabase = createClient(supabaseUrl, supabaseAnonKey)
+import { supabase } from '@/lib/supabase'
 
 export default function ApiKeysPage() {
   const [keys, setKeys] = useState<any[]>([])

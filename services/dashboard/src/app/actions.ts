@@ -109,16 +109,20 @@ export async function createApiKey(orgId: string, name: string) {
     const key = `aura_${Math.random().toString(36).substring(2, 15)}${Math.random().toString(36).substring(2, 15)}`;
     const prefix = key.substring(0, 8);
     
-    const { error } = await supabase
+    const { data, error } = await supabase
         .from('api_keys')
         .insert({
             org_id: orgId,
             name: name,
             key_prefix: prefix,
             key_hash: key
-        });
+        })
+        .select();
 
-    if (error) throw error;
+    if (error) {
+        console.error("Supabase insert error in createApiKey:", error);
+        throw error;
+    }
     return { key };
 }
 
