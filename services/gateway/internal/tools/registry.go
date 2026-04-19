@@ -4,6 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"log/slog"
+	"sync"
 	"time"
 )
 
@@ -37,14 +39,127 @@ type Tool struct {
 	UpdatedAt       time.Time              `json:"updated_at"`
 }
 
-// Registry manages tool storage and retrieval from Postgres
+// SyncCallback is called after a successful Refresh with the list of tools that need re-vectorization.
+type SyncCallback func(ctx context.Context, tools []*Tool)
+
+// Registry manages tool storage and retrieval from Postgres.
+// It also drives the Phase 2 incremental refresh loop that keeps
+// the Qdrant vector store in sync with Postgres.
 type Registry struct {
-	db *sql.DB
+	db           *sql.DB
+	lastRefresh  time.Time
+	mu           sync.RWMutex
 }
 
-// NewRegistry creates a new tool registry backed by Postgres
+// NewRegistry creates a new tool registry backed by Postgres.
 func NewRegistry(db *sql.DB) *Registry {
 	return &Registry{db: db}
+}
+
+// Refresh polls Postgres for tools that have drifted from the Qdrant vector store
+// (i.e., last_synced_at IS NULL  or last_synced_at < updated_at).
+// It invokes onSync for any tools it finds, then marks them as synced in Postgres.
+// Returns the number of tools that required syncing.
+func (r *Registry) Refresh(ctx context.Context, onSync SyncCallback) (int, error) {
+	query := `
+		SELECT id, org_id, name, description, connector_type, endpoint,
+		       config, input_schema, output_schema, timeout_seconds,
+		       enabled, requires_auth, created_at, updated_at
+		FROM tools
+		WHERE enabled = true
+		  AND (last_synced_at IS NULL OR last_synced_at < updated_at)
+		ORDER BY updated_at ASC
+	`
+
+	rows, err := r.db.QueryContext(ctx, query)
+	if err != nil {
+		return 0, err
+	}
+	defer rows.Close()
+
+	var driftedTools []*Tool
+	for rows.Next() {
+		tool := &Tool{}
+		var configData, inputData, outputData []byte
+		err := rows.Scan(
+			&tool.ID, &tool.OrgID, &tool.Name, &tool.Description, &tool.ConnectorType, &tool.Endpoint,
+			&configData, &inputData, &outputData, &tool.TimeoutSeconds,
+			&tool.Enabled, &tool.RequiresAuth, &tool.CreatedAt, &tool.UpdatedAt,
+		)
+		if err != nil {
+			return 0, err
+		}
+		json.Unmarshal(configData, &tool.Config)
+		json.Unmarshal(inputData, &tool.InputSchema)
+		json.Unmarshal(outputData, &tool.OutputSchema)
+		driftedTools = append(driftedTools, tool)
+	}
+	if err := rows.Err(); err != nil {
+		return 0, err
+	}
+
+	if len(driftedTools) == 0 {
+		r.mu.Lock()
+		r.lastRefresh = time.Now()
+		r.mu.Unlock()
+		return 0, nil
+	}
+
+	// Invoke the caller-provided callback (e.g., gRPC to Rust for vectorization)
+	if onSync != nil {
+		onSync(ctx, driftedTools)
+	}
+
+	// Mark all drifted tools as synced
+	for _, t := range driftedTools {
+		_, _ = r.db.ExecContext(ctx,
+			`UPDATE tools SET last_synced_at = NOW() WHERE id = $1`,
+			t.ID,
+		)
+	}
+
+	r.mu.Lock()
+	r.lastRefresh = time.Now()
+	r.mu.Unlock()
+
+	return len(driftedTools), nil
+}
+
+// LastRefreshTime returns the time of the most recent successful refresh.
+func (r *Registry) LastRefreshTime() time.Time {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.lastRefresh
+}
+
+// StartRefreshLoop runs Refresh on a fixed interval until ctx is cancelled.
+// The onSync callback is forwarded directly to Refresh on every cycle.
+func (r *Registry) StartRefreshLoop(ctx context.Context, interval time.Duration, onSync SyncCallback) {
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	slog.Info("[ToolRegistry] Refresh loop started", "interval", interval)
+
+	// Run an eager first pass immediately
+	if n, err := r.Refresh(ctx, onSync); err != nil {
+		slog.Warn("[ToolRegistry] Initial refresh failed", "error", err)
+	} else if n > 0 {
+		slog.Info("[ToolRegistry] Initial sync complete", "tools_vectorized", n)
+	}
+
+	for {
+		select {
+		case <-ctx.Done():
+			slog.Info("[ToolRegistry] Refresh loop stopping")
+			return
+		case <-ticker.C:
+			if n, err := r.Refresh(ctx, onSync); err != nil {
+				slog.Warn("[ToolRegistry] Periodic refresh failed", "error", err)
+			} else if n > 0 {
+				slog.Info("[ToolRegistry] Periodic sync complete", "tools_vectorized", n)
+			}
+		}
+	}
 }
 
 // RegisterTool stores a new tool in the registry

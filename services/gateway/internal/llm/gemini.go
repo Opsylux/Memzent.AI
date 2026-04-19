@@ -22,6 +22,14 @@ func NewGeminiProvider(apiKey, model string) Provider {
 
 func (g *GeminiProvider) GetProviderName() string { return "Gemini" }
 
+func (g *GeminiProvider) GetMetadata() ProviderMetadata {
+	return ProviderMetadata{
+		Name:            "gemini",
+		DefaultModel:    "gemini-1.5-flash",
+		SupportedModels: []string{"gemini-1.5-flash", "gemini-1.5-pro", "gemini-1.0-pro"},
+	}
+}
+
 func (g *GeminiProvider) Generate(ctx context.Context, prompt string, tools []any, model string) (string, error) {
 	// Resolve model: per-request override takes priority over configured default
 	activeModel := g.Model

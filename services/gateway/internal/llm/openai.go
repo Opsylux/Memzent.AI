@@ -20,7 +20,15 @@ func NewOpenAIProvider(apiKey, model string) Provider {
 	return &OpenAIProvider{APIKey: apiKey, Model: model}
 }
 
-func (o *OpenAIProvider) GetProviderName() string { return "OpenAI" }
+func (o *OpenAIProvider) GetProviderName() string { return "OpenAI (" + o.Model + ")" }
+
+func (o *OpenAIProvider) GetMetadata() ProviderMetadata {
+	return ProviderMetadata{
+		Name:            "openai",
+		DefaultModel:    o.Model,
+		SupportedModels: []string{o.Model, "gpt-4", "gpt-4-turbo", "gpt-3.5-turbo"},
+	}
+}
 
 func (o *OpenAIProvider) Generate(ctx context.Context, prompt string, tools []any, model string) (string, error) {
 	url := "https://api.openai.com/v1/chat/completions"

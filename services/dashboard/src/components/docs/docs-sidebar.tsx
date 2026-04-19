@@ -2,9 +2,9 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Book, Zap, Shield, Key, Code, MessageCircle } from "lucide-react";
+import { Book, Zap, Shield, Key, Code, MessageCircle, Cpu } from "lucide-react";
 
-const docSections = [
+export const docSections = [
   {
     title: "Core Concepts",
     items: [
@@ -26,6 +26,12 @@ const docSections = [
     items: [
       { name: "RBAC Overview", href: "/docs/rbac", icon: Shield },
       { name: "Managing Permissions", href: "/docs/permissions", icon: Shield },
+    ]
+  },
+  {
+    title: "Tools & Registry",
+    items: [
+      { name: "Dynamic Tool Registry", href: "/docs/tool-registry", icon: Cpu },
     ]
   }
 ];

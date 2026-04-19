@@ -25,7 +25,11 @@ import (
 	"aura-gateway/internal/tools"
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+
+	_ "aura-gateway/docs"
 )
+
+// Replace with your module path
 
 func metricsMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -184,7 +188,7 @@ func main() {
 
 	// 7.4 Initialize Core Connector (Hybrid Approach: Native Go Tools)
 	coreConnector := connectors.NewCoreConnector()
-	
+
 	// Register: read_database (Native Implementation)
 	coreConnector.RegisterTool("read_database", func(ctx context.Context, userID string, inputs map[string]interface{}) (string, error) {
 		slog.Info("Executing CORE tool: read_database", "user_id", userID)
@@ -235,18 +239,39 @@ func main() {
 
 	// 8. Initialize Engine
 	auraEngine := engine.NewAuraEngine(
-		vCache, 
-		rClient, 
-		rbacClient, 
-		mcpClient, 
-		toolRegistry, 
-		connRegistry, 
-		providers, 
-		defaultProvider, 
-		cfg.ToolRelevanceThreshold, 
-		cfg.LLMCacheTTL, 
+		vCache,
+		rClient,
+		rbacClient,
+		mcpClient,
+		toolRegistry,
+		connRegistry,
+		providers,
+		defaultProvider,
+		cfg.ToolRelevanceThreshold,
+		cfg.LLMCacheTTL,
 		auditLogger,
 	)
+
+	// 8.0 Start Tool Registry Refresh Loop (Phase 2: Dynamic Tool Sync)
+	// Every 30 seconds, check Postgres for drifted tools and push them to Qdrant.
+	if toolRegistry != nil {
+		registrySyncCallback := func(syncCtx context.Context, driftedTools []*tools.Tool) {
+			for _, t := range driftedTools {
+				orgID := ""
+				if t.OrgID != nil {
+					orgID = *t.OrgID
+				}
+				ok, err := rClient.RegisterTool(syncCtx, t.ID, t.Name, t.Description, orgID)
+				if err != nil || !ok {
+					slog.Error("[RegistrySync] Qdrant vectorization failed", "tool_id", t.ID, "error", err)
+				} else {
+					slog.Info("[RegistrySync] Tool synced to Qdrant", "tool_id", t.ID, "name", t.Name)
+				}
+			}
+		}
+		go toolRegistry.StartRefreshLoop(ctx, 30*time.Second, registrySyncCallback)
+		slog.Info("Tool Registry background sync started", "interval", "30s")
+	}
 
 	// 8.1 Initialize Stripe Handler (SaaS Billing)
 	stripeHandler := billing.NewStripeHandler(
@@ -296,14 +321,18 @@ func main() {
 		// Extract identity from Middleware context
 		userID, _ := r.Context().Value("user_id").(string)
 		_, _ = r.Context().Value("org_id").(string) // Ensure it exists in context, but not needed here directly
-		
+
 		req.UserID = userID
 		// Note: The engine now uses orgID from context for RBAC and scoping.
 		// req.UserID is kept as the physical user ID for individual tracking.
 
 		// Headers override
-		if p := r.Header.Get("X-Aura-Provider"); p != "" { req.Provider = p }
-		if m := r.Header.Get("X-Aura-Model"); m != "" { req.Model = m }
+		if p := r.Header.Get("X-Aura-Provider"); p != "" {
+			req.Provider = p
+		}
+		if m := r.Header.Get("X-Aura-Model"); m != "" {
+			req.Model = m
+		}
 
 		resp, err := auraEngine.Process(r.Context(), &req)
 		if err != nil {
@@ -313,14 +342,16 @@ func main() {
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		if resp.Cached { w.Header().Set("X-Cache", "HIT") }
+		if resp.Cached {
+			w.Header().Set("X-Cache", "HIT")
+		}
 		json.NewEncoder(w).Encode(resp)
 	})))
 
 	// Tools API
 	mux.Handle("/v1/tools", middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		orgID, _ := r.Context().Value("org_id").(string)
-		
+
 		if r.Method == http.MethodPost {
 			tools.HandleRegisterTool(toolRegistry, rClient, auditLogger)(w, r)
 			return
@@ -338,24 +369,27 @@ func main() {
 			mcpTools, _ := mcpClient.ListTools(r.Context())
 			for _, t := range mcpTools {
 				desc := ""
-				if t.Description != nil { desc = *t.Description }
+				if t.Description != nil {
+					desc = *t.Description
+				}
 				allTools = append(allTools, tools.ToolWithProvider{
 					ID: t.Name, Name: t.Name, Description: desc, Provider: "Aura-MCP", Status: "online",
 				})
 			}
 		}
-		
+
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(allTools)
 	})))
 
-	mux.Handle("/v1/tools/sync", middleware(http.HandlerFunc(tools.HandleSyncTools(toolRegistry))))
+	mux.Handle("/v1/tools/sync", middleware(http.HandlerFunc(tools.HandleSyncTools(toolRegistry, rClient, auditLogger))))
 	mux.Handle("/v1/tools/register", middleware(http.HandlerFunc(tools.HandleRegisterTool(toolRegistry, rClient, auditLogger))))
+	mux.Handle("/v1/tools/status", middleware(http.HandlerFunc(tools.HandleRegistryStatus(toolRegistry))))
 
 	// Audit API
 	mux.Handle("/v1/audit", middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		orgID, _ := r.Context().Value("org_id").(string)
-		
+
 		// Allow verified 'admin' (from DB) or global 'platform_staff'
 		userRole, ok := r.Context().Value("user_role").(string)
 		isAdmin := ok && (userRole == "admin" || userRole == "platform_staff")
@@ -363,7 +397,7 @@ func main() {
 			http.Error(w, "Forbidden: Administrative access required", http.StatusForbidden)
 			return
 		}
-		
+
 		events, err := auditLogger.GetLatest(orgID, 50)
 		if err != nil {
 			slog.Error("Failed to fetch persistent audit logs", "error", err)
@@ -394,9 +428,16 @@ func main() {
 
 	mux.Handle("/v1/billing/checkout", middleware(http.HandlerFunc(stripeHandler.CreateCheckoutSession)))
 
+	// Providers API (Model Discovery)
+	mux.Handle("/v1/providers", middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		metadata := auraEngine.GetProviderMetadata()
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(metadata)
+	})))
+
 	mux.HandleFunc("/generate-token", func(w http.ResponseWriter, r *http.Request) {
 		secret := cfg.JWTSecret
-		
+
 		token, err := auth.GenerateJWT("admin-01", "admin", secret, time.Hour*24)
 		if err != nil {
 			slog.Error("Failed to generate JWT", "error", err)
@@ -409,13 +450,12 @@ func main() {
 		json.NewEncoder(w).Encode(resp)
 	})
 
-
 	// 8.5. Register SaaS Webhooks (Exclude from JWT Middleware)
-	
+
 	// Separate mux for endpoints that skip JWT middleware (or handle it manually)
 	publicMux := http.NewServeMux()
 	publicMux.HandleFunc("POST /v1/webhooks/stripe", stripeHandler.HandleWebhook)
-	
+
 	// Checkout session handler is already registered on 'mux' above
 
 	publicMux.Handle("/", auth.UnifiedAuthMiddleware(cfg.JWTSecret, jwksProvider, rbacClient)(metricsMiddleware(commonMiddleware(mux))))

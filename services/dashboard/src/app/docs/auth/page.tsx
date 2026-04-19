@@ -1,0 +1,92 @@
+import { Key, Shield, Fingerprint, AlertCircle } from "lucide-react";
+import { DocsPager } from "@/components/docs/docs-pager";
+import { CodeBlock } from "@/components/docs/code-block";
+import { DOCS_CONFIG } from "@/config/docs-config";
+
+export default function AuthPage() {
+  const apiKeyExample = `curl -X POST https://${DOCS_CONFIG.domain}/v1/chat \\
+  -H "X-API-Key: aura_f7c9...8e2a" \\
+  -d '{"prompt": "Hello World"}'`;
+
+  const jwtExample = `curl -X POST https://${DOCS_CONFIG.domain}/v1/chat \\
+  -H "Authorization: Bearer eyJhbGci..." \\
+  -d '{"prompt": "Hello World"}'`;
+
+  return (
+    <div className="space-y-12">
+      <header className="space-y-4">
+        <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-aura-glow/5 border border-aura-glow/20 w-fit">
+          <span className="text-[10px] font-black text-aura-glow uppercase tracking-tighter italic">Security</span>
+        </div>
+        <h1 className="text-4xl font-black tracking-tighter uppercase sm:text-5xl">Authentication</h1>
+        <p className="text-lg text-white/60 leading-relaxed font-medium">
+          Aura supports two authentication methods. Choose the one that fits your use case — both provide the same level of access and security.
+        </p>
+      </header>
+
+      {/* Comparison */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+        <div className="p-5 rounded-2xl bg-white/[0.02] border border-white/5 space-y-3">
+          <div className="flex items-center gap-2 text-aura-glow">
+            <Key size={16} />
+            <span className="text-xs font-black uppercase">API Keys</span>
+          </div>
+          <p className="text-[11px] text-white/40 font-bold leading-relaxed">Best for server-to-server calls, background jobs, and internal service integrations where a human is not present.</p>
+        </div>
+        <div className="p-5 rounded-2xl bg-white/[0.02] border border-white/5 space-y-3">
+          <div className="flex items-center gap-2 text-aura-purple">
+            <Fingerprint size={16} />
+            <span className="text-xs font-black uppercase">JWT Tokens</span>
+          </div>
+          <p className="text-[11px] text-white/40 font-bold leading-relaxed">Best for web and mobile apps where a logged-in user identity needs to be attached to each request.</p>
+        </div>
+      </div>
+
+      {/* API Keys */}
+      <section className="space-y-5">
+        <h2 className="text-2xl font-black tracking-tighter uppercase">API Keys</h2>
+        <p className="text-sm text-white/60 leading-relaxed font-medium">
+          API Keys are long-lived secrets tied to your organization. Generate them in the API Keys section of your Dashboard and pass the key in the <code className="text-aura-glow bg-aura-glow/5 px-1 rounded font-mono">X-API-Key</code> header.
+        </p>
+        <CodeBlock code={apiKeyExample} language="bash" filename="cURL — API Key" />
+      </section>
+
+      {/* JWT */}
+      <section className="space-y-5 pt-2">
+        <h2 className="text-2xl font-black tracking-tighter uppercase">JWT Tokens</h2>
+        <p className="text-sm text-white/60 leading-relaxed font-medium">
+          If your application already uses an identity provider (such as Supabase, Auth0, or Firebase), Aura can verify the token it issues. Pass the token in the standard <code className="text-aura-purple bg-aura-purple/5 px-1 rounded font-mono">Authorization: Bearer</code> header.
+        </p>
+        <CodeBlock code={jwtExample} language="bash" filename="cURL — JWT Token" />
+      </section>
+
+      {/* Zero Trust */}
+      <section className="space-y-5 pt-2">
+        <h2 className="text-2xl font-black tracking-tighter uppercase">Zero Trust Verification</h2>
+        <p className="text-sm text-white/60 leading-relaxed font-medium">
+          Regardless of which method you use, Aura performs a real-time check against your organization&apos;s live membership records on every request. Tokens and keys are treated as identity hints — permissions are always verified against the source of truth.
+        </p>
+        <div className="p-5 rounded-2xl bg-white/[0.02] border border-white/5 space-y-4">
+          <div className="flex items-center gap-2 text-aura-accent">
+            <Shield size={15} />
+            <span className="text-xs font-black uppercase">What this means for you</span>
+          </div>
+          <ul className="space-y-2 text-[11px] text-white/40 font-bold">
+            <li className="flex gap-2"><span className="text-aura-glow shrink-0">→</span> Revoking a user from your org immediately cuts off their access — no token expiry needed.</li>
+            <li className="flex gap-2"><span className="text-aura-glow shrink-0">→</span> Rotating an API key invalidates the old one instantly across all services.</li>
+            <li className="flex gap-2"><span className="text-aura-glow shrink-0">→</span> Changing a user&apos;s role takes effect on the next request — no cache to flush.</li>
+          </ul>
+        </div>
+
+        <div className="p-4 rounded-xl bg-white/[0.01] border border-white/5 flex items-start gap-3">
+          <AlertCircle size={13} className="text-white/20 mt-0.5 shrink-0" />
+          <p className="text-[11px] text-white/30 font-bold leading-relaxed">
+            Aura does not rely on claims embedded inside JWT tokens for authorization decisions. It only uses them to identify the user.
+          </p>
+        </div>
+      </section>
+
+      <DocsPager />
+    </div>
+  );
+}

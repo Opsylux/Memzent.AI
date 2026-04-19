@@ -1,6 +1,6 @@
 # AGENTS.md
 
-> **Notice to AI System & Agents**: This file contains the mandatory operating rules, system constraints, and engineering stack for Project Aura. You must parse and adhere strictly to these constraints before proposing any code edits.
+> **Notice to AI System & Agents**: This file contains the mandatory operating rules, system constraints, and engineering stack for Project Aura. You must parse and adhere strictly to these constraints before proposing any code edits and if need to change any of the rules,or add any new rules or new design decisions ask the user for approval.
 
 ## 1. Project Abstract
 **Aura** is an enterprise-grade AI infrastructure mesh. It acts as an "Intelligent Semantic Proxy" sitting between user clients, MCP (Model Context Protocol) Tools, and external/local LLM endpoints. 

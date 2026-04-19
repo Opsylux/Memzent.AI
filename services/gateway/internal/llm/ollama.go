@@ -26,6 +26,14 @@ func NewOllamaProvider(baseURL, model string) Provider {
 
 func (o *OllamaProvider) GetProviderName() string { return "Ollama (" + o.Model + ")" }
 
+func (o *OllamaProvider) GetMetadata() ProviderMetadata {
+	return ProviderMetadata{
+		Name:            "ollama",
+		DefaultModel:    o.Model,
+		SupportedModels: []string{o.Model, "llama3", "mistral", "phi3"},
+	}
+}
+
 func (o *OllamaProvider) Generate(ctx context.Context, prompt string, tools []any, model string) (string, error) {
 	url := fmt.Sprintf("%s/api/chat", o.BaseURL)
 

@@ -95,6 +95,14 @@ func (e *AuraEngine) ActiveProviderNames() []string {
 	return providers
 }
 
+func (e *AuraEngine) GetProviderMetadata() []lp.ProviderMetadata {
+	metadata := make([]lp.ProviderMetadata, 0, len(e.providers))
+	for _, provider := range e.providers {
+		metadata = append(metadata, provider.GetMetadata())
+	}
+	return metadata
+}
+
 func (e *AuraEngine) GetStats(orgID string) (uint64, uint64) {
 	var reqs, hits uint64
 	if counter, ok := e.orgRequests.Load(orgID); ok {

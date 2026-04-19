@@ -41,9 +41,3 @@ CREATE TABLE IF NOT EXISTS tool_registry (
 -- Link org_tools to tool_registry
 ALTER TABLE org_tools ADD CONSTRAINT fk_org_tools_registry FOREIGN KEY (tool_id) REFERENCES tool_registry(id) ON DELETE CASCADE;
 
--- Insert some default tool definitions for the Go Gateway to recognize
-INSERT INTO tool_registry (id, name, description) VALUES
-('aura_search', 'Aura Semantic Search', 'Allows querying the vector database for similar context.'),
-('read_database', 'Read Database', 'Allows read-only SQL queries to the data lake.'),
-('tool_123', 'Mock Tool 123', 'Mock tool from initial tests.')
-ON CONFLICT DO NOTHING;

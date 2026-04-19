@@ -9,24 +9,23 @@ This document tracks the current completion state of Aura features and provides 
 | **Triple-Layer Caching** | Gateway/Rust | ✅ 100% | Literal, Canonical, and Semantic layers functional. |
 | **Service Boundaries** | All | ✅ 100% | Go Gateway (Auth/Orchestration), Rust Router (Math), Dashboard (UI). |
 | **RBAC Scoping** | Gateway | ✅ 90% | JWT + Org-based filtering implemented; multi-org billing in progress. |
-| **Dynamic Tool Registry** | Gateway | 🟡 60% | **Phase 2:** Postgres schema and basic handlers exist. Periodical refresh pending. |
+| **Dynamic Tool Registry** | Gateway | ✅ 100% | **Phase 2 Complete:** Refresh loop, Qdrant sync, `/v1/tools/sync`, `/v1/tools/status`. |
 | **Connector Framework** | Gateway | 🟡 40% | **Phase 3:** MCP is stable. SQL/REST/Core exist but need deep implementation. |
-| **Neural Dashboard** | Dashboard | 🟡 80% | UI tokens and core views complete. Real-time log streaming pending. |
+| **Neural Dashboard** | Dashboard | ✅ 90% | UI complete; Docs hardened with Navigation & Variable domain. |
+| **Provider Discovery** | Gateway | ✅ 100% | `/v1/providers` API for dynamic model/provider listing. |
 
 ---
 
 ## 2. Pending Tasks & Directives
 
-### [Phase 2] Dynamic Tool Registry (Priority: High)
-**Goal**: Allow tools to be added to the database via API and automatically synced to the Gateway/Router.
-
-*   **Task 2.1**: Implement `Registry.Refresh()` loop in Gateway to poll Postgres for tool updates.
-*   **Task 2.2**: Integrate `toolRegistry` into the `auraEngine` so that tools are filtered by the Registry before being sent to the Router.
-*   **Task 2.3**: Implement Tool Sync to Qdrant. When a tool is added to Postgres, its description must be vectorized in Qdrant.
-
-> [!IMPORTANT]
-> **Pop Question**: When adding a new tool to the database, who is responsible for generating its vector embedding?
-> *   *Answer*: The Gateway must call the Rust Router's `UpsertTool` endpoint (to be implemented).
+### [Phase 2] Dynamic Tool Registry ✅ COMPLETE
+**Completed Tasks:**
+*   **Task 2.1**: `Registry.StartRefreshLoop()` — background goroutine polls Postgres every 30s for tools where `last_synced_at IS NULL OR last_synced_at < updated_at`.
+*   **Task 2.2**: `onSync` callback in `main.go` calls `routerClient.RegisterTool()` (gRPC) to vectorize each drifted tool in Qdrant.
+*   **Task 2.3**: `HandleSyncTools` now triggers a real `Registry.Refresh()` with vectorization and returns a structured JSON report.
+*   **Task 2.4**: New `/v1/tools/status` endpoint exposes `last_refresh` timestamp for health monitoring.
+*   **Task 2.5**: Migration `011_tool_registry_sync.sql` adds `org_id`, `last_synced_at`, and `config` columns.
+*   **Task 2.6**: Documentation page `/docs/tool-registry` added to the dashboard.
 
 ---
 

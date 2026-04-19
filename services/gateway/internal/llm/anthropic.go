@@ -22,6 +22,14 @@ func NewAnthropicProvider(apiKey, model string) Provider {
 
 func (a *AnthropicProvider) GetProviderName() string { return "Anthropic" }
 
+func (a *AnthropicProvider) GetMetadata() ProviderMetadata {
+	return ProviderMetadata{
+		Name:            "anthropic",
+		DefaultModel:    "claude-3-5-sonnet-20240620",
+		SupportedModels: []string{"claude-3-5-sonnet-20240620", "claude-3-opus-20240229", "claude-3-haiku-20240307"},
+	}
+}
+
 func (a *AnthropicProvider) Generate(ctx context.Context, prompt string, tools []any, model string) (string, error) {
 	url := "https://api.anthropic.com/v1/messages"
 

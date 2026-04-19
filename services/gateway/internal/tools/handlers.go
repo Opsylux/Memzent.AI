@@ -168,15 +168,16 @@ func HandleDisableTool(registry *Registry) http.HandlerFunc {
 	}
 }
 
-// HandleSyncTools triggers a re-sync of all dynamic tool connectors
-func HandleSyncTools(registry *Registry) http.HandlerFunc {
+// HandleSyncTools triggers a real re-sync: polls Postgres for drifted tools and
+// pushes each one to the Rust Router for vectorization in Qdrant.
+// Admin-only. Returns a summary of what was synced.
+func HandleSyncTools(registry *Registry, routerClient *router.RouterClient, auditLogger *metrics.PersistentAuditLogger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
 			return
 		}
 
-		// Allow verified 'admin' (from DB) or global 'platform_staff'
 		userRole, ok := r.Context().Value("user_role").(string)
 		isAdmin := ok && (userRole == "admin" || userRole == "platform_staff")
 		if !isAdmin {
@@ -184,26 +185,87 @@ func HandleSyncTools(registry *Registry) http.HandlerFunc {
 			return
 		}
 
-		slog.Info("Triggering global tool registry sync")
-		metrics.GlobalAuditBuffer.Add(metrics.AuditEvent{
-			Timestamp: time.Now(),
-			Type:      "REGISTRY",
-			User:      "admin",
-			Detail:    "Neural Registry Sync Initiated",
-			Status:    "success",
-		})
+		if registry == nil {
+			http.Error(w, "Tool registry unavailable", http.StatusServiceUnavailable)
+			return
+		}
 
-		// In a real implementation, this might trigger:
-		// 1. MCP Client re-scan
-		// 2. Refreshing REST connector caches
-		// 3. Re-indexing vector store in the Router
+		var syncedIDs []string
+		var syncErrors []string
 
-		// For now, we'll return a success status
+		// Build the sync callback that pushes each drifted tool to Qdrant via gRPC
+		onSync := func(ctx context.Context, tools []*Tool) {
+			for _, t := range tools {
+				orgID := ""
+				if t.OrgID != nil {
+					orgID = *t.OrgID
+				}
+				if routerClient != nil {
+					ok, err := routerClient.RegisterTool(ctx, t.ID, t.Name, t.Description, orgID)
+					if err != nil || !ok {
+						errMsg := fmt.Sprintf("%s: gRPC error", t.ID)
+						if err != nil {
+							errMsg = fmt.Sprintf("%s: %s", t.ID, err.Error())
+						}
+						syncErrors = append(syncErrors, errMsg)
+						slog.Error("[ToolSync] Vectorization failed", "tool_id", t.ID, "error", err)
+						continue
+					}
+				}
+				syncedIDs = append(syncedIDs, t.ID)
+				slog.Info("[ToolSync] Tool vectorized", "tool_id", t.ID, "name", t.Name)
+			}
+		}
+
+		n, err := registry.Refresh(r.Context(), onSync)
+		if err != nil {
+			slog.Error("[ToolSync] Registry refresh failed", "error", err)
+			http.Error(w, "Registry refresh failed: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		slog.Info("[ToolSync] Manual sync complete", "synced", n)
+
+		if auditLogger != nil {
+			auditLogger.Log(r.Context(), metrics.AuditEvent{
+				Timestamp: time.Now(),
+				Type:      "REGISTRY",
+				User:      userRole,
+				Detail:    fmt.Sprintf("Manual Qdrant Sync: %d tools vectorized", n),
+				Status:    "success",
+			}, map[string]interface{}{"synced_count": n, "synced_ids": syncedIDs})
+		}
+
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]any{
-			"status":    "success",
-			"message":   "Global registry synchronization initiated",
-			"timestamp": time.Now(),
+			"status":         "success",
+			"tools_synced":   n,
+			"synced_ids":     syncedIDs,
+			"errors":         syncErrors,
+			"last_refresh":   registry.LastRefreshTime(),
+			"timestamp":      time.Now(),
+		})
+	}
+}
+
+// HandleRegistryStatus returns the current state of the Tool Registry sync.
+func HandleRegistryStatus(registry *Registry) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		if registry == nil {
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]string{"status": "unavailable"})
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{
+			"status":       "healthy",
+			"last_refresh": registry.LastRefreshTime(),
 		})
 	}
 }

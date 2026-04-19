@@ -11,6 +11,8 @@ import {
 
 import FeatureCard from './components/FeatureCard';
 
+const appUrl = import.meta.env.VITE_APP_URL || "http://localhost:3000"
+
 const Pricing = () => (
   <section id="pricing" className="py-40 px-6 max-w-7xl mx-auto">
     <div className="text-center mb-20">
@@ -38,7 +40,7 @@ const Pricing = () => (
             ))}
           </ul>
           <a
-            href="http://localhost:3000/login"
+            href={appUrl + "/login"}
             className={`w-full py-5 rounded-2xl text-center text-sm font-black uppercase tracking-[0.2em] transition-all ${plan.highlight ? 'bg-aura-glow text-black shadow-[0_0_20px_rgba(0,243,255,0.3)]' : 'bg-white text-black hover:bg-aura-glow'
               }`}
           >
@@ -68,8 +70,8 @@ const Navbar = () => (
       <a href="#pricing" className="hover:text-aura-glow transition-colors">Pricing</a>
     </div>
     <div className="flex gap-4">
-      <a href="http://localhost:3000/login" className="text-sm font-bold opacity-60 hover:opacity-100 px-4 py-2 transition-all cursor-pointer">Login</a>
-      <a href="http://localhost:3000/login" className="bg-white text-black text-sm font-black px-6 py-2 rounded-xl hover:bg-aura-glow hover:scale-105 transition-all cursor-pointer shadow-[0_0_20px_rgba(255,255,255,0.1)]">Get Started</a>
+      <a href={appUrl + "/login"} className="text-sm font-bold opacity-60 hover:opacity-100 px-4 py-2 transition-all cursor-pointer">Login</a>
+      <a href={appUrl + "/login"} className="bg-white text-black text-sm font-black px-6 py-2 rounded-xl hover:bg-aura-glow hover:scale-105 transition-all cursor-pointer shadow-[0_0_20px_rgba(255,255,255,0.1)]">Get Started</a>
     </div>
   </nav>
 );
@@ -112,12 +114,12 @@ const Hero = () => (
       transition={{ delay: 0.8, duration: 0.8 }}
       className="flex flex-col md:flex-row gap-6"
     >
-      <a href="http://localhost:3000/login" className="bg-aura-glow text-black font-black px-10 py-5 rounded-2xl text-lg hover:shadow-[0_0_30px_rgba(0,243,255,0.4)] hover:scale-105 transition-all flex items-center gap-3 group">
+      <a href={appUrl + "/login"} className="bg-aura-glow text-black font-black px-10 py-5 rounded-2xl text-lg hover:shadow-[0_0_30px_rgba(0,243,255,0.4)] hover:scale-105 transition-all flex items-center gap-3 group">
         Deploy Infrastructure <ChevronRight className="group-hover:translate-x-1 transition-transform" />
       </a>
-      <button className="glass border-white/10 font-black px-10 py-5 rounded-2xl text-lg hover:bg-white/5 transition-all flex items-center gap-3">
+      <a href={appUrl + "/docs"} className="glass border-white/10 font-black px-10 py-5 rounded-2xl text-lg hover:bg-white/5 transition-all flex items-center gap-3">
         Documentation <Terminal size={20} />
-      </button>
+      </a>
     </motion.div>
   </section>
 );
