@@ -128,12 +128,16 @@ func UnifiedAuthMiddleware(secret string, jwks *JWKSProvider, rbac *RBACClient) 
 			} else if t, ok := userMetadata["tier"].(string); ok {
 				tier = t
 			}
+
+			// Get initial role from JWT claims
+			role, _ := claims["role"].(string)
+
 			// Resolve verified Role from Database (Persistent RBAC)
 			if rbac != nil && orgID != "" && userID != "" {
 				dbRole, err := rbac.GetMemberRole(r.Context(), orgID, userID)
 				if err == nil && dbRole != "guest" {
 					role = dbRole
-				} else if role == "authenticated" {
+				} else if role == "authenticated" || role == "" {
 					// If mapping from DB failed and JWT is just 'authenticated', treat as guest
 					role = "guest"
 				}
