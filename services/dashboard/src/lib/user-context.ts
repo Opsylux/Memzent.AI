@@ -53,18 +53,8 @@ export async function getCurrentOrg(): Promise<OrgContext | null> {
       }
     }
 
-    // Fallback: No membership found — use the user's own ID as a "personal" org
-    // This allows the dashboard to function even before the org/member tables are populated
-    const displayName = user.user_metadata?.full_name || user.email?.split('@')[0] || 'User'
-    return {
-      userId: user.id,
-      email: user.email || '',
-      orgId: user.id,
-      orgName: `${displayName}'s Workspace`,
-      tier: 'free',
-      role: 'admin', // Owner of personal workspace is admin
-      initials: displayName.substring(0, 2).toUpperCase(),
-    }
+    // No membership found — return null so the dashboard can handle unauthorized state
+    return null
   } catch (e) {
     console.error('Failed to resolve org context:', e)
     return null

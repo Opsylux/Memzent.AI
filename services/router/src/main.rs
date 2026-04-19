@@ -11,7 +11,7 @@ pub mod router_proto {
 }
 
 use router_proto::semantic_router_server::{SemanticRouter, SemanticRouterServer};
-use router_proto::{ToolRequest, ToolResponse, Tool};
+use router_proto::{ToolRequest, ToolResponse, Tool, RegisterToolRequest, RegisterToolResponse};
 
 pub struct MyRouter {
     q_client: Qdrant,
@@ -199,6 +199,51 @@ impl SemanticRouter for MyRouter {
         };
 
         Ok(Response::new(reply))
+    }
+
+    async fn register_tool(
+        &self,
+        request: Request<RegisterToolRequest>,
+    ) -> Result<Response<RegisterToolResponse>, Status> {
+        let req = request.into_inner();
+        println!("📝 Registering new tool semantic intent: {} (ID: {})", req.name, req.id);
+
+        // 1. Generate Vector Embedding for tool description
+        let documents = vec![req.description.clone()];
+        let embeddings = self.embedding_model.embed(documents, None)
+            .map_err(|e| Status::internal(format!("Failed to generate tool embeddings: {}", e)))?;
+            
+        let vector = embeddings[0].clone();
+
+        // 2. Prepare Payload
+        let mut payload = HashMap::new();
+        payload.insert("tool_id".to_string(), Value::from(req.id.clone()));
+        payload.insert("tool_name".to_string(), Value::from(req.name.clone()));
+        payload.insert("org_id".to_string(), Value::from(req.org_id.clone()));
+
+        // 3. Upsert into Qdrant tools_collection
+        let result = self.q_client.upsert_points(UpsertPointsBuilder::new(
+            "tools_collection",
+            vec![PointStruct::new(
+                req.id.clone(), // Use tool ID as the point ID for deterministic updates
+                vector,
+                payload
+            )]
+        )).await;
+
+        match result {
+            Ok(_) => {
+                println!("✅ Tool vectorized and stored in Qdrant: {}", req.id);
+                Ok(Response::new(RegisterToolResponse { success: true, error: String::new() }))
+            },
+            Err(e) => {
+                eprintln!("❌ Qdrant upsert failed: {}", e);
+                Ok(Response::new(RegisterToolResponse { 
+                    success: false, 
+                    error: format!("Qdrant failure: {}", e) 
+                }))
+            }
+        }
     }
 }
 

@@ -23,6 +23,126 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+type RegisterToolRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	Name          string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
+	Description   string                 `protobuf:"bytes,3,opt,name=description,proto3" json:"description,omitempty"`
+	OrgId         string                 `protobuf:"bytes,4,opt,name=org_id,json=orgId,proto3" json:"org_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RegisterToolRequest) Reset() {
+	*x = RegisterToolRequest{}
+	mi := &file_router_proto_msgTypes[0]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RegisterToolRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RegisterToolRequest) ProtoMessage() {}
+
+func (x *RegisterToolRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_router_proto_msgTypes[0]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RegisterToolRequest.ProtoReflect.Descriptor instead.
+func (*RegisterToolRequest) Descriptor() ([]byte, []int) {
+	return file_router_proto_rawDescGZIP(), []int{0}
+}
+
+func (x *RegisterToolRequest) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *RegisterToolRequest) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *RegisterToolRequest) GetDescription() string {
+	if x != nil {
+		return x.Description
+	}
+	return ""
+}
+
+func (x *RegisterToolRequest) GetOrgId() string {
+	if x != nil {
+		return x.OrgId
+	}
+	return ""
+}
+
+type RegisterToolResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Success       bool                   `protobuf:"varint,1,opt,name=success,proto3" json:"success,omitempty"`
+	Error         string                 `protobuf:"bytes,2,opt,name=error,proto3" json:"error,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RegisterToolResponse) Reset() {
+	*x = RegisterToolResponse{}
+	mi := &file_router_proto_msgTypes[1]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RegisterToolResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RegisterToolResponse) ProtoMessage() {}
+
+func (x *RegisterToolResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_router_proto_msgTypes[1]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RegisterToolResponse.ProtoReflect.Descriptor instead.
+func (*RegisterToolResponse) Descriptor() ([]byte, []int) {
+	return file_router_proto_rawDescGZIP(), []int{1}
+}
+
+func (x *RegisterToolResponse) GetSuccess() bool {
+	if x != nil {
+		return x.Success
+	}
+	return false
+}
+
+func (x *RegisterToolResponse) GetError() string {
+	if x != nil {
+		return x.Error
+	}
+	return ""
+}
+
 type ToolRequest struct {
 	state          protoimpl.MessageState `protogen:"open.v1"`
 	Prompt         string                 `protobuf:"bytes,1,opt,name=prompt,proto3" json:"prompt,omitempty"`
@@ -34,7 +154,7 @@ type ToolRequest struct {
 
 func (x *ToolRequest) Reset() {
 	*x = ToolRequest{}
-	mi := &file_router_proto_msgTypes[0]
+	mi := &file_router_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -46,7 +166,7 @@ func (x *ToolRequest) String() string {
 func (*ToolRequest) ProtoMessage() {}
 
 func (x *ToolRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_router_proto_msgTypes[0]
+	mi := &file_router_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -59,7 +179,7 @@ func (x *ToolRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ToolRequest.ProtoReflect.Descriptor instead.
 func (*ToolRequest) Descriptor() ([]byte, []int) {
-	return file_router_proto_rawDescGZIP(), []int{0}
+	return file_router_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *ToolRequest) GetPrompt() string {
@@ -94,7 +214,7 @@ type Tool struct {
 
 func (x *Tool) Reset() {
 	*x = Tool{}
-	mi := &file_router_proto_msgTypes[1]
+	mi := &file_router_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -106,7 +226,7 @@ func (x *Tool) String() string {
 func (*Tool) ProtoMessage() {}
 
 func (x *Tool) ProtoReflect() protoreflect.Message {
-	mi := &file_router_proto_msgTypes[1]
+	mi := &file_router_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -119,7 +239,7 @@ func (x *Tool) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Tool.ProtoReflect.Descriptor instead.
 func (*Tool) Descriptor() ([]byte, []int) {
-	return file_router_proto_rawDescGZIP(), []int{1}
+	return file_router_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *Tool) GetId() string {
@@ -156,7 +276,7 @@ type ToolResponse struct {
 
 func (x *ToolResponse) Reset() {
 	*x = ToolResponse{}
-	mi := &file_router_proto_msgTypes[2]
+	mi := &file_router_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -168,7 +288,7 @@ func (x *ToolResponse) String() string {
 func (*ToolResponse) ProtoMessage() {}
 
 func (x *ToolResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_router_proto_msgTypes[2]
+	mi := &file_router_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -181,7 +301,7 @@ func (x *ToolResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ToolResponse.ProtoReflect.Descriptor instead.
 func (*ToolResponse) Descriptor() ([]byte, []int) {
-	return file_router_proto_rawDescGZIP(), []int{2}
+	return file_router_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *ToolResponse) GetTools() []*Tool {
@@ -223,7 +343,15 @@ var File_router_proto protoreflect.FileDescriptor
 
 const file_router_proto_rawDesc = "" +
 	"\n" +
-	"\frouter.proto\x12\x06router\"h\n" +
+	"\frouter.proto\x12\x06router\"r\n" +
+	"\x13RegisterToolRequest\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
+	"\x04name\x18\x02 \x01(\tR\x04name\x12 \n" +
+	"\vdescription\x18\x03 \x01(\tR\vdescription\x12\x15\n" +
+	"\x06org_id\x18\x04 \x01(\tR\x05orgId\"F\n" +
+	"\x14RegisterToolResponse\x12\x18\n" +
+	"\asuccess\x18\x01 \x01(\bR\asuccess\x12\x14\n" +
+	"\x05error\x18\x02 \x01(\tR\x05error\"h\n" +
 	"\vToolRequest\x12\x16\n" +
 	"\x06prompt\x18\x01 \x01(\tR\x06prompt\x12\x17\n" +
 	"\auser_id\x18\x02 \x01(\tR\x06userId\x12(\n" +
@@ -237,9 +365,10 @@ const file_router_proto_rawDesc = "" +
 	"\x12total_tokens_saved\x18\x02 \x01(\x05R\x10totalTokensSaved\x12+\n" +
 	"\x11compressed_prompt\x18\x03 \x01(\tR\x10compressedPrompt\x12.\n" +
 	"\x13similar_prompt_hash\x18\x04 \x01(\tR\x11similarPromptHash\x12.\n" +
-	"\x13current_prompt_hash\x18\x05 \x01(\tR\x11currentPromptHash2J\n" +
+	"\x13current_prompt_hash\x18\x05 \x01(\tR\x11currentPromptHash2\x95\x01\n" +
 	"\x0eSemanticRouter\x128\n" +
-	"\vSelectTools\x12\x13.router.ToolRequest\x1a\x14.router.ToolResponseB:Z8github.com/Opsylux/aura/services/gateway/internal/routerb\x06proto3"
+	"\vSelectTools\x12\x13.router.ToolRequest\x1a\x14.router.ToolResponse\x12I\n" +
+	"\fRegisterTool\x12\x1b.router.RegisterToolRequest\x1a\x1c.router.RegisterToolResponseB:Z8github.com/Opsylux/aura/services/gateway/internal/routerb\x06proto3"
 
 var (
 	file_router_proto_rawDescOnce sync.Once
@@ -253,18 +382,22 @@ func file_router_proto_rawDescGZIP() []byte {
 	return file_router_proto_rawDescData
 }
 
-var file_router_proto_msgTypes = make([]protoimpl.MessageInfo, 3)
+var file_router_proto_msgTypes = make([]protoimpl.MessageInfo, 5)
 var file_router_proto_goTypes = []any{
-	(*ToolRequest)(nil),  // 0: router.ToolRequest
-	(*Tool)(nil),         // 1: router.Tool
-	(*ToolResponse)(nil), // 2: router.ToolResponse
+	(*RegisterToolRequest)(nil),  // 0: router.RegisterToolRequest
+	(*RegisterToolResponse)(nil), // 1: router.RegisterToolResponse
+	(*ToolRequest)(nil),          // 2: router.ToolRequest
+	(*Tool)(nil),                 // 3: router.Tool
+	(*ToolResponse)(nil),         // 4: router.ToolResponse
 }
 var file_router_proto_depIdxs = []int32{
-	1, // 0: router.ToolResponse.tools:type_name -> router.Tool
-	0, // 1: router.SemanticRouter.SelectTools:input_type -> router.ToolRequest
-	2, // 2: router.SemanticRouter.SelectTools:output_type -> router.ToolResponse
-	2, // [2:3] is the sub-list for method output_type
-	1, // [1:2] is the sub-list for method input_type
+	3, // 0: router.ToolResponse.tools:type_name -> router.Tool
+	2, // 1: router.SemanticRouter.SelectTools:input_type -> router.ToolRequest
+	0, // 2: router.SemanticRouter.RegisterTool:input_type -> router.RegisterToolRequest
+	4, // 3: router.SemanticRouter.SelectTools:output_type -> router.ToolResponse
+	1, // 4: router.SemanticRouter.RegisterTool:output_type -> router.RegisterToolResponse
+	3, // [3:5] is the sub-list for method output_type
+	1, // [1:3] is the sub-list for method input_type
 	1, // [1:1] is the sub-list for extension type_name
 	1, // [1:1] is the sub-list for extension extendee
 	0, // [0:1] is the sub-list for field type_name
@@ -281,7 +414,7 @@ func file_router_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_router_proto_rawDesc), len(file_router_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   3,
+			NumMessages:   5,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

@@ -9,7 +9,23 @@ option go_package = "github.com/Opsylux/aura/services/gateway/internal/router";
 service SemanticRouter {
   // Selects the most relevant tools for a given user prompt
   rpc SelectTools (ToolRequest) returns (ToolResponse);
+
+  // Registers or updates a tool in the vector database
+  rpc RegisterTool (RegisterToolRequest) returns (RegisterToolResponse);
 }
+
+message RegisterToolRequest {
+  string id = 1;
+  string name = 2;
+  string description = 3;
+  string org_id = 4;
+}
+
+message RegisterToolResponse {
+  bool success = 1;
+  string error = 2;
+}
+
 
 message ToolRequest {
   string prompt = 1;

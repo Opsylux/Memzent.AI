@@ -21,7 +21,8 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	SemanticRouter_SelectTools_FullMethodName = "/router.SemanticRouter/SelectTools"
+	SemanticRouter_SelectTools_FullMethodName  = "/router.SemanticRouter/SelectTools"
+	SemanticRouter_RegisterTool_FullMethodName = "/router.SemanticRouter/RegisterTool"
 )
 
 // SemanticRouterClient is the client API for SemanticRouter service.
@@ -30,6 +31,8 @@ const (
 type SemanticRouterClient interface {
 	// Selects the most relevant tools for a given user prompt
 	SelectTools(ctx context.Context, in *ToolRequest, opts ...grpc.CallOption) (*ToolResponse, error)
+	// Registers or updates a tool in the vector database
+	RegisterTool(ctx context.Context, in *RegisterToolRequest, opts ...grpc.CallOption) (*RegisterToolResponse, error)
 }
 
 type semanticRouterClient struct {
@@ -50,12 +53,24 @@ func (c *semanticRouterClient) SelectTools(ctx context.Context, in *ToolRequest,
 	return out, nil
 }
 
+func (c *semanticRouterClient) RegisterTool(ctx context.Context, in *RegisterToolRequest, opts ...grpc.CallOption) (*RegisterToolResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(RegisterToolResponse)
+	err := c.cc.Invoke(ctx, SemanticRouter_RegisterTool_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // SemanticRouterServer is the server API for SemanticRouter service.
 // All implementations must embed UnimplementedSemanticRouterServer
 // for forward compatibility.
 type SemanticRouterServer interface {
 	// Selects the most relevant tools for a given user prompt
 	SelectTools(context.Context, *ToolRequest) (*ToolResponse, error)
+	// Registers or updates a tool in the vector database
+	RegisterTool(context.Context, *RegisterToolRequest) (*RegisterToolResponse, error)
 	mustEmbedUnimplementedSemanticRouterServer()
 }
 
@@ -68,6 +83,9 @@ type UnimplementedSemanticRouterServer struct{}
 
 func (UnimplementedSemanticRouterServer) SelectTools(context.Context, *ToolRequest) (*ToolResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method SelectTools not implemented")
+}
+func (UnimplementedSemanticRouterServer) RegisterTool(context.Context, *RegisterToolRequest) (*RegisterToolResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method RegisterTool not implemented")
 }
 func (UnimplementedSemanticRouterServer) mustEmbedUnimplementedSemanticRouterServer() {}
 func (UnimplementedSemanticRouterServer) testEmbeddedByValue()                        {}
@@ -108,6 +126,24 @@ func _SemanticRouter_SelectTools_Handler(srv interface{}, ctx context.Context, d
 	return interceptor(ctx, in, info, handler)
 }
 
+func _SemanticRouter_RegisterTool_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RegisterToolRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SemanticRouterServer).RegisterTool(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SemanticRouter_RegisterTool_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SemanticRouterServer).RegisterTool(ctx, req.(*RegisterToolRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // SemanticRouter_ServiceDesc is the grpc.ServiceDesc for SemanticRouter service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -118,6 +154,10 @@ var SemanticRouter_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "SelectTools",
 			Handler:    _SemanticRouter_SelectTools_Handler,
+		},
+		{
+			MethodName: "RegisterTool",
+			Handler:    _SemanticRouter_RegisterTool_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

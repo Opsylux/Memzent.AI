@@ -14,6 +14,7 @@ import (
 	lp "aura-gateway/internal/llm"
 	mc "aura-gateway/internal/mcp"
 	rtr "aura-gateway/internal/router"
+	"aura-gateway/internal/metrics"
 	"aura-gateway/internal/tools"
 
 	"golang.org/x/time/rate"
@@ -50,6 +51,7 @@ type AuraEngine struct {
 	toolThreshold       float64
 	cacheTTL            time.Duration
 	rateLimiters        sync.Map
+	auditLogger         *metrics.PersistentAuditLogger
 
 	TotalRequests atomic.Uint64
 	CacheHits     atomic.Uint64
@@ -57,19 +59,31 @@ type AuraEngine struct {
 	orgHits       sync.Map // Tracks cache hits per org (map[string]*atomic.Uint64)
 }
 
-// NewAuraEngine initializes the engine with its required dependencies.
-func NewAuraEngine(c *cch.AuraCache, r *rtr.RouterClient, auth *auth.RBACClient, providers map[string]lp.Provider, defaultProvider string, m *mc.MCPClient, reg *tools.Registry, connReg *connectors.ConnectorRegistry, threshold float64, ttl time.Duration) *AuraEngine {
+func NewAuraEngine(
+	cache *cch.AuraCache,
+	rtrClient *rtr.RouterClient,
+	rbacClient *auth.RBACClient,
+	mcp *mc.MCPClient,
+	reg *tools.Registry,
+	connReg *connectors.ConnectorRegistry,
+	providers map[string]lp.Provider,
+	defaultProvider string,
+	threshold float64,
+	ttl time.Duration,
+	audit *metrics.PersistentAuditLogger,
+) *AuraEngine {
 	return &AuraEngine{
-		cache:             c,
-		router:            r,
-		rbac:              auth,
-		providers:         providers,
-		defaultProvider:   defaultProvider,
-		mcp:               m,
+		cache:             cache,
+		router:            rtrClient,
+		rbac:              rbacClient,
+		mcp:               mcp,
 		registry:          reg,
 		connectorRegistry: connReg,
+		providers:         providers,
+		defaultProvider:   defaultProvider,
 		toolThreshold:     threshold,
 		cacheTTL:          ttl,
+		auditLogger:       audit,
 	}
 }
 
@@ -139,7 +153,17 @@ func (e *AuraEngine) Process(ctx context.Context, req *PromptRequest) (*PromptRe
 			e.CacheHits.Add(1)
 			hitCounter, _ := e.orgHits.LoadOrStore(orgID, &atomic.Uint64{})
 			hitCounter.(*atomic.Uint64).Add(1)
-			slog.Info("🎯 Stage 1 Cache HIT (Org-Isolated)", "org_id", orgID, "prompt", req.Prompt)
+			if e.auditLogger != nil {
+				e.auditLogger.Log(ctx, metrics.AuditEvent{
+					Timestamp: time.Now(),
+					OrgID:     orgID,
+					Type:      "CACHE",
+					User:      req.UserID,
+					Detail:    "Stage 1 HIT: " + req.Prompt,
+					Status:    "success",
+					Latency:   0,
+				}, map[string]interface{}{"prompt": req.Prompt, "stage": 1})
+			}
 			return &PromptResponse{Text: cachedResp, Cached: true}, nil
 		}
 
@@ -315,6 +339,18 @@ func (e *AuraEngine) Process(ctx context.Context, req *PromptRequest) (*PromptRe
 			simKey := fmt.Sprintf("org:%s:s:%s", orgID, currentPromptHash)
 			_ = e.cache.SetResult(ctx, simKey, aiResp, e.cacheTTL)
 		}
+	}
+
+	// H. Log Final Result
+	if e.auditLogger != nil {
+		e.auditLogger.Log(ctx, metrics.AuditEvent{
+			Timestamp: time.Now(),
+			OrgID:     orgID,
+			Type:      "GENERATION",
+			User:      req.UserID,
+			Detail:    fmt.Sprintf("Provider: %s", selectedProvider.GetProviderName()),
+			Status:    "success",
+		}, map[string]interface{}{"provider": selectedProvider.GetProviderName(), "tools_count": len(llmTools)})
 	}
 
 	return &PromptResponse{

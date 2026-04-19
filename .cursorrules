@@ -1,0 +1,39 @@
+# Aura: AI Agent & IDE Rules (.cursorrules)
+
+> **Role**: You are an expert engineer working on Aura, an enterprise-grade AI Gateway.
+> **Context**: These rules apply to Antigravity, GitHub Copilot, and any other agentic IDE.
+
+## 1. Domain-Specific Guidelines
+
+### Go Gateway (`/services/gateway`)
+- **Strictly Internal**: Business logic lives in `internal/`. Do not export packages unless necessary.
+- **Dependency Rule**: Use `valkey-go` for caching. Do not use standard Redis clients.
+- **Middleware First**: All new v1 endpoints MUST be wrapped in `auth.UnifiedAuthMiddleware`.
+- **RBAC**: Always use the `org_id` from the request context for tool scoping.
+
+### Rust Router (`/services/router`)
+- **Performance First**: Rust is for vector math and prompt compression ONLY. Do not add HTTP handlers or Auth logic here.
+- **Proto Sync**: If you modify `src/main.rs` to add a new RPC, you MUST first update `/proto/router.proto` and run the build script.
+- **FastEmbed**: Use `all-MiniLM-L6-v2` as the default embedding model.
+
+### Next.js Dashboard (`/services/dashboard`)
+- **Next.js 15+**: Strict App Router usage (`src/app/`). No `pages/`.
+- **Tailwind v4**: All custom tokens live in `@theme inline` inside `globals.css`. 
+- **Design Aesthetic**: Use `glass`, `glow-cyan`, and `stat-card` utilities for the "Neural Assistant" look.
+
+## 2. Standard Execution Flow (Mandatory)
+Every feature implementation MUST follow this sequence:
+1. **Proto Update**: Modify `/proto/router.proto` if gRPC changes are needed.
+2. **Rust implementation**: Add logic to `/services/router`.
+3. **Go Wrapper**: Update `/services/gateway/internal/router` to match new gRPC client methods.
+4. **Engine logic**: Integrate the new logic into `auraEngine.Process`.
+5. **Dashboard View**: Add the UI component to the Command Center.
+
+## 3. Coding for AI Clarity
+- **Copilot Optimization**: Use descriptive function headers and structured comments to help Copilot provide accurate multi-file completions.
+- **Antigravity Instructions**: If you see a violation of `AGENTS.md`, stop and warn the user. Never mix service responsibilities (e.g., dont add DB queries to the Rust Router).
+
+## 4. Pending Features Checkpoints
+Before implementing a Phase 2/3 item, check [PROJECT_STATUS.md](file:///c:/Users/nnaga/OneDrive/Documents/GitHub/AuraMCP/PROJECT_STATUS.md).
+- **Pop Question**: "Does this tool registration require a new Qdrant collection?"
+- **Pop Question**: "Is the connector type already registered in the Gateway's `connRegistry`?"

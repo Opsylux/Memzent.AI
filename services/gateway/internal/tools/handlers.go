@@ -2,6 +2,8 @@ package tools
 
 import (
 	"aura-gateway/internal/metrics"
+	"aura-gateway/internal/router"
+	"context"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -23,18 +25,19 @@ type RegisterRequest struct {
 	RequiresAuth   bool                   `json:"requires_auth,omitempty"`
 }
 
-// HandleRegisterTool registers a new tool (admin-only)
-func HandleRegisterTool(registry *Registry) http.HandlerFunc {
+// HandleRegisterTool registers a new tool (admin-only) and notifies the semantic router.
+func HandleRegisterTool(registry *Registry, routerClient *router.RouterClient, auditLogger *metrics.PersistentAuditLogger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
 			return
 		}
 
-		// Check if user is admin (could also check scopes from JWT)
+		// Allow verified 'admin' (from DB) or global 'platform_staff'
 		userRole, ok := r.Context().Value("user_role").(string)
-		if !ok || userRole != "admin" {
-			http.Error(w, "Forbidden: Admin access required", http.StatusForbidden)
+		isAdmin := ok && (userRole == "admin" || userRole == "platform_staff")
+		if !isAdmin {
+			http.Error(w, "Forbidden: Administrative access required", http.StatusForbidden)
 			return
 		}
 
@@ -73,26 +76,41 @@ func HandleRegisterTool(registry *Registry) http.HandlerFunc {
 
 		if err := registry.RegisterTool(r.Context(), tool); err != nil {
 			slog.Error("Failed to register tool", "error", err, "tool_id", req.ID)
-			metrics.GlobalAuditBuffer.Add(metrics.AuditEvent{
-				Timestamp: time.Now(),
-				OrgID:     req.ID,
-				Type:      "ERROR",
-				Detail:    fmt.Sprintf("Tool Reg Fail: %s", req.ID),
-				Status:    "error",
-			})
+			if auditLogger != nil {
+				auditLogger.Log(r.Context(), metrics.AuditEvent{
+					Timestamp: time.Now(),
+					OrgID:     "system", // Generic org if failed
+					Type:      "ERROR",
+					Detail:    fmt.Sprintf("Tool Reg Fail: %s", req.ID),
+					Status:    "error",
+				}, map[string]interface{}{"error": err.Error(), "tool_id": req.ID})
+			}
 			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 			return
 		}
 
+		// 2. Notify Semantic Router (Vectorization)
+		if routerClient != nil {
+			orgID, _ := r.Context().Value("org_id").(string)
+			go func() {
+				_, err := routerClient.RegisterTool(context.Background(), tool.ID, tool.Name, tool.Description, orgID)
+				if err != nil {
+					slog.Error("Failed to vectorize tool in router", "tool_id", tool.ID, "error", err)
+				}
+			}()
+		}
+
 		slog.Info("Tool registered", "id", tool.ID, "name", tool.Name, "connector_type", tool.ConnectorType)
-		metrics.GlobalAuditBuffer.Add(metrics.AuditEvent{
-			Timestamp: time.Now(),
-			OrgID:     tool.ID,
-			Type:      "REGISTRY",
-			User:      "admin",
-			Detail:    fmt.Sprintf("New Node Integrated: %s", tool.Name),
-			Status:    "success",
-		})
+		if auditLogger != nil {
+			auditLogger.Log(r.Context(), metrics.AuditEvent{
+				Timestamp: time.Now(),
+				OrgID:     "system", // Placeholder for auditing the registry action
+				Type:      "REGISTRY",
+				User:      userRole,
+				Detail:    fmt.Sprintf("New Node Integrated: %s", tool.Name),
+				Status:    "success",
+			}, map[string]interface{}{"tool_id": tool.ID, "name": tool.Name})
+		}
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
@@ -108,10 +126,11 @@ func HandleDisableTool(registry *Registry) http.HandlerFunc {
 			return
 		}
 
-		// Check admin role
+		// Allow verified 'admin' (from DB) or global 'platform_staff'
 		userRole, ok := r.Context().Value("user_role").(string)
-		if !ok || userRole != "admin" {
-			http.Error(w, "Forbidden: Admin access required", http.StatusForbidden)
+		isAdmin := ok && (userRole == "admin" || userRole == "platform_staff")
+		if !isAdmin {
+			http.Error(w, "Forbidden: Administrative access required", http.StatusForbidden)
 			return
 		}
 
@@ -157,10 +176,11 @@ func HandleSyncTools(registry *Registry) http.HandlerFunc {
 			return
 		}
 
-		// Check admin role
+		// Allow verified 'admin' (from DB) or global 'platform_staff'
 		userRole, ok := r.Context().Value("user_role").(string)
-		if !ok || userRole != "admin" {
-			http.Error(w, "Forbidden: Admin access required", http.StatusForbidden)
+		isAdmin := ok && (userRole == "admin" || userRole == "platform_staff")
+		if !isAdmin {
+			http.Error(w, "Forbidden: Administrative access required", http.StatusForbidden)
 			return
 		}
 

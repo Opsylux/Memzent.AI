@@ -218,15 +218,36 @@ func main() {
 		}
 	}
 
+	// 7.6 Initialize Persistent Audit Logger (RC1)
+	var auditLogger *metrics.PersistentAuditLogger
+	if rbacClient != nil {
+		auditLogger = metrics.NewPersistentAuditLogger(rbacClient.GetDB())
+		auditLogger.StartRetentionJob(ctx, 30) // 30-day retention as approved
+		slog.Info("Audit Logger initialized with Postgres persistence", "retention_days", 30)
+	}
+
 	// 8. Initialize Engine
-	auraEngine := engine.NewAuraEngine(vCache, rClient, rbacClient, providers, defaultProvider, mcpClient, toolRegistry, connRegistry, cfg.ToolRelevanceThreshold, cfg.LLMCacheTTL)
+	auraEngine := engine.NewAuraEngine(
+		vCache, 
+		rClient, 
+		rbacClient, 
+		mcpClient, 
+		toolRegistry, 
+		connRegistry, 
+		providers, 
+		defaultProvider, 
+		cfg.ToolRelevanceThreshold, 
+		cfg.LLMCacheTTL, 
+		auditLogger,
+	)
 
 	// 8.1 Initialize Stripe Handler (SaaS Billing)
 	stripeHandler := billing.NewStripeHandler(
 		rbacClient.GetDB(),
 		os.Getenv("STRIPE_WEBHOOK_SECRET"),
-		os.Getenv("STRIPE_PRO_ID"),
-		os.Getenv("STRIPE_BIZ_ID"),
+		os.Getenv("STRIPE_PRO_PRODUCT_ID"),
+		os.Getenv("STRIPE_BIZ_PRODUCT_ID"),
+		auditLogger,
 	)
 
 	mux := http.NewServeMux()
@@ -294,7 +315,7 @@ func main() {
 		orgID, _ := r.Context().Value("org_id").(string)
 		
 		if r.Method == http.MethodPost {
-			tools.HandleRegisterTool(toolRegistry)(w, r)
+			tools.HandleRegisterTool(toolRegistry, rClient, auditLogger)(w, r)
 			return
 		}
 
@@ -322,12 +343,27 @@ func main() {
 	})))
 
 	mux.Handle("/v1/tools/sync", middleware(http.HandlerFunc(tools.HandleSyncTools(toolRegistry))))
-	mux.Handle("/v1/tools/register", middleware(http.HandlerFunc(tools.HandleRegisterTool(toolRegistry))))
+	mux.Handle("/v1/tools/register", middleware(http.HandlerFunc(tools.HandleRegisterTool(toolRegistry, rClient, auditLogger))))
 
 	// Audit API
 	mux.Handle("/v1/audit", middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		orgID, _ := r.Context().Value("org_id").(string)
-		events := metrics.GlobalAuditBuffer.GetLatest(orgID, 20)
+		
+		// Allow verified 'admin' (from DB) or global 'platform_staff'
+		userRole, ok := r.Context().Value("user_role").(string)
+		isAdmin := ok && (userRole == "admin" || userRole == "platform_staff")
+		if !isAdmin {
+			http.Error(w, "Forbidden: Administrative access required", http.StatusForbidden)
+			return
+		}
+		
+		events, err := auditLogger.GetLatest(orgID, 50)
+		if err != nil {
+			slog.Error("Failed to fetch persistent audit logs", "error", err)
+			// Fallback to in-memory if db fails (optional)
+			events = metrics.GlobalAuditBuffer.GetLatest(orgID, 20)
+		}
+
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(events)
 	})))

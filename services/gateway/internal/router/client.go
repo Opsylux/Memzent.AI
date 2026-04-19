@@ -64,6 +64,28 @@ func (rc *RouterClient) GetBestTools(ctx context.Context, prompt string, userID 
 	return resp.Tools, resp.CompressedPrompt, resp.SimilarPromptHash, resp.CurrentPromptHash, nil
 }
 
+// RegisterTool notifies the Rust router about a new tool to vectorize it in Qdrant
+func (rc *RouterClient) RegisterTool(ctx context.Context, id, name, description, orgID string) (bool, error) {
+	req := &RegisterToolRequest{
+		Id:          id,
+		Name:        name,
+		Description: description,
+		OrgId:       orgID,
+	}
+
+	resp, err := rc.client.RegisterTool(ctx, req)
+	if err != nil {
+		return false, fmt.Errorf("gRPC RegisterTool failed: %w", err)
+	}
+
+	if !resp.Success {
+		return false, fmt.Errorf("router failed to register tool: %s", resp.Error)
+	}
+
+	return true, nil
+}
+
+
 // Close cleans up the gRPC connection
 func (rc *RouterClient) Close() {
 	if rc.conn != nil {

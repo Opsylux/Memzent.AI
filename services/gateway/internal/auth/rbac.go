@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	_ "github.com/lib/pq"
+	"golang.org/x/crypto/bcrypt"
 )
 
 type RBACClient struct {
@@ -77,19 +78,48 @@ func (c *RBACClient) GetDB() *sql.DB {
 	return c.db
 }
 
-// VerifyAPIKey checks if an API key is valid and returns the associated OrgID
-func (c *RBACClient) VerifyAPIKey(ctx context.Context, key string) (string, error) {
-	var orgID string
-	err := c.db.QueryRowContext(ctx, "SELECT org_id FROM api_keys WHERE key_hash = $1", key).Scan(&orgID)
+// VerifyAPIKey checks if an API key is valid and returns the associated OrgID and UserID.
+// It uses the first 8 characters (prefix) for lookup and bcrypt for verification.
+func (c *RBACClient) VerifyAPIKey(ctx context.Context, rawKey string) (string, string, error) {
+	if len(rawKey) < 8 {
+		return "", "", fmt.Errorf("invalid API key format")
+	}
+	prefix := rawKey[:8]
+
+	var orgID, userID, storedHash string
+	// Lookup key by prefix - now including user_id from migration 008
+	err := c.db.QueryRowContext(ctx, "SELECT org_id, user_id, key_hash FROM api_keys WHERE key_prefix = $1", prefix).Scan(&orgID, &userID, &storedHash)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return "", fmt.Errorf("invalid API key")
+			return "", "", fmt.Errorf("invalid API key")
 		}
-		return "", fmt.Errorf("failed to verify API key: %w", err)
+		return "", "", fmt.Errorf("failed to verify API key: %w", err)
 	}
-	return orgID, nil
+
+	// Compare bcrypt hash. 
+	// Note: We use the full rawKey for the check.
+	err = bcrypt.CompareHashAndPassword([]byte(storedHash), []byte(rawKey))
+	if err != nil {
+		return "", "", fmt.Errorf("invalid API key")
+	}
+
+	return orgID, userID, nil
 }
 
+func (c *RBACClient) GetMemberRole(ctx context.Context, orgID, userID string) (string, error) {
+	var role string
+	// We use the 'members' table established in migration 004
+	err := c.db.QueryRowContext(ctx, "SELECT role FROM members WHERE org_id = $1 AND user_id = $2", orgID, userID).Scan(&role)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			// If no specific role is found in DB, default to guest or use JWT role as fallback?
+			// For security, we return 'guest' to deny admin actions unless explicitly in DB.
+			return "guest", nil
+		}
+		return "", err
+	}
+	return role, nil
+}
 
 // Close closes the database connection
 func (c *RBACClient) Close() {

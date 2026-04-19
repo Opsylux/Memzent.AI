@@ -1,4 +1,4 @@
-import { getAuraTools, getAuraStats } from "../actions";
+import { getAuraTools, getAuraStats, getOrgKeyCount, getOrgAuditStats } from "../actions";
 import { getCurrentOrg } from "@/lib/user-context";
 import { MetricCard } from "@/components/metric-card";
 import { 
@@ -21,9 +21,11 @@ export default async function Page() {
   const org = await getCurrentOrg();
   const orgId = org?.orgId;
 
-  const [initialTools, stats] = await Promise.all([
+  const [initialTools, stats, keyCount, auditStats] = await Promise.all([
     getAuraTools(orgId),
-    getAuraStats(orgId)
+    getAuraStats(orgId),
+    orgId ? getOrgKeyCount(orgId) : Promise.resolve(0),
+    orgId ? getOrgAuditStats(orgId) : Promise.resolve({ count24h: 0 })
   ]);
 
   const total = stats.total_requests || 0;
@@ -73,12 +75,13 @@ export default async function Page() {
           detail="Active Context Bindings"
         />
         <MetricCard 
-          label="Gateway Uptime" 
-          value={`${uptimeHours}h`} 
-          trend="Stable" 
-          icon={<Activity size={24} />}
-          color="purple"
-          detail="High-Speed Engine Status"
+          label="Account Security" 
+          value={`${keyCount}`} 
+          trend={keyCount > 0 ? "Protected" : "Setup Required"} 
+          trendDirection={keyCount > 0 ? "up" : "down"}
+          icon={<ShieldCheck size={24} />}
+          color="cyan"
+          detail={`${auditStats.count24h} Events (24h)`}
         />
       </section>
 

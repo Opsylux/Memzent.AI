@@ -49,3 +49,10 @@ When implementing new routing features, the AI must ensure the Engine follows th
 5. `Tool Execution` (Fire off matched MCP tools)
 6. `Synthesis` (Pass context + prompt to Ollama/OpenAI/Anthropic)
 7. `Cache Set` (Store synthesized output in Valkey)
+
+## 5. Agent Skills & Instructions
+
+For detailed implementation patterns, pending roadmap items, and feature checklists, refer to:
+- **[.cursorrules](file:///c:/Users/nnaga/OneDrive/Documents/GitHub/AuraMCP/.cursorrules)**: IDE-specific rules for Antigravity, Copilot, and Cursor.
+- **[PROJECT_STATUS.md](file:///c:/Users/nnaga/OneDrive/Documents/GitHub/AuraMCP/PROJECT_STATUS.md)**: Live roadmap and "What's Pending" tracker.
+- **[INSTRUCTIONS.md](file:///c:/Users/nnaga/OneDrive/Documents/GitHub/AuraMCP/INSTRUCTIONS.md)**: Step-by-step checklists and "Pop Questions" for feature implementation.

@@ -28,12 +28,12 @@ func UnifiedAuthMiddleware(secret string, jwks *JWKSProvider, rbac *RBACClient) 
 			// 1. Try API Key Authentication (X-API-Key)
 			apiKey := r.Header.Get("X-API-Key")
 			if apiKey != "" && rbac != nil {
-				orgID, err := rbac.VerifyAPIKey(r.Context(), apiKey)
+				orgID, userID, err := rbac.VerifyAPIKey(r.Context(), apiKey)
 				if err == nil {
 					// Extract role (default to admin for API Keys for now, or fetch from DB)
 					role := "admin" // API keys represent the organization/admin identity
 					
-					ctx := context.WithValue(r.Context(), "user_id", "api-key-"+orgID[:8])
+					ctx := context.WithValue(r.Context(), "user_id", userID)
 					ctx = context.WithValue(ctx, "org_id", orgID)
 					ctx = context.WithValue(ctx, "tier", "pro") // Default tier for API access
 					ctx = context.WithValue(ctx, "user_role", role)
@@ -128,14 +128,15 @@ func UnifiedAuthMiddleware(secret string, jwks *JWKSProvider, rbac *RBACClient) 
 			} else if t, ok := userMetadata["tier"].(string); ok {
 				tier = t
 			}
-			
-			role := "user"
-			if r, ok := claims["role"].(string); ok {
-				role = r
-			} else if r, ok := appMetadata["role"].(string); ok {
-				role = r
-			} else if r, ok := userMetadata["role"].(string); ok {
-				role = r
+			// Resolve verified Role from Database (Persistent RBAC)
+			if rbac != nil && orgID != "" && userID != "" {
+				dbRole, err := rbac.GetMemberRole(r.Context(), orgID, userID)
+				if err == nil && dbRole != "guest" {
+					role = dbRole
+				} else if role == "authenticated" {
+					// If mapping from DB failed and JWT is just 'authenticated', treat as guest
+					role = "guest"
+				}
 			}
 
 			ctx := context.WithValue(r.Context(), UserClaimsKey, claims)

@@ -104,18 +104,57 @@ export async function getApiKeys(orgId: string) {
     return data;
 }
 
+export async function getOrgKeyCount(orgId: string) {
+    const supabase = await createClient();
+    const { count, error } = await supabase
+        .from('api_keys')
+        .select('*', { count: 'exact', head: true })
+        .eq('org_id', orgId);
+    
+    if (error) return 0;
+    return count || 0;
+}
+
+export async function getOrgAuditStats(orgId: string) {
+    const supabase = await createClient();
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+
+    const { count, error } = await supabase
+        .from('audit_logs')
+        .select('*', { count: 'exact', head: true })
+        .eq('org_id', orgId)
+        .gte('created_at', yesterday.toISOString());
+    
+    if (error) return { count24h: 0 };
+    return { count24h: count || 0 };
+}
+
 export async function createApiKey(orgId: string, name: string) {
     const supabase = await createClient();
-    const key = `aura_${Math.random().toString(36).substring(2, 15)}${Math.random().toString(36).substring(2, 15)}`;
-    const prefix = key.substring(0, 8);
+    const bcrypt = require('bcryptjs');
+    const crypto = require('crypto');
+
+    // Generate a high-entropy 32-char raw key
+    const rawKey = `aura_${crypto.randomBytes(24).toString('hex')}`;
+    const prefix = rawKey.substring(0, 8);
     
+    // Hash the key for secure storage
+    const salt = await bcrypt.genSalt(10);
+    const hash = await bcrypt.hash(rawKey, salt);
+    
+    // Get current user to set as the owner
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) throw new Error("Unauthorized: No user session found");
+
     const { data, error } = await supabase
         .from('api_keys')
         .insert({
             org_id: orgId,
+            user_id: user.id,
             name: name,
             key_prefix: prefix,
-            key_hash: key
+            key_hash: hash
         })
         .select();
 
@@ -123,8 +162,11 @@ export async function createApiKey(orgId: string, name: string) {
         console.error("Supabase insert error in createApiKey:", error);
         throw error;
     }
-    return { key };
+    
+    // Return the RAW key to the user - this is their ONLY chance to see it!
+    return { key: rawKey };
 }
+
 
 export async function revokeApiKey(id: string) {
     const supabase = await createClient();
