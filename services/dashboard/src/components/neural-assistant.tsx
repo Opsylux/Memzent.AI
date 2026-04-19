@@ -9,7 +9,7 @@ interface Message {
   content: string
 }
 
-export function NeuralAssistant() {
+export function NeuralAssistant({ orgId }: { orgId?: string }) {
   const [isOpen, setIsOpen] = useState(false)
   const [messages, setMessages] = useState<Message[]>([
     { role: 'assistant', content: "INTELLIGENCE_MESH_ONLINE. How can I assist with your neural tool integration?" }
@@ -36,7 +36,7 @@ export function NeuralAssistant() {
     try {
       // For now, we reuse the existing executeAuraPrompt
       // but later we can add a specific 'assistant' flag/intent
-      const res = await executeAuraPrompt(userMsg)
+      const res = await executeAuraPrompt(userMsg, orgId)
       console.log("Chat response:", res)
       setMessages(prev => [...prev, { role: 'assistant', content: res.text || JSON.stringify(res) }])
     } catch (err: any) {

@@ -390,14 +390,7 @@ func main() {
 	mux.Handle("/v1/audit", middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		orgID, _ := r.Context().Value("org_id").(string)
 
-		// Allow verified 'admin' (from DB) or global 'platform_staff'
-		userRole, ok := r.Context().Value("user_role").(string)
-		isAdmin := ok && (userRole == "admin" || userRole == "platform_staff")
-		if !isAdmin {
-			http.Error(w, "Forbidden: Administrative access required", http.StatusForbidden)
-			return
-		}
-
+		// Security: GetLatest automatically scopes to the provided orgID
 		events, err := auditLogger.GetLatest(orgID, 50)
 		if err != nil {
 			slog.Error("Failed to fetch persistent audit logs", "error", err)
@@ -413,7 +406,15 @@ func main() {
 	startupTime := time.Now()
 	mux.Handle("/v1/stats", middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		orgID, _ := r.Context().Value("org_id").(string)
-		reqs, hits := auraEngine.GetStats(orgID)
+		
+		var reqs, hits uint64
+		if auditLogger != nil {
+			// Pull durable stats from Postgres
+			reqs, hits = auditLogger.GetCacheStats(orgID)
+		} else {
+			// Fallback to ephemeral in-memory stats
+			reqs, hits = auraEngine.GetStats(orgID)
+		}
 
 		stats := map[string]any{
 			"total_requests": reqs,

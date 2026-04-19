@@ -4,7 +4,7 @@ import { useState } from "react";
 import { CheckCircle2, Cpu, Database, ArrowRight, Terminal, Search, Zap, Loader2 } from "lucide-react";
 import { executeAuraPrompt } from "../app/actions";
 
-export function RoutingVisualizer({ steps }: { steps?: any[] }) {
+export function RoutingVisualizer({ steps, orgId }: { steps?: any[], orgId?: string }) {
     const [prompt, setPrompt] = useState("");
     const [isExecuting, setIsExecuting] = useState(false);
     const [traceResult, setTraceResult] = useState<any>(null);
@@ -17,7 +17,7 @@ export function RoutingVisualizer({ steps }: { steps?: any[] }) {
         setTraceResult(null);
 
         try {
-            const res = await executeAuraPrompt(prompt);
+            const res = await executeAuraPrompt(prompt, orgId);
             setTraceResult(res);
         } catch (err: any) {
             console.error(err);

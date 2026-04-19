@@ -12,7 +12,8 @@ import {
   LogOut,
   Building2,
   ChevronRight,
-  Book
+  Book,
+  Activity
 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
@@ -21,6 +22,7 @@ const navItems = [
   { name: 'Overview', href: '/', icon: LayoutDashboard },
   { name: 'Aura Tools', href: '/tools', icon: Database },
   { name: 'API Keys', href: '/keys', icon: Key },
+  { name: 'Audit Logs', href: '/audit', icon: Activity },
   { name: 'Billing', href: '/billing', icon: CreditCard },
   { name: 'Documentation', href: '/docs', icon: Book },
   { name: 'Settings', href: '/settings', icon: Settings },

@@ -1,4 +1,4 @@
-import { getAuraStats } from "../../actions";
+import { getAuraStats } from "@/app/actions";
 import { getCurrentOrg } from "@/lib/user-context";
 import { MetricCard } from "@/components/metric-card";
 import { 
@@ -24,7 +24,7 @@ export default async function AdminNodesPage() {
      }
   }
 
-  const stats = await getAuraStats(); // Global stats or generic
+  const stats = await getAuraStats(org?.orgId); // Scoped to admin org to prevent Forbidden crash
 
   const uptimeHours = Math.floor((stats.uptime_seconds || 0) / 3600);
   const uptimeMinutes = Math.floor(((stats.uptime_seconds || 0) % 3600) / 60);

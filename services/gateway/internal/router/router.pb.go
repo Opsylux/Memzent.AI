@@ -144,12 +144,13 @@ func (x *RegisterToolResponse) GetError() string {
 }
 
 type ToolRequest struct {
-	state          protoimpl.MessageState `protogen:"open.v1"`
-	Prompt         string                 `protobuf:"bytes,1,opt,name=prompt,proto3" json:"prompt,omitempty"`
-	UserId         string                 `protobuf:"bytes,2,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
-	AllowedToolIds []string               `protobuf:"bytes,3,rep,name=allowed_tool_ids,json=allowedToolIds,proto3" json:"allowed_tool_ids,omitempty"` // For RBAC-filtered searches
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	state                  protoimpl.MessageState `protogen:"open.v1"`
+	Prompt                 string                 `protobuf:"bytes,1,opt,name=prompt,proto3" json:"prompt,omitempty"`
+	UserId                 string                 `protobuf:"bytes,2,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
+	AllowedToolIds         []string               `protobuf:"bytes,3,rep,name=allowed_tool_ids,json=allowedToolIds,proto3" json:"allowed_tool_ids,omitempty"`                           // For RBAC-filtered searches
+	ScoreThresholdOverride float32                `protobuf:"fixed32,4,opt,name=score_threshold_override,json=scoreThresholdOverride,proto3" json:"score_threshold_override,omitempty"` // Override default relevance threshold
+	unknownFields          protoimpl.UnknownFields
+	sizeCache              protoimpl.SizeCache
 }
 
 func (x *ToolRequest) Reset() {
@@ -203,11 +204,19 @@ func (x *ToolRequest) GetAllowedToolIds() []string {
 	return nil
 }
 
+func (x *ToolRequest) GetScoreThresholdOverride() float32 {
+	if x != nil {
+		return x.ScoreThresholdOverride
+	}
+	return 0
+}
+
 type Tool struct {
 	state          protoimpl.MessageState `protogen:"open.v1"`
 	Id             string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
 	Name           string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
 	RelevanceScore float32                `protobuf:"fixed32,3,opt,name=relevance_score,json=relevanceScore,proto3" json:"relevance_score,omitempty"`
+	Description    string                 `protobuf:"bytes,4,opt,name=description,proto3" json:"description,omitempty"` // Tool description from Qdrant
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }
@@ -261,6 +270,13 @@ func (x *Tool) GetRelevanceScore() float32 {
 		return x.RelevanceScore
 	}
 	return 0
+}
+
+func (x *Tool) GetDescription() string {
+	if x != nil {
+		return x.Description
+	}
+	return ""
 }
 
 type ToolResponse struct {
@@ -351,15 +367,17 @@ const file_router_proto_rawDesc = "" +
 	"\x06org_id\x18\x04 \x01(\tR\x05orgId\"F\n" +
 	"\x14RegisterToolResponse\x12\x18\n" +
 	"\asuccess\x18\x01 \x01(\bR\asuccess\x12\x14\n" +
-	"\x05error\x18\x02 \x01(\tR\x05error\"h\n" +
+	"\x05error\x18\x02 \x01(\tR\x05error\"\xa2\x01\n" +
 	"\vToolRequest\x12\x16\n" +
 	"\x06prompt\x18\x01 \x01(\tR\x06prompt\x12\x17\n" +
 	"\auser_id\x18\x02 \x01(\tR\x06userId\x12(\n" +
-	"\x10allowed_tool_ids\x18\x03 \x03(\tR\x0eallowedToolIds\"S\n" +
+	"\x10allowed_tool_ids\x18\x03 \x03(\tR\x0eallowedToolIds\x128\n" +
+	"\x18score_threshold_override\x18\x04 \x01(\x02R\x16scoreThresholdOverride\"u\n" +
 	"\x04Tool\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12'\n" +
-	"\x0frelevance_score\x18\x03 \x01(\x02R\x0erelevanceScore\"\xed\x01\n" +
+	"\x0frelevance_score\x18\x03 \x01(\x02R\x0erelevanceScore\x12 \n" +
+	"\vdescription\x18\x04 \x01(\tR\vdescription\"\xed\x01\n" +
 	"\fToolResponse\x12\"\n" +
 	"\x05tools\x18\x01 \x03(\v2\f.router.ToolR\x05tools\x12,\n" +
 	"\x12total_tokens_saved\x18\x02 \x01(\x05R\x10totalTokensSaved\x12+\n" +

@@ -41,7 +41,7 @@ export default async function AppLayout({
           </div>
         </main>
         
-        <NeuralAssistant />
+        <NeuralAssistant orgId={org.orgId} />
         
         {/* Optional: Static background flair */}
         <div className="fixed top-0 right-0 w-[500px] h-[500px] bg-aura-glow/5 blur-[120px] -z-10 rounded-full" />

@@ -1,6 +1,7 @@
 "use server"
 
 import { createClient } from '@/lib/supabase-server'
+import { plans } from '@/app/plans'
 
 const GATEWAY_URL = process.env.GATEWAY_INTERNAL_URL || process.env.NEXT_PUBLIC_GATEWAY_URL || 'http://localhost:8080';
 
@@ -37,7 +38,7 @@ async function gatewayHeaders(orgId?: string): Promise<Record<string, string>> {
 export async function getAuraTools(orgId?: string) {
     try {
         const headers = await gatewayHeaders(orgId)
-        const res = await fetch(`${GATEWAY_URL}/v1/tools`, { 
+        const res = await fetch(`${GATEWAY_URL}/v1/tools`, {
             cache: 'no-store',
             headers,
         });
@@ -52,7 +53,7 @@ export async function getAuraTools(orgId?: string) {
 export async function getAuraStats(orgId?: string) {
     try {
         const headers = await gatewayHeaders(orgId)
-        const res = await fetch(`${GATEWAY_URL}/v1/stats`, { 
+        const res = await fetch(`${GATEWAY_URL}/v1/stats`, {
             cache: 'no-store',
             headers,
         });
@@ -110,7 +111,7 @@ export async function getOrgKeyCount(orgId: string) {
         .from('api_keys')
         .select('*', { count: 'exact', head: true })
         .eq('org_id', orgId);
-    
+
     if (error) return 0;
     return count || 0;
 }
@@ -125,7 +126,7 @@ export async function getOrgAuditStats(orgId: string) {
         .select('*', { count: 'exact', head: true })
         .eq('org_id', orgId)
         .gte('created_at', yesterday.toISOString());
-    
+
     if (error) return { count24h: 0 };
     return { count24h: count || 0 };
 }
@@ -138,11 +139,11 @@ export async function createApiKey(orgId: string, name: string) {
     // Generate a high-entropy 32-char raw key
     const rawKey = `aura_${crypto.randomBytes(24).toString('hex')}`;
     const prefix = rawKey.substring(0, 8);
-    
+
     // Hash the key for secure storage
     const salt = await bcrypt.genSalt(10);
     const hash = await bcrypt.hash(rawKey, salt);
-    
+
     // Get current user to set as the owner
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) throw new Error("Unauthorized: No user session found");
@@ -162,7 +163,7 @@ export async function createApiKey(orgId: string, name: string) {
         console.error("Supabase insert error in createApiKey:", error);
         throw error;
     }
-    
+
     // Return the RAW key to the user - this is their ONLY chance to see it!
     return { key: rawKey };
 }

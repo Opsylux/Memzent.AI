@@ -99,7 +99,7 @@ func (l *PersistentAuditLogger) GetLatest(orgID string, limit int) ([]AuditEvent
 	query := `
 		SELECT org_id, user_id, action, created_at
 		FROM audit_logs
-		WHERE ($1 = '' OR org_id::text = $1 OR org_id::text = '00000000-0000-0000-0000-000000000000')
+		WHERE ($1 = '' OR org_id::text = $1)
 		ORDER BY created_at DESC
 		LIMIT $2
 	`
@@ -132,4 +132,28 @@ func (l *PersistentAuditLogger) GetLatest(orgID string, limit int) ([]AuditEvent
 	}
 
 	return events, nil
+}
+
+// GetCacheStats aggregates the total cache hits and global requests for an org
+func (l *PersistentAuditLogger) GetCacheStats(orgID string) (uint64, uint64) {
+	if l.db == nil {
+		return 0, 0
+	}
+
+	query := `
+		SELECT 
+			COUNT(*) as total_requests,
+			SUM(CASE WHEN action LIKE 'CACHE:%' THEN 1 ELSE 0 END) as cache_hits
+		FROM audit_logs
+		WHERE ($1 = '' OR org_id::text = $1 OR org_id::text = '00000000-0000-0000-0000-000000000000')
+	`
+	
+	var total, hits sql.NullInt64
+	err := l.db.QueryRow(query, orgID).Scan(&total, &hits)
+	if err != nil {
+		slog.Error("Failed to fetch persistent cache stats", "error", err)
+		return 0, 0
+	}
+
+	return uint64(total.Int64), uint64(hits.Int64)
 }

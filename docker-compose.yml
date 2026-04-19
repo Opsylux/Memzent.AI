@@ -79,6 +79,7 @@ services:
       - STRIPE_WEBHOOK_SECRET=whsec_1234567890
       - STRIPE_PRO_PRODUCT_ID=prod_UMQ6bFWBDSWT7u
       - STRIPE_BIZ_PRODUCT_ID=prod_UMQ6Wf66UAVBNC
+      - STRIPE_PRO_PRICE_ID=price_1TNhGOEDOc5eVcRWYgWqKiUK
       - STRIPE_BIZ_PRICE_ID=price_1TNhHNEDOc5eVcRWxqTYbmTn
       - STRIPE_SUCCESS_URL=http://localhost:3000/dashboard/billing?session_id={CHECKOUT_SESSION_ID}
       - STRIPE_CANCEL_URL=http://localhost:3000/dashboard/billing?status=cancel

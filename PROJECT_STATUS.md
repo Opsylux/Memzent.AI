@@ -50,6 +50,12 @@ This document tracks the current completion state of Aura features and provides 
 
 ---
 
-## 3. Pending Questions for User
-- **Org Isolation**: Do we need hard physical isolation (separate DBs) for different orgs, or is row-level security (RLS) sufficient?
-- **Vector Model**: Should we expose the choice of embedding model in `X-Aura-Model`, or keep it locked at the Router level for hash consistency?
+## 3. Design Decisions & Future Assessments
+
+### Org Isolation
+- **Current Decision:** RLS (Row-Level Security) with `org_id` filtering is sufficient for the current phase.
+- **Future Assessment (Enterprise):** Evaluate schema-level or physical database isolation as a premium feature for Enterprise subscriptions in a future phase.
+
+### Vector Model & Routing
+- **Current Decision:** Users and agents should NOT be restricted to a single model; they should be able to choose their preferred model.
+- **Action Item / Design Review:** We need a design review on how to handle caching for multiple models. This may involve adding custom headers (e.g., `X-Aura-Model`) to specify the model, and adjusting the cache lookup logic to ensure cache keys are scoped to the requested model. We'll also need to consider if/how we can share cached responses across different models if appropriate.

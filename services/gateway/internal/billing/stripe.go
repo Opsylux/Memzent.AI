@@ -117,6 +117,14 @@ func (h *StripeHandler) CreateCheckoutSession(w http.ResponseWriter, r *http.Req
 		return
 	}
 
+	// Guard: fail fast if the price ID env var is not configured.
+	// Passing an empty string to Stripe causes a cryptic 400 error.
+	if priceID == "" {
+		slog.Error("Stripe price ID not configured", "tier", req.Tier)
+		http.Error(w, fmt.Sprintf("Billing not configured for tier %q — contact support", req.Tier), http.StatusServiceUnavailable)
+		return
+	}
+
 	orgID := r.Header.Get("X-Org-ID")
 	slog.Info("Creating real Stripe Checkout Session", "tier", req.Tier, "org_id", orgID, "price_id", priceID)
 

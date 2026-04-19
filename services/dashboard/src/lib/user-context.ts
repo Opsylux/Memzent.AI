@@ -53,8 +53,23 @@ export async function getCurrentOrg(): Promise<OrgContext | null> {
       }
     }
 
-    // No membership found — return null so the dashboard can handle unauthorized state
-    return null
+    // No membership found -- call the secure database RPC to generate a real one!
+    const { data: newOrgId, error: provisionErr } = await supabase.rpc('provision_personal_org')
+    if (provisionErr) {
+      console.error('Failed to provision personal org:', provisionErr)
+      return null
+    }
+
+    const name = user.email?.split('@')[0] || 'Personal'
+    return {
+      userId: user.id,
+      email: user.email || '',
+      orgId: newOrgId || user.id, // Fallback just in case
+      orgName: name + "'s Workspace",
+      tier: 'free',
+      role: 'admin',
+      initials: name.substring(0, 2).toUpperCase(),
+    }
   } catch (e) {
     console.error('Failed to resolve org context:', e)
     return null

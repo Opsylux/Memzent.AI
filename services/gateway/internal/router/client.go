@@ -50,9 +50,10 @@ func NewRouterClient(ctx context.Context, addr string) (*RouterClient, error) {
 // ✅ PRESERVED: Returning tools, compressed prompt, similar hash, and current hash!
 func (rc *RouterClient) GetBestTools(ctx context.Context, prompt string, userID string, allowedToolIDs []string) ([]*Tool, string, string, string, error) {
 	req := &ToolRequest{
-		Prompt:         prompt,
-		UserId:         userID,
-		AllowedToolIds: allowedToolIDs,
+		Prompt:                 prompt,
+		UserId:                 userID,
+		AllowedToolIds:         allowedToolIDs,
+		ScoreThresholdOverride: 0.65,
 	}
 
 	// Call the gRPC method defined in your .proto file

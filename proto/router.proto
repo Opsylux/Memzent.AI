@@ -31,12 +31,14 @@ message ToolRequest {
   string prompt = 1;
   string user_id = 2;
   repeated string allowed_tool_ids = 3; // For RBAC-filtered searches
+  float score_threshold_override = 4; // Override default relevance threshold
 }
 
 message Tool {
   string id = 1;
   string name = 2;
   float relevance_score = 3;
+  string description = 4; // Tool description from Qdrant
 }
 
 message ToolResponse {

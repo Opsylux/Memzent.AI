@@ -144,7 +144,7 @@ impl SemanticRouter for MyRouter {
         }
 
         // 3. Search Qdrant using the REAL vector (for Tools)
-        let search_request = SearchPointsBuilder::new("tools_collection", real_vector, 3)
+        let search_request = SearchPointsBuilder::new("tools_collection", real_vector, 10)
             .filter(filter.unwrap_or_default())
             .with_payload(true)
             .build();
@@ -163,7 +163,13 @@ impl SemanticRouter for MyRouter {
 
         // 4. Map Results to ToolResponse
         let mut tools = Vec::new();
+        let threshold = if req.score_threshold_override > 0.0 { req.score_threshold_override } else { 0.65 };
+
         for scored_point in search_result.result {
+            if scored_point.score < threshold {
+                continue;
+            }
+
             let payload = scored_point.payload;
             let tool_id = payload.get("tool_id")
                 .and_then(|v| v.kind.as_ref())
@@ -181,10 +187,19 @@ impl SemanticRouter for MyRouter {
                 })
                 .unwrap_or_else(|| tool_id.clone());
 
+            let description = payload.get("description")
+                .and_then(|v| v.kind.as_ref())
+                .map(|k| match k {
+                    qdrant_client::qdrant::value::Kind::StringValue(s) => s.clone(),
+                    _ => String::new(),
+                })
+                .unwrap_or_default();
+
             tools.push(Tool {
                 id: tool_id,
                 name: tool_name,
                 relevance_score: scored_point.score,
+                description,
             });
         }
 
@@ -219,6 +234,7 @@ impl SemanticRouter for MyRouter {
         let mut payload = HashMap::new();
         payload.insert("tool_id".to_string(), Value::from(req.id.clone()));
         payload.insert("tool_name".to_string(), Value::from(req.name.clone()));
+        payload.insert("description".to_string(), Value::from(req.description.clone()));
         payload.insert("org_id".to_string(), Value::from(req.org_id.clone()));
 
         // 3. Upsert into Qdrant tools_collection

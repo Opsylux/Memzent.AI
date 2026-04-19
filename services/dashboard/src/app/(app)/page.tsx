@@ -106,7 +106,7 @@ export default async function Page() {
              <div className="absolute top-0 right-0 p-4 opacity-10 pointer-events-none">
                 <TrendingUp size={120} className="text-aura-glow" />
              </div>
-             <RoutingVisualizer steps={[]} />
+             <RoutingVisualizer steps={[]} orgId={orgId} />
           </div>
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
