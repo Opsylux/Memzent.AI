@@ -63,25 +63,25 @@ export function RoutingVisualizer({ steps }: { steps?: any[] }) {
             )}
 
             {isExecuting && (
-                 <div className="flex flex-col md:flex-row items-center justify-between gap-6 opacity-60 animate-pulse">
-                     <TraceStep icon={<Database size={16} />} label="Gateway" status="active" detail="Evaluating Intent" />
-                     <ArrowRight className="text-slate-700 hidden md:block" size={16} />
-                     <TraceStep icon={<Search size={16} />} label="Valkey" status="pending" detail="Checking Semantic Hash" />
-                     <ArrowRight className="text-slate-700 hidden md:block" size={16} />
-                     <TraceStep icon={<Cpu size={16} />} label="LLM" status="pending" detail="Synthesis Engine" />
-                 </div>
+                  <div className="flex flex-col md:flex-row items-center justify-between gap-6 opacity-60 animate-pulse">
+                      <TraceStep icon={<Database size={16} />} label="Secure Ingress" status="active" detail="Evaluating Intent" />
+                      <ArrowRight className="text-slate-700 hidden md:block" size={16} />
+                      <TraceStep icon={<Search size={16} />} label="Semantic Cache" status="pending" detail="Checking Neural Hash" />
+                      <ArrowRight className="text-slate-700 hidden md:block" size={16} />
+                      <TraceStep icon={<Cpu size={16} />} label="Intelligence Hub" status="pending" detail="Synthesis Engine" />
+                  </div>
             )}
 
             {traceResult && !traceResult.error && (
                 <div className="space-y-6">
                     <div className="flex flex-col md:flex-row items-center justify-between gap-6">
-                        <TraceStep icon={<Database size={16} />} label="Gateway" status="complete" detail="Ingress 200 OK" />
+                        <TraceStep icon={<Database size={16} />} label="Secure Ingress" status="complete" detail="Verified Logic 200" />
                         <ArrowRight className="text-slate-700 hidden md:block" size={16} />
                         
                         {traceResult.cached ? (
-                            <TraceStep icon={<Zap size={16} />} label="Valkey Cache" status="active" detail="Semantic Match HIT" color="glow-cyan" />
+                            <TraceStep icon={<Zap size={16} />} label="Semantic Match" status="active" detail="Context Memory HIT" color="glow-cyan" />
                         ) : (
-                            <TraceStep icon={<Cpu size={16} />} label="Rust Router" status="complete" detail="Qdrant Embedding Search" />
+                            <TraceStep icon={<Cpu size={16} />} label="Aura Routing" status="complete" detail="Neural Context Mapping" />
                         )}
 
                         <ArrowRight className="text-slate-700 hidden md:block" size={16} />
@@ -100,7 +100,7 @@ export function RoutingVisualizer({ steps }: { steps?: any[] }) {
                     </div>
 
                     <div className="mt-8 p-4 bg-slate-950 border border-slate-800 rounded-xl">
-                        <div className="text-[10px] font-black uppercase text-slate-500 mb-2">Final LLM Output:</div>
+                        <div className="text-[10px] font-black uppercase text-slate-500 mb-2">Final Logic Synthesis:</div>
                         <p className="text-sm text-slate-300 font-serif leading-relaxed whitespace-pre-wrap">{traceResult.text}</p>
                     </div>
                 </div>

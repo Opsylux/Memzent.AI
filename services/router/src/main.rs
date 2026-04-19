@@ -222,10 +222,11 @@ impl SemanticRouter for MyRouter {
         payload.insert("org_id".to_string(), Value::from(req.org_id.clone()));
 
         // 3. Upsert into Qdrant tools_collection
+        let tool_uuid = uuid::Uuid::new_v5(&uuid::Uuid::NAMESPACE_OID, req.id.as_bytes());
         let result = self.q_client.upsert_points(UpsertPointsBuilder::new(
             "tools_collection",
             vec![PointStruct::new(
-                req.id.clone(), // Use tool ID as the point ID for deterministic updates
+                tool_uuid.to_string(), // Deterministic UUID point identity
                 vector,
                 payload
             )]

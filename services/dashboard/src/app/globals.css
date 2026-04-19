@@ -92,6 +92,24 @@
   @apply glass p-6 rounded-3xl transition-all duration-300 hover:bg-white/[0.05] hover:border-white/20;
 }
 
+@utility prose-aura {
+  & h1, & h2, & h3, & h4 {
+    @apply uppercase tracking-tighter font-black text-white;
+  }
+  & a {
+    @apply text-aura-glow no-underline hover:underline font-bold transition-colors;
+  }
+  & strong {
+    @apply text-white font-black;
+  }
+  & code {
+    @apply text-aura-glow bg-aura-glow/5 px-1 rounded font-mono font-bold;
+  }
+  & ul {
+    @apply list-disc marker:text-aura-purple;
+  }
+}
+
 @utility neural-bg {
   /* Standard CSS values are fine with spaces, only @apply brackets are strict */
   background: radial-gradient(circle at 50% 50%, #0a0a0a 0%, #050505 100%);

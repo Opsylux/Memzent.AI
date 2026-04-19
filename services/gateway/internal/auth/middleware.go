@@ -110,8 +110,8 @@ func UnifiedAuthMiddleware(secret string, jwks *JWKSProvider, rbac *RBACClient) 
 			userMetadata, _ := claims["user_metadata"].(map[string]interface{})
 			userID := claims["sub"].(string)
 
-			// Resolve Org ID (Priority: JWT app_metadata -> JWT user_metadata -> X-Org-ID Header -> Default Nil)
-			orgID := "00000000-0000-0000-0000-000000000000"
+			// Resolve Org ID (Priority: JWT app_metadata -> JWT user_metadata -> X-Org-ID Header)
+			var orgID string
 			
 			if oid, ok := appMetadata["org_id"].(string); ok {
 				orgID = oid
@@ -120,6 +120,12 @@ func UnifiedAuthMiddleware(secret string, jwks *JWKSProvider, rbac *RBACClient) 
 			} else if xOrgID != "" {
 				// Trust X-Org-ID if provided by the dashboard as long as the JWT is valid
 				orgID = xOrgID
+			}
+
+			// Block requests that lack an organizational context (required for RBAC and Audit Logging)
+			if orgID == "" {
+				http.Error(w, "Forbidden: Organizational context missing. Please ensure your account has a workspace.", http.StatusForbidden)
+				return
 			}
 			
 			tier := "free"
@@ -133,7 +139,7 @@ func UnifiedAuthMiddleware(secret string, jwks *JWKSProvider, rbac *RBACClient) 
 			role, _ := claims["role"].(string)
 
 			// Resolve verified Role from Database (Persistent RBAC)
-			if rbac != nil && orgID != "" && userID != "" {
+			if rbac != nil && userID != "" {
 				dbRole, err := rbac.GetMemberRole(r.Context(), orgID, userID)
 				if err == nil && dbRole != "guest" {
 					role = dbRole

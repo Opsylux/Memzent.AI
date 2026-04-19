@@ -16,6 +16,7 @@ import (
 	"aura-gateway/internal/cache"
 	"aura-gateway/internal/config"
 	"aura-gateway/internal/connectors"
+	"aura-gateway/internal/db"
 	"aura-gateway/internal/engine"
 	"aura-gateway/internal/llm"
 	"aura-gateway/internal/mcp"
@@ -105,6 +106,12 @@ func main() {
 	} else {
 		defer rbacClient.Close()
 		slog.Info("Connected to Postgres RBAC")
+
+		// 5.0. Run Automated Migrations (Infrastructure Hardening)
+		migrationRunner := db.NewMigrationRunner(rbacClient.GetDB(), "migrations")
+		if err := migrationRunner.Run(ctx); err != nil {
+			slog.Error("Database migration failed", "error", err)
+		}
 	}
 
 	// 5.1 Initialize JWKS Provider (Dynamic Auth discovery)

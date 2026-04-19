@@ -30,12 +30,18 @@ func (l *PersistentAuditLogger) Log(ctx context.Context, event AuditEvent, metad
 
 	metaBuf, _ := json.Marshal(metadata)
 
+	const systemOrgID = "00000000-0000-0000-0000-000000000000"
+	targetOrgID := event.OrgID
+	if targetOrgID == "system" || targetOrgID == "" {
+		targetOrgID = systemOrgID
+	}
+
 	query := `
 		INSERT INTO audit_logs (org_id, user_id, action, metadata, created_at)
-		VALUES (NULLIF($1, 'system')::uuid, NULLIF($2, '')::uuid, $3, $4, $5)
+		VALUES ($1::uuid, NULLIF($2, ''), $3, $4, $5)
 	`
 	_, err := l.db.ExecContext(ctx, query,
-		event.OrgID,
+		targetOrgID,
 		event.User,
 		event.Type+":"+event.Detail, // Normalize action type
 		metaBuf,
@@ -93,7 +99,7 @@ func (l *PersistentAuditLogger) GetLatest(orgID string, limit int) ([]AuditEvent
 	query := `
 		SELECT org_id, user_id, action, created_at
 		FROM audit_logs
-		WHERE ($1 = '' OR org_id::text = $1 OR org_id::text = 'system')
+		WHERE ($1 = '' OR org_id::text = $1 OR org_id::text = '00000000-0000-0000-0000-000000000000')
 		ORDER BY created_at DESC
 		LIMIT $2
 	`

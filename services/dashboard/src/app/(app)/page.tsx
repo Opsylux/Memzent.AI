@@ -122,19 +122,19 @@ export default async function Page() {
                     </div>
                  </div>
                  <p className="text-sm font-medium text-white/40 leading-relaxed">
-                   Aura Router is currently managing <span className="text-white font-black">{initialTools?.length || 0} Registered Tools</span> across <span className="text-white font-black">{providerCount} providers</span>.
+                   Aura Engine is currently managing <span className="text-white font-black">{initialTools?.length || 0} Functional Bindings</span> across <span className="text-white font-black">{providerCount} compute nodes</span>.
                    Semantic clustering is <span className="text-aura-glow font-black italic underline decoration-aura-glow/30 decoration-2">OPTIMIZED</span> with 98.4% intent matching accuracy.
                  </p>
                </div>
                
                <div className="grid grid-cols-2 gap-4 mt-8 pt-6 border-t border-white/5">
                   <div className="p-4 rounded-2xl bg-white/[0.02] border border-white/5">
-                     <div className="text-[10px] font-black text-white/20 uppercase mb-1">Embedding Engine</div>
-                     <div className="text-xs font-bold text-aura-glow truncate">Qdrant Semantic</div>
+                     <div className="text-[10px] font-black text-white/20 uppercase mb-1">Vector Search Engine</div>
+                     <div className="text-xs font-bold text-aura-glow truncate">Neural Core</div>
                   </div>
                   <div className="p-4 rounded-2xl bg-white/[0.02] border border-white/5">
-                     <div className="text-[10px] font-black text-white/20 uppercase mb-1">Default Fallback</div>
-                     <div className="text-xs font-bold text-aura-purple truncate">{defaultProvider}</div>
+                     <div className="text-[10px] font-black text-white/20 uppercase mb-1">Primary Synthesis</div>
+                     <div className="text-xs font-bold text-aura-purple truncate">Intelligent Mesh</div>
                   </div>
                </div>
             </div>
