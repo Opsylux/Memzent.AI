@@ -1,18 +1,19 @@
-package main
+package make_token
 
 import (
 	"fmt"
 	"time"
+
 	"github.com/golang-jwt/jwt/v5"
 )
 
-func main() {
+func MakeToken() {
 	secret := "aura-enterprise-secret-2026"
-	
+
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-		"sub": "admin-01",
+		"sub":  "admin-01",
 		"role": "admin",
-		"exp": time.Now().Add(time.Hour * 24).Unix(),
+		"exp":  time.Now().Add(time.Hour * 24).Unix(),
 	})
 
 	tokenString, err := token.SignedString([]byte(secret))
