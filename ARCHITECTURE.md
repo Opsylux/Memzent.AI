@@ -179,6 +179,25 @@ Aura is architected as a **Universal AI Gateway** with pluggable tool connectors
 - [ ] Tool composition (input/output schema matching)
 - [ ] Error recovery & retry logic
 
+### Phase 4: Advanced Orchestration (📋 PLANNED Q3)
+**Goal**: Enable multi-step AI workflows
+- [ ] Tool chaining (output of tool N → input of tool N+1)
+- [ ] Async job queue (Bull/RabbitMQ) for long-running tools
+- [ ] Result streaming (SSE/WebSocket for live progress)
+- [ ] Tool composition (input/output schema matching)
+- [ ] Error recovery & retry logic
+
+### Phase 5: BYO LLM Providers
+**Goal**: Enable users to bring their own LLM providers
+- [ ] Add LLM provider abstraction layer in engine
+- [ ] Add LLM provider and its configuration to save with encrypt at rest.
+- [ ] Add and Manage LLM provider in Dashboard
+- [ ] Make sure End to End flow works with BYO LLM provider
+- [ ] Make sure BYO LLM provider works with MCP protocol
+
+
+
+
 ---
 
 ## 8. Dashboard Integration
