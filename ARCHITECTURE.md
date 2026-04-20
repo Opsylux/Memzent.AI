@@ -157,6 +157,13 @@ Aura is architected as a **Universal AI Gateway** with pluggable tool connectors
 - [ ] Implement rate limit based on tier
 - [ ] Implement throttle based on tier
 
+### Phase 1.b: Qdrant Optimization ( Not started, need to start for go live)
+**Goal**: Enable Qdrant optimization
+- [ ] Enable Scalar Quantization to save 75% on RAM costs.
+- [ ] Set memmap_threshold to allow Qdrant to offload cold data to disk automatically.
+- [ ] Index your org_id and user_id fields in the payload.
+- [ ] Enable Snapshots: Schedule automatic snapshots to an S3 bucket for disaster recovery.
+
 ### Phase 2: Dynamic Tool Registry (🚀 IN PROGRESS)
 **Goal**: Enable tool registration without gateway/MCP restarts
 - [ ] Create Postgres schema: `tools` table with metadata + connection details
