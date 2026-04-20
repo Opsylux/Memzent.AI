@@ -184,7 +184,7 @@ export default function SettingsPage() {
                   Deactivating the organization sector will purge all semantic clusters, vector points, and provisioned tool bindings. This action will initiate an IRREVERSIBLE data scrubbing protocol.
                 </p>
 
-                <Button variant="outline" className="border-red-500/20 text-red-500 font-black uppercase tracking-[0.3em] text-[10px] px-8 h-14 rounded-2xl hover:bg-red-500/10 hover:border-red-500/40 transition-all">
+                <Button variant="outline" className="border-red-500/20 text-red-500 font-black uppercase tracking-[0.3em] text-[10px] px-8 h-14 rounded-2xl hover:bg-red-500/10 hover:border-red-500/40 transition-all" onClick={() => alert("Dissolution currently restricted to manual database intervention during Beta.")}>
                   Execute Dissolution
                 </Button>
               </div>
@@ -228,7 +228,7 @@ export default function SettingsPage() {
                 )}
               </div>
 
-              <Button className="w-full mt-8 py-6 rounded-2xl bg-white/5 border border-white/10 text-white/40 hover:text-white hover:bg-white/10 text-[10px] font-black uppercase tracking-widest transition-all">
+              <Button className="w-full mt-8 py-6 rounded-2xl bg-white/5 border border-white/10 text-white/40 hover:text-white hover:bg-white/10 text-[10px] font-black uppercase tracking-widest transition-all" onClick={() => alert("Infrastructure Collaborator invitations are scheduled for Phase 3 Multi-Tenant release.")}>
                 Invite Infrastructure Collaborator
               </Button>
             </div>

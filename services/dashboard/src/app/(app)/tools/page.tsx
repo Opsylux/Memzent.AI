@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { RegisterToolBtn } from "@/components/register-tool-btn";
 import { SyncRegistryBtn } from "@/components/sync-registry-btn";
+import { ClientStubButton } from "@/components/client-stub-button";
 
 export default async function ToolsPage() {
   const org = await getCurrentOrg();
@@ -111,12 +112,8 @@ export default async function ToolsPage() {
                   </td>
                   <td className="px-8 py-6 text-right">
                      <div className="flex items-center justify-end gap-2 opacity-20 group-hover:opacity-100 transition-opacity">
-                        <button className="p-2 rounded-lg hover:bg-white/10 hover:text-aura-glow transition-all">
-                          <ExternalLink size={16} />
-                        </button>
-                        <button className="p-2 rounded-lg hover:bg-white/10 transition-all">
-                          <MoreHorizontal size={16} />
-                        </button>
+                        <ClientStubButton type="external" message="Tool Configuration editing scheduled for Phase 3." />
+                        <ClientStubButton type="more" message="Additional tool actions pending." />
                      </div>
                   </td>
                 </tr>

@@ -96,39 +96,58 @@ func (l *PersistentAuditLogger) GetLatest(orgID string, limit int) ([]AuditEvent
 		return []AuditEvent{}, nil
 	}
 
-	query := `
-		SELECT org_id, user_id, action, created_at
-		FROM audit_logs
-		WHERE ($1 = '' OR org_id::text = $1)
-		ORDER BY created_at DESC
-		LIMIT $2
-	`
-	rows, err := l.db.Query(query, orgID, limit)
+	// 1. Build query dynamically to handle "all orgs" and keep indexes active
+	var rows *sql.Rows
+	var err error
+
+	// 2. Pre-allocate slice capacity to the limit to avoid re-allocations
+	events := make([]AuditEvent, 0, limit)
+
+	if orgID == "" {
+		query := `
+            SELECT org_id, user_id, action, created_at
+            FROM audit_logs
+            ORDER BY created_at DESC
+            LIMIT $1`
+		rows, err = l.db.Query(query, limit)
+	} else {
+		query := `
+            SELECT org_id, user_id, action, created_at
+            FROM audit_logs
+            WHERE org_id = $1
+            ORDER BY created_at DESC
+            LIMIT $2`
+		rows, err = l.db.Query(query, orgID, limit)
+	}
+
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
-	events := make([]AuditEvent, 0)
 	for rows.Next() {
 		var ev AuditEvent
 		var action string
 		if err := rows.Scan(&ev.OrgID, &ev.User, &action, &ev.Timestamp); err != nil {
-			continue
+			return nil, err // Don't silently fail
 		}
 
-		// Split action back into Type and Detail if possible
+		// Optimization: Standard string split is fine, but ensure DB schema
+		// eventually reflects these as separate columns for best performance.
 		parts := strings.SplitN(action, ":", 2)
 		if len(parts) == 2 {
-			ev.Type = parts[0]
-			ev.Detail = parts[1]
+			ev.Type, ev.Detail = parts[0], parts[1]
 		} else {
-			ev.Type = "SYSTEM"
-			ev.Detail = action
+			ev.Type, ev.Detail = "SYSTEM", action
 		}
 
-		ev.Status = "success" // Default for fetched logs
+		ev.Status = "success"
 		events = append(events, ev)
+	}
+
+	// Check for errors encountered during iteration
+	if err = rows.Err(); err != nil {
+		return nil, err
 	}
 
 	return events, nil
@@ -147,7 +166,7 @@ func (l *PersistentAuditLogger) GetCacheStats(orgID string) (uint64, uint64) {
 		FROM audit_logs
 		WHERE ($1 = '' OR org_id::text = $1 OR org_id::text = '00000000-0000-0000-0000-000000000000')
 	`
-	
+
 	var total, hits sql.NullInt64
 	err := l.db.QueryRow(query, orgID).Scan(&total, &hits)
 	if err != nil {
