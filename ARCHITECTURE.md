@@ -152,6 +152,11 @@ Aura is architected as a **Universal AI Gateway** with pluggable tool connectors
 - Rust-based semantic routing with Qdrant vector search
 - Dashboard REST API integration
 
+### Phase 1.a: Rate limit and throttle ( Not started, need to start for go live)
+**Goal**: Enable rate limit and throttle
+- [ ] Implement rate limit based on tier
+- [ ] Implement throttle based on tier
+
 ### Phase 2: Dynamic Tool Registry (🚀 IN PROGRESS)
 **Goal**: Enable tool registration without gateway/MCP restarts
 - [ ] Create Postgres schema: `tools` table with metadata + connection details
@@ -160,6 +165,7 @@ Aura is architected as a **Universal AI Gateway** with pluggable tool connectors
 - [ ] Load tools from Postgres at startup + periodically refresh
 - [ ] Embed tool metadata in Qdrant for semantic matching
 - [ ] Return tool connector type in `/v1/tools` list
+
 
 ### Phase 3: Multi-Connector Framework (📋 PLANNED Q2)
 **Goal**: Support non-MCP tool types

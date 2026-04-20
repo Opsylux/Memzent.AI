@@ -42,7 +42,7 @@ You must respect the specific language boundaries. Do not mix responsibilities.
 ## 4. Execution Flow Policy
 
 When implementing new routing features, the AI must ensure the Engine follows this exact sequence:
-1. `Rate Limiting` (Token bucket check)
+1. `Rate Limiting` (Token bucket check - Not implemented or need to review it, make sure its alinged with tiers)
 2. `Cache Check` (Hash lookup in Valkey)
 3. `RBAC Check` (Postgres query for user permissions)
 4. `Semantic Routing` (gRPC call to Rust/Qdrant)
