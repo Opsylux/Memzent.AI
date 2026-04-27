@@ -74,7 +74,7 @@ services:
       - JWKS_URL=https://qjzhikynowfbswcjwvhu.supabase.co/auth/v1/jwks
       - OLLAMA_ENABLED=true
       - OLLAMA_URL=http://ollama:11434
-      - OLLAMA_MODEL=llama4
+      - OLLAMA_MODEL=llama3.2
       - OPENAI_API_KEY=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
       - STRIPE_SECRET_KEY=sk_test_51TJcl8EDOc5eVcRWk20jOFZKgYLTAcbYpgOGiIeUGPQcYGPVzu7Xw0zfIg0ugwGnRiPd5coljmqOekJxICwR6nn5000Pgh5dui
       - STRIPE_WEBHOOK_SECRET=whsec_1234567890
@@ -149,7 +149,7 @@ services:
     command: >
       "ollama serve & 
        sleep 5 && 
-       ollama pull llama4 && 
+       ollama pull llama3.2 &&
        wait"
 
 volumes:
