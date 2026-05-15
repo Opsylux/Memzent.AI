@@ -71,9 +71,9 @@ export default function LoginPage() {
     <div className="flex items-center justify-center min-h-screen bg-slate-950">
       <Card className="w-[400px] border-slate-800 bg-slate-900 text-slate-100">
         <CardHeader className="text-center">
-          <CardTitle className="text-2xl font-bold tracking-tight text-white">Welcome to Aura</CardTitle>
+          <CardTitle className="text-2xl font-bold tracking-tight text-white">Welcome to Memzent</CardTitle>
           <CardDescription className="text-slate-400">
-            Sign in to your enterprise AI mesh
+            Sign in to the memory of an agent
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">

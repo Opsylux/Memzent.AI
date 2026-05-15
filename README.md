@@ -1,6 +1,6 @@
-# Project Aura: Enterprise AI Infrastructure Mesh
+# Memzent.ai: Memory of Agent
 
-**Aura** is a high-performance, triple-layer semantic AI gateway designed to eliminate the "Token Tax" and security risks of unmanaged LLM deployments. It acts as an **Intelligent Semantic Proxy** sitting between user clients, MCP tools, and external/local LLM endpoints — routing with intent, caching with precision, and governing with enterprise-grade RBAC.
+**Memzent** is the memory of an agent, featuring semantic search, routing, RBAC, and more. It acts as a high-performance, triple-layer semantic AI gateway designed to eliminate the "Token Tax" and security risks of unmanaged LLM deployments. It acts as an **Intelligent Semantic Proxy** sitting between user clients, MCP tools, and external/local LLM endpoints — routing with intent, caching with precision, and governing with enterprise-grade RBAC.
 
 ---
 

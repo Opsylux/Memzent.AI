@@ -14,8 +14,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Aura Command Center",
-  description: "Enterprise-grade observability for AI agentic infrastructure.",
+  title: "Memzent.ai Command Center",
+  description: "Memory of agent with semantic search, route, rbac and what not.",
 };
 
 export default function RootLayout({

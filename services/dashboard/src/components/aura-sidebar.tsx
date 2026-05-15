@@ -31,7 +31,7 @@ export function AuraSidebar() {
            <Zap className="text-black fill-black" size={20} />
         </div>
         <div>
-          <h1 className="font-black text-xl tracking-tighter leading-none">AURA_OS</h1>
+          <h1 className="font-black text-xl tracking-tighter leading-none">MEMZENT_OS</h1>
           <p className="text-[10px] font-bold text-aura-glow uppercase tracking-widest mt-1 opacity-60 italic">Enterprise v1.0</p>
         </div>
       </div>

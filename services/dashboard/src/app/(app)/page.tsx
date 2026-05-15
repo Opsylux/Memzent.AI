@@ -67,7 +67,7 @@ export default async function Page() {
           detail="Organization-scoped Flow"
         />
         <MetricCard 
-          label="Aura Tools Registry" 
+          label="Memzent Tools Registry" 
           value={`${initialTools?.length || 0}`} 
           trend="Online" 
           icon={<ShieldCheck size={24} />}
@@ -122,7 +122,7 @@ export default async function Page() {
                     </div>
                  </div>
                  <p className="text-sm font-medium text-white/40 leading-relaxed">
-                   Aura Engine is currently managing <span className="text-white font-black">{initialTools?.length || 0} Functional Bindings</span> across <span className="text-white font-black">{providerCount} compute nodes</span>.
+                   Memzent Engine is currently managing <span className="text-white font-black">{initialTools?.length || 0} Functional Bindings</span> across <span className="text-white font-black">{providerCount} compute nodes</span>.
                    Semantic clustering is <span className="text-aura-glow font-black italic underline decoration-aura-glow/30 decoration-2">OPTIMIZED</span> with 98.4% intent matching accuracy.
                  </p>
                </div>

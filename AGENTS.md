@@ -1,9 +1,9 @@
 # AGENTS.md
 
-> **Notice to AI System & Agents**: This file contains the mandatory operating rules, system constraints, and engineering stack for Project Aura. You must parse and adhere strictly to these constraints before proposing any code edits and if need to change any of the rules,or add any new rules or new design decisions ask the user for approval.
+> **Notice to AI System & Agents**: This file contains the mandatory operating rules, system constraints, and engineering stack for Project Memzent. You must parse and adhere strictly to these constraints before proposing any code edits and if need to change any of the rules,or add any new rules or new design decisions ask the user for approval.
 
 ## 1. Project Abstract
-**Aura** is an enterprise-grade AI infrastructure mesh. It acts as an "Intelligent Semantic Proxy" sitting between user clients, MCP (Model Context Protocol) Tools, and external/local LLM endpoints. 
+**Memzent (memzent.ai)** is a high-performance, intelligent semantic proxy designed to serve as the long-term memory and orchestration layer for AI agents. Sitting seamlessly between user clients, MCP (Model Context Protocol) tools, and LLM endpoints, Memzent provides the stateful infrastructure agents need to scale—featuring ultra-low latency semantic caching, intelligent routing, robust RBAC, and secure context management.
 - **Core Goal**: Minimize LLM latency and maximize token ROI by semantically caching and efficiently routing user prompts *before* hitting expensive LLMs.
 
 ## 2. Engineering Standards & Boundaries
