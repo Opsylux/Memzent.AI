@@ -262,7 +262,7 @@ const Pillars = () => (
         80% COST REDUCTION
       </h2>
       <p className="text-xl opacity-60 leading-relaxed">
-        Our semantic cache engine (Valkey + Qdrant) detects repeat intents across your organization.
+        Our semantic cache engine detects repeat intents across your organization.
         Cache hits are charged at infra cost only — 80% less than full LLM inference.
       </p>
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">

@@ -42,7 +42,7 @@ curl https://${DOCS_CONFIG.domain}/v1/tools/status \\
         </div>
         <h1 className="text-4xl font-black tracking-tighter uppercase sm:text-5xl">Dynamic Tool Registry</h1>
         <p className="text-lg text-white/60 leading-relaxed font-medium">
-          Connect any data source or API to Memzent without restarting anything. New tools are automatically discovered and made available for AI routing within seconds.
+          Connect any data source or API to Memzent without restarting anything. New tools are automatically vectorized and made available for AI routing instantly.
         </p>
       </header>
 
@@ -56,21 +56,21 @@ curl https://${DOCS_CONFIG.domain}/v1/tools/status \\
               color: "text-memzent-glow",
               bg: "bg-memzent-glow/10",
               title: "Register via API",
-              desc: "Send a tool definition to the registry. It is stored and immediately available for your organization."
+              desc: "Send a tool definition to the registry. It is stored and instantly vectorized for immediate routing."
             },
             {
               icon: <RefreshCw size={18} />,
               color: "text-memzent-purple",
               bg: "bg-memzent-purple/10",
-              title: "Automatic Discovery",
-              desc: "Every 30 seconds, Memzent checks for newly registered tools and adds them to the AI routing pool automatically."
+              title: "Instant Syncing",
+              desc: "Memzent immediately processes newly registered tools and publishes them to the active vector database."
             },
             {
               icon: <GitBranch size={18} />,
               color: "text-memzent-accent",
               bg: "bg-memzent-accent/10",
-              title: "Instant Routing",
-              desc: "Once discovered, Memzent routes relevant prompts to your tool based on the meaning of what the user asked."
+              title: "Real-Time Routing",
+              desc: "Once registered, Memzent routes relevant prompts to your new tool instantly based on semantic intent."
             }
           ].map((item) => (
             <div key={item.title} className="p-5 rounded-2xl bg-white/[0.02] border border-white/5 space-y-3">
@@ -111,7 +111,7 @@ curl https://${DOCS_CONFIG.domain}/v1/tools/status \\
       <section className="space-y-5 pt-2">
         <h2 className="text-2xl font-black tracking-tighter uppercase">Registering a Tool</h2>
         <p className="text-sm text-white/60 leading-relaxed font-medium">
-          Admins can register a new tool with a single API call. The tool becomes available for routing within 30 seconds.
+          Admins can register a new tool with a single API call. The tool becomes instantly available for routing with zero delay.
         </p>
         <CodeBlock code={registerToolExample} language="bash" filename="POST /v1/tools" />
 
@@ -136,7 +136,7 @@ curl https://${DOCS_CONFIG.domain}/v1/tools/status \\
       <section className="space-y-5 pt-2">
         <h2 className="text-2xl font-black tracking-tighter uppercase">Sync & Health</h2>
         <p className="text-sm text-white/60 leading-relaxed font-medium">
-          Tools are automatically synced every 30 seconds. Admins can also trigger an immediate sync, or check when the last sync ran.
+          Tools are automatically synchronized in real time. Admins can also trigger an immediate manual full sync, or check when the last background refresh ran.
         </p>
         <div className="space-y-5">
           <CodeBlock code={manualSyncExample} language="bash" filename="POST /v1/tools/sync" />

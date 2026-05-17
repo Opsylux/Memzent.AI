@@ -12,14 +12,14 @@ export default function DocsLayout({
       {/* Public Docs Header */}
       <header className="h-16 border-b border-white/5 sticky top-0 bg-memzent-dark/80 backdrop-blur-md z-50 flex items-center justify-between px-6">
         <div className="flex items-center gap-8">
-          <Link href="http://localhost:5173" className="flex items-center gap-3">
+          <Link href="https://memzent.ai" className="flex items-center gap-3">
             <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-memzent-glow to-memzent-purple flex items-center justify-center shadow-[0_0_15px_rgba(0,243,255,0.3)]">
               <Shield size={18} className="text-black" strokeWidth={3} />
             </div>
             <span className="text-xl font-black tracking-tighter text-white">MEMZENT</span>
           </Link>
           <nav className="hidden md:flex items-center gap-6">
-            <Link href="http://localhost:5173" className="text-xs font-bold text-white/40 uppercase tracking-widest hover:text-white transition-colors">Home</Link>
+            <Link href="https://memzent.ai" className="text-xs font-bold text-white/40 uppercase tracking-widest hover:text-white transition-colors">Home</Link>
             <Link href="/docs" className="text-xs font-bold text-white uppercase tracking-widest hover:text-memzent-glow transition-colors">Documentation</Link>
             <Link href="https://github.com/Opsylux/MemzentMCP" target="_blank" className="text-xs font-bold text-white/40 uppercase tracking-widest hover:text-white transition-colors">GitHub</Link>
           </nav>
