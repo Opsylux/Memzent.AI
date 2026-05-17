@@ -28,15 +28,14 @@ func UnifiedAuthMiddleware(secret string, jwks *JWKSProvider, rbac *RBACClient) 
 			// 1. Try API Key Authentication (X-API-Key)
 			apiKey := r.Header.Get("X-API-Key")
 			if apiKey != "" && rbac != nil {
-				orgID, userID, err := rbac.VerifyAPIKey(r.Context(), apiKey)
+				orgID, userID, scopes, role, err := rbac.VerifyAPIKey(r.Context(), apiKey)
 				if err == nil {
-					// Extract role (default to admin for API Keys for now, or fetch from DB)
-					role := "admin" // API keys represent the organization/admin identity
-					
 					ctx := context.WithValue(r.Context(), "user_id", userID)
 					ctx = context.WithValue(ctx, "org_id", orgID)
 					ctx = context.WithValue(ctx, "tier", "pro") // Default tier for API access
 					ctx = context.WithValue(ctx, "user_role", role)
+					ctx = context.WithValue(ctx, "key_role", role)
+					ctx = context.WithValue(ctx, "key_scopes", scopes)
 					ctx = context.WithValue(ctx, "auth_method", "api_key")
 
 					next.ServeHTTP(w, r.WithContext(ctx))
@@ -154,6 +153,8 @@ func UnifiedAuthMiddleware(secret string, jwks *JWKSProvider, rbac *RBACClient) 
 			ctx = context.WithValue(ctx, "org_id", orgID)
 			ctx = context.WithValue(ctx, "tier", tier)
 			ctx = context.WithValue(ctx, "user_role", role)
+			ctx = context.WithValue(ctx, "key_role", role)
+			ctx = context.WithValue(ctx, "key_scopes", []string{"*"})
 			ctx = context.WithValue(ctx, "auth_method", "jwt")
 
 			next.ServeHTTP(w, r.WithContext(ctx))
@@ -177,4 +178,25 @@ func GenerateJWT(userID, role, secret string, duration time.Duration) (string, e
 	}
 
 	return tokenString, nil
+}
+
+// HasScope checks if the authenticated context has a specific permission scope.
+func HasScope(ctx context.Context, requiredScope string) bool {
+	authMethod, _ := ctx.Value("auth_method").(string)
+	if authMethod == "jwt" {
+		// JWT users have full scope permission bypass, governed by their org membership/role checks.
+		return true
+	}
+
+	scopes, ok := ctx.Value("key_scopes").([]string)
+	if !ok {
+		return false
+	}
+
+	for _, s := range scopes {
+		if s == "*" || s == requiredScope {
+			return true
+		}
+	}
+	return false
 }

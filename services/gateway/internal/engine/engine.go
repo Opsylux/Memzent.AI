@@ -2,6 +2,7 @@ package engine
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"log/slog"
 	"sync"
@@ -160,8 +161,9 @@ func (e *MemzentEngine) Process(ctx context.Context, req *PromptRequest) (*Promp
 		return nil, fmt.Errorf("rate limit exceeded for organization %s (tier: %s)", orgID, tier)
 	}
 
-	// A.1 Billing Pre-Check
-	if e.ledger != nil {
+	// A.1 Billing Pre-Check (Bypass check for internal dashboard sessions / JWT users)
+	authMethod, _ := ctx.Value("auth_method").(string)
+	if e.ledger != nil && authMethod != "jwt" {
 		hasBalance, err := e.ledger.HasSufficientBalance(ctx, orgID)
 		if err != nil {
 			slog.Error("Billing ledger check failed", "error", err, "org_id", orgID)
@@ -175,7 +177,19 @@ func (e *MemzentEngine) Process(ctx context.Context, req *PromptRequest) (*Promp
 	if e.cache != nil && !req.SkipCache {
 		cacheKey := fmt.Sprintf("org:%s:p:%s", orgID, req.Prompt)
 		cachedResp, err := e.cache.GetSemanticResult(ctx, cacheKey)
-		if err == nil && cachedResp != "" {
+		if err != nil || cachedResp == "" {
+			// Valkey cache miss or restart/crash - fallback to persistent DB cache
+			cachedResp, _ = e.getPersistentCache(ctx, cacheKey)
+			if cachedResp != "" {
+				slog.Info("🎯 Stage 1 Cache HIT (Durable DB Fallback)", "org_id", orgID, "key", cacheKey)
+				// Backfill Valkey asynchronously
+				go func() {
+					_ = e.cache.SetResult(context.Background(), cacheKey, cachedResp, e.cacheTTL)
+				}()
+			}
+		}
+
+		if cachedResp != "" {
 			e.CacheHits.Add(1)
 			hitCounter, _ := e.orgHits.LoadOrStore(orgID, &atomic.Uint64{})
 			hitCounter.(*atomic.Uint64).Add(1)
@@ -198,7 +212,19 @@ func (e *MemzentEngine) Process(ctx context.Context, req *PromptRequest) (*Promp
 		_, cHash := NormalizePrompt(req.Prompt)
 		canonKey := fmt.Sprintf("org:%s:c:%s", orgID, cHash)
 		cachedCanon, err := e.cache.GetSemanticResult(ctx, canonKey)
-		if err == nil && cachedCanon != "" {
+		if err != nil || cachedCanon == "" {
+			// Fallback to persistent DB cache
+			cachedCanon, _ = e.getPersistentCache(ctx, canonKey)
+			if cachedCanon != "" {
+				slog.Info("🎯 Stage 1.5 Cache HIT (Durable DB Fallback)", "org_id", orgID, "canonical", cHash)
+				// Backfill Valkey asynchronously
+				go func() {
+					_ = e.cache.SetResult(context.Background(), canonKey, cachedCanon, e.cacheTTL)
+				}()
+			}
+		}
+
+		if cachedCanon != "" {
 			e.CacheHits.Add(1)
 			hitCounter, _ := e.orgHits.LoadOrStore(orgID, &atomic.Uint64{})
 			hitCounter.(*atomic.Uint64).Add(1)
@@ -236,7 +262,19 @@ func (e *MemzentEngine) Process(ctx context.Context, req *PromptRequest) (*Promp
 	if similarPromptHash != "" && e.cache != nil && !req.SkipCache {
 		simKey := fmt.Sprintf("org:%s:s:%s", orgID, similarPromptHash)
 		cachedResp, err := e.cache.GetSemanticResult(ctx, simKey)
-		if err == nil && cachedResp != "" {
+		if err != nil || cachedResp == "" {
+			// Fallback to persistent DB cache
+			cachedResp, _ = e.getPersistentCache(ctx, simKey)
+			if cachedResp != "" {
+				slog.Info("🎯 Stage 2 Cache HIT (Durable DB Fallback)", "org_id", orgID, "similar_hash", similarPromptHash)
+				// Backfill Valkey asynchronously
+				go func() {
+					_ = e.cache.SetResult(context.Background(), simKey, cachedResp, e.cacheTTL)
+				}()
+			}
+		}
+
+		if cachedResp != "" {
 			e.CacheHits.Add(1)
 			hitCounter, _ := e.orgHits.LoadOrStore(orgID, &atomic.Uint64{})
 			hitCounter.(*atomic.Uint64).Add(1)
@@ -366,16 +404,19 @@ func (e *MemzentEngine) Process(ctx context.Context, req *PromptRequest) (*Promp
 		// Layer 1: Literal Match
 		cacheKey := fmt.Sprintf("org:%s:p:%s", orgID, req.Prompt)
 		_ = e.cache.SetResult(ctx, cacheKey, aiResp, e.cacheTTL)
+		e.setPersistentCache(ctx, orgID, cacheKey, aiResp, e.cacheTTL)
 
 		// Layer 2: Canonical Match
 		_, cHash := NormalizePrompt(req.Prompt)
 		canonKey := fmt.Sprintf("org:%s:c:%s", orgID, cHash)
 		_ = e.cache.SetResult(ctx, canonKey, aiResp, e.cacheTTL)
+		e.setPersistentCache(ctx, orgID, canonKey, aiResp, e.cacheTTL)
 
 		// Layer 3: Semantic Match
 		if currentPromptHash != "" {
 			simKey := fmt.Sprintf("org:%s:s:%s", orgID, currentPromptHash)
 			_ = e.cache.SetResult(ctx, simKey, aiResp, e.cacheTTL)
+			e.setPersistentCache(ctx, orgID, simKey, aiResp, e.cacheTTL)
 		}
 	}
 
@@ -417,4 +458,43 @@ func (e *MemzentEngine) chargeCacheHit(ctx context.Context, orgID, provider, mod
 			}()
 		}
 	}
+}
+
+func (e *MemzentEngine) getPersistentCache(ctx context.Context, cacheKey string) (string, error) {
+	if e.rbac == nil || e.rbac.GetDB() == nil {
+		return "", nil
+	}
+
+	var response string
+	query := "SELECT response FROM persistent_cache WHERE cache_key = $1 AND expires_at > NOW()"
+	err := e.rbac.GetDB().QueryRowContext(ctx, query, cacheKey).Scan(&response)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return "", nil
+		}
+		return "", err
+	}
+	return response, nil
+}
+
+func (e *MemzentEngine) setPersistentCache(ctx context.Context, orgID, cacheKey, response string, ttl time.Duration) {
+	if e.rbac == nil || e.rbac.GetDB() == nil {
+		return
+	}
+
+	expiresAt := time.Now().Add(ttl)
+	query := `
+		INSERT INTO persistent_cache (org_id, cache_key, response, expires_at)
+		VALUES ($1::uuid, $2, $3, $4)
+		ON CONFLICT (cache_key) 
+		DO UPDATE SET response = EXCLUDED.response, expires_at = EXCLUDED.expires_at, updated_at = NOW()
+	`
+	go func() {
+		// Run in background so we never block prompt execution
+		backgroundCtx := context.Background()
+		_, err := e.rbac.GetDB().ExecContext(backgroundCtx, query, orgID, cacheKey, response, expiresAt)
+		if err != nil {
+			slog.Error("Failed to write to persistent database cache", "error", err, "key", cacheKey)
+		}
+	}()
 }

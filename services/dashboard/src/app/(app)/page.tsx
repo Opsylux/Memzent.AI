@@ -35,6 +35,7 @@ export default async function Page() {
   const providerCount = stats.provider_count || 0;
   const defaultProvider = stats.default_provider || "Ollama";
   const activeProviders = Array.isArray(stats.active_providers) ? stats.active_providers : [];
+  const tokenBalance = (stats.token_balance || 0).toFixed(2);
 
   return (
     <div className="space-y-12 pb-20">
@@ -48,7 +49,7 @@ export default async function Page() {
       </div>
 
       {/* KPI Section */}
-      <section className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      <section className="grid grid-cols-1 md:grid-cols-3 xl:grid-cols-5 gap-6">
         <MetricCard
           label="Semantic Savings"
           value={`${semanticSavings}%`}
@@ -67,7 +68,7 @@ export default async function Page() {
           detail="Organization-scoped Flow"
         />
         <MetricCard
-          label="Tools Registry"
+          label="Memzent Tools Registry"
           value={`${initialTools?.length || 0}`}
           trend="Online"
           icon={<ShieldCheck size={24} />}
@@ -82,6 +83,15 @@ export default async function Page() {
           icon={<Database size={24} />}
           color="cyan"
           detail="Available Funds"
+        />
+        <MetricCard
+          label="API Security"
+          value={`${keyCount}`}
+          trend={keyCount > 0 ? "Protected" : "Setup Required"}
+          trendDirection={keyCount > 0 ? "up" : "down"}
+          icon={<ShieldCheck size={24} />}
+          color="purple"
+          detail={`${auditStats.count24h} Events (24h)`}
         />
       </section>
 

@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 )
 
@@ -24,7 +25,18 @@ func NewSQLConnector(connString string) *SQLConnector {
 // Connect establishes database connection (called once at startup)
 func (c *SQLConnector) Connect(ctx context.Context) error {
 	var err error
-	c.db, err = sql.Open("postgres", c.connString)
+	connStr := c.connString
+	if strings.HasPrefix(connStr, "postgres://") || strings.HasPrefix(connStr, "postgresql://") {
+		if strings.Contains(connStr, "?") {
+			if !strings.Contains(connStr, "binary_parameters=") {
+				connStr += "&binary_parameters=yes"
+			}
+		} else {
+			connStr += "?binary_parameters=yes"
+		}
+	}
+
+	c.db, err = sql.Open("postgres", connStr)
 	if err != nil {
 		return fmt.Errorf("failed to open postgres connection: %w", err)
 	}

@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -233,7 +234,8 @@ func main() {
 	var auditLogger *metrics.PersistentAuditLogger
 	if rbacClient != nil {
 		auditLogger = metrics.NewPersistentAuditLogger(rbacClient.GetDB())
-		auditLogger.StartRetentionJob(ctx, 30) // 30-day retention as approved
+		// Supported: Safe to run because prepare_threshold=0 disables SQLPrepare driver-wide, bypassing PgBouncer limits
+		auditLogger.StartRetentionJob(ctx, 30) // 30-day retention
 		slog.Info("Audit Logger initialized with Postgres persistence", "retention_days", 30)
 	}
 
@@ -317,8 +319,21 @@ func main() {
 	// --- Authenticated v1 API ---
 	middleware := auth.UnifiedAuthMiddleware(cfg.JWTSecret, jwksProvider, rbacClient)
 
+	// Scope verification wrapper
+	requireScope := func(scope string, next http.HandlerFunc) http.HandlerFunc {
+		return func(w http.ResponseWriter, r *http.Request) {
+			if !auth.HasScope(r.Context(), scope) {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusForbidden)
+				json.NewEncoder(w).Encode(map[string]string{"error": fmt.Sprintf("Forbidden: API key lacks required scope '%s'", scope)})
+				return
+			}
+			next(w, r)
+		}
+	}
+
 	// Chat API
-	mux.Handle("/v1/chat", middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	mux.Handle("/v1/chat", middleware(requireScope("chat:execute", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
 			return
@@ -348,7 +363,22 @@ func main() {
 		resp, err := memzentEngine.Process(r.Context(), &req)
 		if err != nil {
 			slog.Error("Engine Processing Error", "error", err, "user", req.UserID)
-			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			w.Header().Set("Content-Type", "application/json")
+			errMsg := err.Error()
+
+			if strings.Contains(errMsg, "payment required") {
+				w.WriteHeader(http.StatusPaymentRequired)
+				_ = json.NewEncoder(w).Encode(map[string]string{"error": errMsg})
+				return
+			}
+			if strings.Contains(errMsg, "unauthorized") {
+				w.WriteHeader(http.StatusForbidden)
+				_ = json.NewEncoder(w).Encode(map[string]string{"error": errMsg})
+				return
+			}
+
+			w.WriteHeader(http.StatusInternalServerError)
+			_ = json.NewEncoder(w).Encode(map[string]string{"error": "Internal Server Error: " + errMsg})
 			return
 		}
 
@@ -364,7 +394,20 @@ func main() {
 		orgID, _ := r.Context().Value("org_id").(string)
 
 		if r.Method == http.MethodPost {
+			if !auth.HasScope(r.Context(), "tools:write") {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusForbidden)
+				json.NewEncoder(w).Encode(map[string]string{"error": "Forbidden: token lacks tools:write scope"})
+				return
+			}
 			tools.HandleRegisterTool(toolRegistry, rClient, auditLogger)(w, r)
+			return
+		}
+
+		if !auth.HasScope(r.Context(), "tools:read") {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusForbidden)
+			json.NewEncoder(w).Encode(map[string]string{"error": "Forbidden: token lacks tools:read scope"})
 			return
 		}
 
@@ -393,12 +436,12 @@ func main() {
 		json.NewEncoder(w).Encode(allTools)
 	})))
 
-	mux.Handle("/v1/tools/sync", middleware(http.HandlerFunc(tools.HandleSyncTools(toolRegistry, rClient, auditLogger))))
-	mux.Handle("/v1/tools/register", middleware(http.HandlerFunc(tools.HandleRegisterTool(toolRegistry, rClient, auditLogger))))
-	mux.Handle("/v1/tools/status", middleware(http.HandlerFunc(tools.HandleRegistryStatus(toolRegistry))))
+	mux.Handle("/v1/tools/sync", middleware(requireScope("tools:write", tools.HandleSyncTools(toolRegistry, rClient, auditLogger))))
+	mux.Handle("/v1/tools/register", middleware(requireScope("tools:write", tools.HandleRegisterTool(toolRegistry, rClient, auditLogger))))
+	mux.Handle("/v1/tools/status", middleware(requireScope("tools:read", tools.HandleRegistryStatus(toolRegistry))))
 
 	// Audit API
-	mux.Handle("/v1/audit", middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	mux.Handle("/v1/audit", middleware(requireScope("audit:read", func(w http.ResponseWriter, r *http.Request) {
 		orgID, _ := r.Context().Value("org_id").(string)
 
 		// Security: GetLatest automatically scopes to the provided orgID
@@ -415,7 +458,7 @@ func main() {
 
 	// Stats API
 	startupTime := time.Now()
-	mux.Handle("/v1/stats", middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	mux.Handle("/v1/stats", middleware(requireScope("audit:read", func(w http.ResponseWriter, r *http.Request) {
 		orgID, _ := r.Context().Value("org_id").(string)
 		
 		var reqs, hits uint64

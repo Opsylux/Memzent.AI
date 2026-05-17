@@ -13,14 +13,18 @@ import {
   Building2,
   ChevronRight,
   Book,
-  Activity
+  Activity,
+  Cpu,
+  FlaskConical
 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 
 const navItems = [
   { name: 'Overview', href: '/', icon: LayoutDashboard },
+  { name: 'Playground', href: '/playground', icon: FlaskConical },
   { name: 'Memzent Tools', href: '/tools', icon: Database },
+  { name: 'Providers', href: '/providers', icon: Cpu },
   { name: 'API Keys', href: '/keys', icon: Key },
   { name: 'Audit Logs', href: '/audit', icon: Activity },
   { name: 'Billing', href: '/billing', icon: CreditCard },

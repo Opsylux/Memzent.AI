@@ -2,6 +2,8 @@
 
 import { createClient } from '@/lib/supabase-server'
 import { plans } from '@/app/plans'
+import bcrypt from 'bcryptjs'
+import crypto from 'crypto'
 
 const GATEWAY_URL = process.env.GATEWAY_INTERNAL_URL || process.env.NEXT_PUBLIC_GATEWAY_URL || 'http://localhost:8080';
 
@@ -78,8 +80,13 @@ export async function executeMemzentPrompt(prompt: string, orgId?: string) {
         });
 
         if (!res.ok) {
-            const err = await res.text();
-            throw new Error(err || "Failed to execute prompt");
+            const body = await res.text();
+            try {
+                const parsed = JSON.parse(body);
+                throw new Error(parsed.error || body);
+            } catch {
+                throw new Error(body || "Failed to execute prompt");
+            }
         }
 
         return res.json();
@@ -131,10 +138,8 @@ export async function getOrgAuditStats(orgId: string) {
     return { count24h: count || 0 };
 }
 
-export async function createApiKey(orgId: string, name: string) {
+export async function createApiKey(orgId: string, name: string, scopes: string[] = [], role: string = 'agent') {
     const supabase = await createClient();
-    const bcrypt = require('bcryptjs');
-    const crypto = require('crypto');
 
     // Generate a high-entropy 32-char raw key
     const rawKey = `memzent_${crypto.randomBytes(24).toString('hex')}`;
@@ -155,7 +160,9 @@ export async function createApiKey(orgId: string, name: string) {
             user_id: user.id,
             name: name,
             key_prefix: prefix,
-            key_hash: hash
+            key_hash: hash,
+            scopes: scopes,
+            role: role
         })
         .select();
 

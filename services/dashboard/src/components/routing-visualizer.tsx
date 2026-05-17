@@ -28,21 +28,21 @@ export function RoutingVisualizer({ steps, orgId }: { steps?: any[], orgId?: str
     };
 
     return (
-        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 relative overflow-hidden">
-            <header className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8 border-b border-slate-800 pb-6">
+        <div className="stat-card neural-bg border-white/5 p-6 relative overflow-hidden">
+            <header className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8 border-b border-white/5 pb-6">
                 <div className="flex items-center gap-2">
-                    <Terminal size={14} className="text-slate-500" />
-                    <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest text-center">Live Arena</h3>
+                    <Terminal size={14} className="text-memzent-glow" />
+                    <h3 className="text-xs font-black text-white/60 uppercase tracking-widest text-center">Live Arena</h3>
                 </div>
 
                 <form onSubmit={handleExecute} className="w-full md:w-3/5 flex relative">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 w-4 h-4" />
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-white/20 w-4 h-4" />
                     <input
                         type="text"
                         value={prompt}
                         onChange={(e) => setPrompt(e.target.value)}
                         placeholder="Test intent routing (e.g., 'Fetch database metrics')"
-                        className="w-full bg-slate-950 border border-slate-800 text-sm text-white px-10 py-2.5 rounded-xl focus:outline-none focus:border-memzent-glow/50 focus:ring-1 focus:ring-memzent-glow/50 transition-all font-mono placeholder:text-slate-600"
+                        className="w-full bg-black/40 border border-white/10 text-xs font-bold text-white px-10 py-3 rounded-xl focus:outline-none focus:border-memzent-glow transition-all placeholder:text-white/10"
                         disabled={isExecuting}
                     />
                     <button
@@ -50,15 +50,15 @@ export function RoutingVisualizer({ steps, orgId }: { steps?: any[], orgId?: str
                         disabled={isExecuting || !prompt.trim()}
                         className="absolute right-2 top-1/2 -translate-y-1/2 bg-white/5 hover:bg-white/10 text-white p-1.5 rounded-lg border border-white/5 transition-colors disabled:opacity-50"
                     >
-                        {isExecuting ? <Loader2 className="w-4 h-4 animate-spin text-memzent-glow" /> : <ArrowRight className="w-4 h-4" />}
+                        {isExecuting ? <Loader2 className="w-4 h-4 animate-spin text-memzent-glow" /> : <ArrowRight className="w-4 h-4 text-white/40" />}
                     </button>
                 </form>
             </header>
 
             {!traceResult && !isExecuting && (
-                <div className="flex flex-col items-center justify-center py-8 opacity-50">
-                    <Database size={24} className="mb-4 text-slate-600" />
-                    <p className="text-xs font-mono uppercase tracking-widest text-slate-500">Awaiting Prompt Evaluation...</p>
+                <div className="flex flex-col items-center justify-center py-8 opacity-80">
+                    <Database size={24} className="mb-4 text-memzent-glow/20 animate-pulse" />
+                    <p className="text-[10px] font-black uppercase tracking-[0.25em] text-memzent-glow/30 animate-pulse">Awaiting Prompt Evaluation...</p>
                 </div>
             )}
 

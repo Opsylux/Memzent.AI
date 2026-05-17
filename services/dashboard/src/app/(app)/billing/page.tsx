@@ -44,7 +44,7 @@ export default function BillingPage() {
     if (planId === currentTier || !orgId || loadingPlan) return
     setLoadingPlan(planId)
     try {
-      const { url } = await createCheckoutSession(orgId, planId)
+      const { url } = await createCheckoutSession(orgId, { tier: planId })
       if (url) {
         window.location.href = url
       }
@@ -97,7 +97,11 @@ export default function BillingPage() {
 
                 <div className="flex items-baseline gap-2 mb-8">
                   <span className="text-5xl font-black tracking-tighter text-white">{plan.price}</span>
-                  <span className="text-[10px] font-black uppercase tracking-[0.2em] text-white/20">/ unit</span>
+                  {(plan as any).priceDetail ? (
+                    <span className="text-[10px] font-black uppercase tracking-[0.2em] text-white/20">{(plan as any).priceDetail}</span>
+                  ) : (
+                    <span className="text-[10px] font-black uppercase tracking-[0.2em] text-white/20">/ unit</span>
+                  )}
                 </div>
               </div>
 

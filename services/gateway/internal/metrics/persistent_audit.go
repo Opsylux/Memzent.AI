@@ -44,7 +44,7 @@ func (l *PersistentAuditLogger) Log(ctx context.Context, event AuditEvent, metad
 		targetOrgID,
 		event.User,
 		event.Type+":"+event.Detail, // Normalize action type
-		metaBuf,
+		string(metaBuf),
 		event.Timestamp,
 	)
 
