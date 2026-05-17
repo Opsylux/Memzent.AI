@@ -35,7 +35,7 @@ async function gatewayHeaders(orgId?: string): Promise<Record<string, string>> {
 
 // ─── Gateway API ───────────────────────────────────────────────────────────
 
-export async function getAuraTools(orgId?: string) {
+export async function getMemzentTools(orgId?: string) {
     try {
         const headers = await gatewayHeaders(orgId)
         const res = await fetch(`${GATEWAY_URL}/v1/tools`, {
@@ -50,7 +50,7 @@ export async function getAuraTools(orgId?: string) {
     }
 }
 
-export async function getAuraStats(orgId?: string) {
+export async function getMemzentStats(orgId?: string) {
     try {
         const headers = await gatewayHeaders(orgId)
         const res = await fetch(`${GATEWAY_URL}/v1/stats`, {
@@ -65,7 +65,7 @@ export async function getAuraStats(orgId?: string) {
     }
 }
 
-export async function executeAuraPrompt(prompt: string, orgId?: string) {
+export async function executeMemzentPrompt(prompt: string, orgId?: string) {
     try {
         const headers = await gatewayHeaders(orgId)
         const res = await fetch(`${GATEWAY_URL}/v1/chat`, {
@@ -137,7 +137,7 @@ export async function createApiKey(orgId: string, name: string) {
     const crypto = require('crypto');
 
     // Generate a high-entropy 32-char raw key
-    const rawKey = `aura_${crypto.randomBytes(24).toString('hex')}`;
+    const rawKey = `memzent_${crypto.randomBytes(24).toString('hex')}`;
     const prefix = rawKey.substring(0, 8);
 
     // Hash the key for secure storage
@@ -179,7 +179,7 @@ export async function revokeApiKey(id: string) {
     if (error) throw error;
 }
 
-export async function createAuraTool(orgId: string, tool: any) {
+export async function createMemzentTool(orgId: string, tool: any) {
     const supabase = await createClient();
     const { error } = await supabase
         .from('tools')
@@ -234,7 +234,7 @@ export async function getOrgProfile(orgId: string) {
     return data;
 }
 
-export async function registerAuraTool(orgId: string, tool: any) {
+export async function registerMemzentTool(orgId: string, tool: any) {
     try {
         const headers = await gatewayHeaders(orgId)
         const res = await fetch(`${GATEWAY_URL}/v1/tools/register`, {
@@ -259,7 +259,7 @@ export async function registerAuraTool(orgId: string, tool: any) {
     }
 }
 
-export async function syncAuraTools(orgId?: string) {
+export async function syncMemzentTools(orgId?: string) {
     try {
         const headers = await gatewayHeaders(orgId)
         const res = await fetch(`${GATEWAY_URL}/v1/tools/sync`, {
@@ -280,7 +280,7 @@ export async function syncAuraTools(orgId?: string) {
     }
 }
 
-export async function getAuraAudit(orgId?: string) {
+export async function getMemzentAudit(orgId?: string) {
     try {
         const headers = await gatewayHeaders(orgId)
         const res = await fetch(`${GATEWAY_URL}/v1/audit`, {
@@ -301,13 +301,13 @@ export async function getAuraAudit(orgId?: string) {
     }
 }
 
-export async function createCheckoutSession(orgId: string, tier: string) {
+export async function createCheckoutSession(orgId: string, payload: { tier?: string, amount?: number }) {
     try {
         const headers = await gatewayHeaders(orgId)
         const res = await fetch(`${GATEWAY_URL}/v1/billing/checkout`, {
             method: "POST",
             headers,
-            body: JSON.stringify({ tier }),
+            body: JSON.stringify(payload),
             cache: 'no-store'
         });
 

@@ -9,7 +9,7 @@ export const docSections = [
     title: "Core Concepts",
     items: [
       { name: "Introduction", href: "/docs", icon: Book },
-      { name: "Aura Architecture", href: "/docs/architecture", icon: Zap },
+      { name: "Memzent Architecture", href: "/docs/architecture", icon: Zap },
       { name: "Semantic Proxying", href: "/docs/semantic-proxy", icon: MessageCircle },
     ]
   },
@@ -53,13 +53,12 @@ export function DocsSidebar() {
                 <Link
                   key={item.href}
                   href={item.href}
-                  className={`flex items-center gap-3 px-4 py-2 rounded-lg text-xs font-bold transition-all ${
-                    isActive
-                      ? "bg-aura-glow/10 text-aura-glow border border-aura-glow/20 shadow-[0_0_15px_rgba(0,243,255,0.03)]"
-                      : "text-white/40 hover:text-white hover:bg-white/5"
-                  }`}
+                  className={`flex items-center gap-3 px-4 py-2 rounded-lg text-xs font-bold transition-all ${isActive
+                    ? "bg-memzent-glow/10 text-memzent-glow border border-memzent-glow/20 shadow-[0_0_15px_rgba(0,243,255,0.03)]"
+                    : "text-white/40 hover:text-white hover:bg-white/5"
+                    }`}
                 >
-                  <item.icon size={14} className={isActive ? "text-aura-glow" : "text-white/20"} />
+                  <item.icon size={14} className={isActive ? "text-memzent-glow" : "text-white/20"} />
                   {item.name}
                 </Link>
               );

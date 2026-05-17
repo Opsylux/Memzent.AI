@@ -17,7 +17,7 @@ type MCPClient struct {
 func NewMCPClient() (*MCPClient, error) {
 	mcpAddr := os.Getenv("MCP_SERVER_URL")
 	if mcpAddr == "" {
-		mcpAddr = "http://aura-mcp-server:50052/mcp"
+		mcpAddr = "http://memzent-mcp-server:50052/mcp"
 	}
 
 	transport := http.NewHTTPClientTransport(mcpAddr)

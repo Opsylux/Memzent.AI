@@ -12,12 +12,12 @@ export default function SemanticProxyPage() {
   return (
     <div className="space-y-12">
       <header className="space-y-4">
-        <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-aura-glow/5 border border-aura-glow/20 w-fit">
-          <span className="text-[10px] font-black text-aura-glow uppercase tracking-tighter italic">Core_Concept</span>
+        <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-memzent-glow/5 border border-memzent-glow/20 w-fit">
+          <span className="text-[10px] font-black text-memzent-glow uppercase tracking-tighter italic">Core_Concept</span>
         </div>
         <h1 className="text-4xl font-black tracking-tighter uppercase sm:text-5xl">Semantic Caching</h1>
         <p className="text-lg text-white/60 leading-relaxed font-medium">
-          Aura never charges you twice for the same answer. Its semantic memory catches repeat questions — even when phrased differently — and returns instant responses at no extra cost.
+          Memzent never charges you twice for the same answer. Its semantic memory catches repeat questions — even when phrased differently — and returns instant responses at no extra cost.
         </p>
       </header>
 
@@ -25,31 +25,31 @@ export default function SemanticProxyPage() {
       <section className="space-y-5">
         <h2 className="text-2xl font-black tracking-tighter uppercase">Three Layers of Memory</h2>
         <p className="text-sm text-white/60 leading-relaxed font-medium">
-          Before every request reaches an AI model, Aura checks three tiers of memory in sequence. The faster tiers cost less — and later tiers are only used when necessary.
+          Before every request reaches an AI model, Memzent checks three tiers of memory in sequence. The faster tiers cost less — and later tiers are only used when necessary.
         </p>
 
         <div className="grid grid-cols-1 gap-4">
           {[
             {
               label: "L1",
-              color: "text-aura-glow",
-              bg: "bg-aura-glow/10",
+              color: "text-memzent-glow",
+              bg: "bg-memzent-glow/10",
               title: "Exact Match",
               desc: "If the same question was asked before — word for word — the answer comes back in under a millisecond from memory. No model is called."
             },
             {
               label: "L2",
-              color: "text-aura-purple",
-              bg: "bg-aura-purple/10",
+              color: "text-memzent-purple",
+              bg: "bg-memzent-purple/10",
               title: "Normalized Match",
               desc: "Minor variations in punctuation, capitalization, or whitespace are stripped away. The same intent, written slightly differently, still hits the cache."
             },
             {
               label: "L3",
-              color: "text-aura-accent",
-              bg: "bg-aura-accent/10",
+              color: "text-memzent-accent",
+              bg: "bg-memzent-accent/10",
               title: "Meaning Match",
-              desc: "Even completely different phrasing can match a previous question if the underlying meaning is the same. This is Aura's deepest layer — understanding intent, not just text."
+              desc: "Even completely different phrasing can match a previous question if the underlying meaning is the same. This is Memzent's deepest layer — understanding intent, not just text."
             }
           ].map((item) => (
             <div key={item.label} className="p-6 rounded-2xl bg-white/[0.02] border border-white/5 space-y-3">
@@ -69,7 +69,7 @@ export default function SemanticProxyPage() {
       <section className="space-y-6 pt-4">
         <h2 className="text-2xl font-black tracking-tighter uppercase">Forcing a Fresh Response</h2>
         <p className="text-sm text-white/60 leading-relaxed font-medium">
-          Sometimes you need a fresh answer — for example, when querying live system status or real-time data. Add the <code className="text-aura-glow bg-aura-glow/5 px-1 rounded font-mono">X-Skip-Cache: true</code> header to bypass all memory layers and force a new generation.
+          Sometimes you need a fresh answer — for example, when querying live system status or real-time data. Add the <code className="text-memzent-glow bg-memzent-glow/5 px-1 rounded font-mono">X-Skip-Cache: true</code> header to bypass all memory layers and force a new generation.
         </p>
         <CodeBlock code={skipCacheExample} language="bash" filename="terminal" />
         <div className="p-4 rounded-xl bg-white/[0.02] border border-white/5 flex items-start gap-3">
@@ -84,12 +84,12 @@ export default function SemanticProxyPage() {
       <section className="space-y-6 pt-4">
         <h2 className="text-2xl font-black tracking-tighter uppercase">Reading the Response Header</h2>
         <p className="text-sm text-white/60 leading-relaxed font-medium">
-          Every response from Aura includes an <code className="text-aura-glow bg-aura-glow/5 px-1 rounded font-mono">X-Cache</code> header so you can see exactly which memory layer was used.
+          Every response from Memzent includes an <code className="text-memzent-glow bg-memzent-glow/5 px-1 rounded font-mono">X-Cache</code> header so you can see exactly which memory layer was used.
         </p>
         <div className="space-y-3">
           {[
-            { value: "X-Cache: HIT", desc: "The response was retrieved from memory. No AI model was called.", color: "text-aura-accent" },
-            { value: "X-Cache: MISS", desc: "No match was found. Aura called the AI model and the result is now saved for future requests.", color: "text-white/50" },
+            { value: "X-Cache: HIT", desc: "The response was retrieved from memory. No AI model was called.", color: "text-memzent-accent" },
+            { value: "X-Cache: MISS", desc: "No match was found. Memzent called the AI model and the result is now saved for future requests.", color: "text-white/50" },
           ].map((row) => (
             <div key={row.value} className="flex gap-4 p-4 rounded-xl bg-white/[0.02] border border-white/5 items-start">
               <code className={`text-xs font-mono font-bold shrink-0 ${row.color}`}>{row.value}</code>
@@ -100,9 +100,9 @@ export default function SemanticProxyPage() {
       </section>
 
       {/* Performance tip */}
-      <div className="p-6 rounded-2xl bg-gradient-to-br from-aura-glow/10 to-transparent border border-aura-glow/20">
+      <div className="p-6 rounded-2xl bg-gradient-to-br from-memzent-glow/10 to-transparent border border-memzent-glow/20">
         <div className="flex items-center gap-3 mb-3">
-          <Zap size={18} className="text-aura-glow" />
+          <Zap size={18} className="text-memzent-glow" />
           <span className="text-xs font-black uppercase tracking-tight">Tip: Write Better Descriptions</span>
         </div>
         <p className="text-xs text-white/50 font-bold leading-relaxed">

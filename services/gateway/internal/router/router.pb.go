@@ -386,7 +386,7 @@ const file_router_proto_rawDesc = "" +
 	"\x13current_prompt_hash\x18\x05 \x01(\tR\x11currentPromptHash2\x95\x01\n" +
 	"\x0eSemanticRouter\x128\n" +
 	"\vSelectTools\x12\x13.router.ToolRequest\x1a\x14.router.ToolResponse\x12I\n" +
-	"\fRegisterTool\x12\x1b.router.RegisterToolRequest\x1a\x1c.router.RegisterToolResponseB:Z8github.com/Opsylux/aura/services/gateway/internal/routerb\x06proto3"
+	"\fRegisterTool\x12\x1b.router.RegisterToolRequest\x1a\x1c.router.RegisterToolResponseB=Z;github.com/Opsylux/memzent/services/gateway/internal/routerb\x06proto3"
 
 var (
 	file_router_proto_rawDescOnce sync.Once

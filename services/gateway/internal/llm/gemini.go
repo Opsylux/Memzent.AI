@@ -30,7 +30,7 @@ func (g *GeminiProvider) GetMetadata() ProviderMetadata {
 	}
 }
 
-func (g *GeminiProvider) Generate(ctx context.Context, prompt string, tools []any, model string) (string, error) {
+func (g *GeminiProvider) Generate(ctx context.Context, prompt string, tools []any, model string) (string, *TokenUsage, error) {
 	// Resolve model: per-request override takes priority over configured default
 	activeModel := g.Model
 	if model != "" {
@@ -38,7 +38,7 @@ func (g *GeminiProvider) Generate(ctx context.Context, prompt string, tools []an
 	}
 	url := fmt.Sprintf("https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent?key=%s", activeModel, g.APIKey)
 
-	system := "You are Aura, an enterprise-grade AI Gateway. "
+	system := "You are Memzent, an enterprise-grade AI Gateway. "
 	if len(tools) > 0 {
 		system += "\nYour request has been supplemented with data from semantic tools. Use this context ONLY if it is directly relevant to the user's prompt. If the tool data is irrelevant, ignore it and answer the user's prompt normally."
 	}
@@ -61,19 +61,19 @@ func (g *GeminiProvider) Generate(ctx context.Context, prompt string, tools []an
 
 	jsonBody, err := json.Marshal(reqBody)
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
 
 	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(jsonBody))
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
 
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
 	defer resp.Body.Close()
 
@@ -84,7 +84,7 @@ func (g *GeminiProvider) Generate(ctx context.Context, prompt string, tools []an
 			} `json:"error"`
 		}
 		json.NewDecoder(resp.Body).Decode(&errResp)
-		return "", fmt.Errorf("gemini error (%d): %s", resp.StatusCode, errResp.Error.Message)
+		return "", nil, fmt.Errorf("gemini error (%d): %s", resp.StatusCode, errResp.Error.Message)
 	}
 
 	var result struct {
@@ -95,15 +95,26 @@ func (g *GeminiProvider) Generate(ctx context.Context, prompt string, tools []an
 				} `json:"parts"`
 			} `json:"content"`
 		} `json:"candidates"`
+		UsageMetadata struct {
+			PromptTokenCount     int `json:"promptTokenCount"`
+			CandidatesTokenCount int `json:"candidatesTokenCount"`
+			TotalTokenCount      int `json:"totalTokenCount"`
+		} `json:"usageMetadata"`
 	}
 
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return "", err
+		return "", nil, err
 	}
 
 	if len(result.Candidates) == 0 || len(result.Candidates[0].Content.Parts) == 0 {
-		return "", fmt.Errorf("gemini returned no content")
+		return "", nil, fmt.Errorf("gemini returned no content")
 	}
 
-	return result.Candidates[0].Content.Parts[0].Text, nil
+	usage := &TokenUsage{
+		PromptTokens:     result.UsageMetadata.PromptTokenCount,
+		CompletionTokens: result.UsageMetadata.CandidatesTokenCount,
+		TotalTokens:      result.UsageMetadata.TotalTokenCount,
+	}
+
+	return result.Candidates[0].Content.Parts[0].Text, usage, nil
 }

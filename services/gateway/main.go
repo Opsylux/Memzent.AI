@@ -11,22 +11,22 @@ import (
 	"syscall"
 	"time"
 
-	"aura-gateway/internal/auth"
-	"aura-gateway/internal/billing"
-	"aura-gateway/internal/cache"
-	"aura-gateway/internal/config"
-	"aura-gateway/internal/connectors"
-	"aura-gateway/internal/db"
-	"aura-gateway/internal/engine"
-	"aura-gateway/internal/llm"
-	"aura-gateway/internal/mcp"
-	"aura-gateway/internal/metrics"
-	"aura-gateway/internal/router"
-	"aura-gateway/internal/tools"
+	"memzent-gateway/internal/auth"
+	"memzent-gateway/internal/billing"
+	"memzent-gateway/internal/cache"
+	"memzent-gateway/internal/config"
+	"memzent-gateway/internal/connectors"
+	"memzent-gateway/internal/db"
+	"memzent-gateway/internal/engine"
+	"memzent-gateway/internal/llm"
+	"memzent-gateway/internal/mcp"
+	"memzent-gateway/internal/metrics"
+	"memzent-gateway/internal/router"
+	"memzent-gateway/internal/tools"
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
-	_ "aura-gateway/docs"
+	_ "memzent-gateway/docs"
 )
 
 // Replace with your module path
@@ -57,7 +57,7 @@ func commonMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Aura-Provider, X-Aura-Model, X-Skip-Cache, X-Org-ID")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Memzent-Provider, X-Memzent-Model, X-Skip-Cache, X-Org-ID")
 
 		if r.Method == "OPTIONS" {
 			w.WriteHeader(http.StatusOK)
@@ -80,13 +80,13 @@ func main() {
 	}
 	slog.SetDefault(slog.New(handler))
 
-	slog.Info("Starting Aura Gateway", "port", cfg.Port, "env", cfg.Environment)
+	slog.Info("Starting Memzent Gateway", "port", cfg.Port, "env", cfg.Environment)
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
 	// 3. Initialize Cache
-	vCache, err := cache.NewAuraCache(ctx, cfg.ValkeyURL)
+	vCache, err := cache.NewMemzentCache(ctx, cfg.ValkeyURL)
 	if err != nil {
 		slog.Error("Failed to connect to Valkey", "error", err)
 		os.Exit(1)
@@ -192,12 +192,12 @@ func main() {
 	// Register: read_database (Native Implementation)
 	coreConnector.RegisterTool("read_database", func(ctx context.Context, userID string, inputs map[string]interface{}) (string, error) {
 		slog.Info("Executing CORE tool: read_database", "user_id", userID)
-		return "Mock Database Trace: Successfully indexed 1,241 cluster metrics via Aura Core (Native Connector).", nil
+		return "Mock Database Trace: Successfully indexed 1,241 cluster metrics via Memzent Core (Native Connector).", nil
 	})
 
-	// Register: aura_search (Native Implementation)
-	coreConnector.RegisterTool("aura_search", func(ctx context.Context, userID string, inputs map[string]interface{}) (string, error) {
-		slog.Info("Executing CORE tool: aura_search", "user_id", userID)
+	// Register: memzent_search (Native Implementation)
+	coreConnector.RegisterTool("memzent_search", func(ctx context.Context, userID string, inputs map[string]interface{}) (string, error) {
+		slog.Info("Executing CORE tool: memzent_search", "user_id", userID)
 		return "Semantic Search Results: No direct matches found in local index. Proceeding with neural expansion.", nil
 	})
 
@@ -237,11 +237,21 @@ func main() {
 		slog.Info("Audit Logger initialized with Postgres persistence", "retention_days", 30)
 	}
 
+	// 7.7 Initialize Billing System
+	var billingLedger *billing.Ledger
+	costCalc := billing.NewCostCalculator()
+	if rbacClient != nil {
+		billingLedger = billing.NewLedger(rbacClient.GetDB())
+		slog.Info("Billing Ledger initialized with Postgres")
+	}
+
 	// 8. Initialize Engine
-	auraEngine := engine.NewAuraEngine(
+	memzentEngine := engine.NewMemzentEngine(
 		vCache,
 		rClient,
 		rbacClient,
+		billingLedger,
+		costCalc,
 		mcpClient,
 		toolRegistry,
 		connRegistry,
@@ -276,6 +286,7 @@ func main() {
 	// 8.1 Initialize Stripe Handler (SaaS Billing)
 	stripeHandler := billing.NewStripeHandler(
 		rbacClient.GetDB(),
+		billingLedger,
 		os.Getenv("STRIPE_WEBHOOK_SECRET"),
 		os.Getenv("STRIPE_PRO_PRODUCT_ID"),
 		os.Getenv("STRIPE_BIZ_PRODUCT_ID"),
@@ -327,14 +338,14 @@ func main() {
 		// req.UserID is kept as the physical user ID for individual tracking.
 
 		// Headers override
-		if p := r.Header.Get("X-Aura-Provider"); p != "" {
+		if p := r.Header.Get("X-Memzent-Provider"); p != "" {
 			req.Provider = p
 		}
-		if m := r.Header.Get("X-Aura-Model"); m != "" {
+		if m := r.Header.Get("X-Memzent-Model"); m != "" {
 			req.Model = m
 		}
 
-		resp, err := auraEngine.Process(r.Context(), &req)
+		resp, err := memzentEngine.Process(r.Context(), &req)
 		if err != nil {
 			slog.Error("Engine Processing Error", "error", err, "user", req.UserID)
 			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
@@ -373,7 +384,7 @@ func main() {
 					desc = *t.Description
 				}
 				allTools = append(allTools, tools.ToolWithProvider{
-					ID: t.Name, Name: t.Name, Description: desc, Provider: "Aura-MCP", Status: "online",
+					ID: t.Name, Name: t.Name, Description: desc, Provider: "Memzent-MCP", Status: "online",
 				})
 			}
 		}
@@ -413,12 +424,18 @@ func main() {
 			reqs, hits = auditLogger.GetCacheStats(orgID)
 		} else {
 			// Fallback to ephemeral in-memory stats
-			reqs, hits = auraEngine.GetStats(orgID)
+			reqs, hits = memzentEngine.GetStats(orgID)
+		}
+
+		var tokenBalance float64
+		if billingLedger != nil {
+			tokenBalance, _ = billingLedger.GetBalance(r.Context(), orgID)
 		}
 
 		stats := map[string]any{
 			"total_requests": reqs,
 			"cache_hits":     hits,
+			"token_balance":  tokenBalance,
 			"uptime_seconds": int(time.Since(startupTime).Seconds()),
 			"status":         "online",
 			"org_id":         orgID,
@@ -431,7 +448,7 @@ func main() {
 
 	// Providers API (Model Discovery)
 	mux.Handle("/v1/providers", middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		metadata := auraEngine.GetProviderMetadata()
+		metadata := memzentEngine.GetProviderMetadata()
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(metadata)
 	})))
@@ -477,7 +494,7 @@ func main() {
 
 	// 10. Graceful Shutdown
 	<-ctx.Done()
-	slog.Info("Shutting down Aura Gateway...")
+	slog.Info("Shutting down Memzent Gateway...")
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -486,5 +503,5 @@ func main() {
 		slog.Error("Graceful shutdown failed", "error", err)
 	}
 
-	slog.Info("Aura Gateway stopped")
+	slog.Info("Memzent Gateway stopped")
 }

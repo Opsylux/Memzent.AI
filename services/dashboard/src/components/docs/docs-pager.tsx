@@ -24,7 +24,7 @@ export function DocsPager() {
           href={prev.href}
           className="group flex flex-col gap-2 p-4 rounded-xl border border-white/5 bg-white/[0.02] hover:bg-white/[0.04] transition-all flex-1 max-w-[240px]"
         >
-          <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-white/20 group-hover:text-aura-glow transition-colors">
+          <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-white/20 group-hover:text-memzent-glow transition-colors">
             <ChevronLeft size={12} />
             Previous
           </div>
@@ -41,7 +41,7 @@ export function DocsPager() {
           href={next.href}
           className="group flex flex-col items-end gap-2 p-4 rounded-xl border border-white/5 bg-white/[0.02] hover:bg-white/[0.04] transition-all flex-1 max-w-[240px] text-right"
         >
-          <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-white/20 group-hover:text-aura-glow transition-colors">
+          <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-white/20 group-hover:text-memzent-glow transition-colors">
             Next
             <ChevronRight size={12} />
           </div>

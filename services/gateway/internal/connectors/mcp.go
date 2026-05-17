@@ -6,7 +6,7 @@ import (
 	"log/slog"
 	"time"
 
-	"aura-gateway/internal/mcp"
+	"memzent-gateway/internal/mcp"
 )
 
 // MCPConnector wraps MCP client to implement Connector interface
@@ -43,7 +43,7 @@ func (c *MCPConnector) Execute(ctx context.Context, req *ExecutionRequest) (*Exe
 	}
 
 	// Call MCP tool
-	resp, err := c.mcpClient.CallTool(ctx, "execute_aura_tool", map[string]interface{}{
+	resp, err := c.mcpClient.CallTool(ctx, "execute_memzent_tool", map[string]interface{}{
 		"tool_id": req.ToolID,
 		"user_id": req.UserID,
 	})

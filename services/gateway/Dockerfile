@@ -28,10 +28,10 @@ COPY . .
 RUN mkdir -p /proto
 
 # 7. Metadata for the build
-LABEL project="Aura"
+LABEL project="Memzent"
 LABEL component="Gateway"
 
-RUN echo "Aura Gateway Environment Ready"
+RUN echo "Memzent Gateway Environment Ready"
 
 # 8. Expose the API port
 EXPOSE 8080

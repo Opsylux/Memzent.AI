@@ -1,6 +1,6 @@
-# Aura: System Architecture
+# Memzent: System Architecture
 
-This document defines the high-level data flow, service boundaries, and networking topology for **Aura**, an enterprise-grade AI Gateway and Semantic Router.
+This document defines the high-level data flow, service boundaries, and networking topology for **Memzent**, an enterprise-grade AI Gateway and Semantic Router.
 
 ---
 
@@ -18,7 +18,7 @@ The system operates as an **Intelligent Proxy** between user clients, MCP-enable
 4. **RBAC Check**: Postgres query for user permissions and allowed tool list.
 5. **Semantic Routing**: gRPC call to the Rust Router returns the best-matched tools + compressed prompt.
 6. **Tool Orchestration** *(Extensible Platform)*: Gateway executes matched tools. *Current: MCP protocol. Future: Dynamic tool registry with REST/GraphQL/SQL/webhook connectors (to be implemented)*.
-7. **Provider Selection**: Gateway routes to Ollama / OpenAI / Anthropic / Gemini based on `X-Aura-Provider` header or `provider` field in request body.
+7. **Provider Selection**: Gateway routes to Ollama / OpenAI / Anthropic / Gemini based on `X-Memzent-Provider` header or `provider` field in request body.
 8. **LLM Synthesis**: The compressed prompt + tool context is dispatched to the selected LLM.
 9. **Cache Population**: Synthesized answer is stored in all three cache layers (Literal, Canonical, Semantic).
 
@@ -55,8 +55,8 @@ Providers are registered at startup. All requests default to **Ollama** unless o
 
 | Header | Body Field | Example Value | Effect |
 | :--- | :--- | :--- | :--- |
-| `X-Aura-Provider` | `"provider"` | `"openai"` | Route to OpenAI |
-| `X-Aura-Model` | `"model"` | `"gpt-4o"` | Override default model |
+| `X-Memzent-Provider` | `"provider"` | `"openai"` | Route to OpenAI |
+| `X-Memzent-Model` | `"model"` | `"gpt-4o"` | Override default model |
 | `X-Skip-Cache` | `"skip_cache"` | `"true"` | Bypass all 3 cache layers |
 
 Headers take lower priority than body fields — JSON body fields win if both are set.
@@ -124,10 +124,10 @@ sequenceDiagram
         Valkey-->>Gateway: HIT → back-fill L1+L1.5, return
     end
 
-    Gateway->>MCP: CallTool(execute_aura_tool, {tool_id, user_id})
+    Gateway->>MCP: CallTool(execute_memzent_tool, {tool_id, user_id})
     MCP-->>Gateway: Tool Context (JSON Data)
 
-    Note over Gateway: Select Provider (X-Aura-Provider / default: ollama)
+    Note over Gateway: Select Provider (X-Memzent-Provider / default: ollama)
     Gateway->>LLM: Generate(CompressedPrompt + ToolContext, ModelOverride)
     LLM-->>Gateway: Synthesized Answer
 
@@ -135,14 +135,14 @@ sequenceDiagram
         Gateway->>Valkey: Populate L1 + L1.5 + L2 caches
     end
 
-    Gateway-->>User: Response + X-Cache + X-Aura-Provider headers
+    Gateway-->>User: Response + X-Cache + X-Memzent-Provider headers
 ```
 
 ---
 
 ## 7. Roadmap & Implementation Phases
 
-Aura is architected as a **Universal AI Gateway** with pluggable tool connectors. The system evolves in phases to support arbitrary AI agents, not just database queries.
+Memzent is architected as a **Universal AI Gateway** with pluggable tool connectors. The system evolves in phases to support arbitrary AI agents, not just database queries.
 
 ### Phase 1: Core Foundation (✅ COMPLETE)
 - Triple-layer semantic caching (Literal, Canonical, Semantic)

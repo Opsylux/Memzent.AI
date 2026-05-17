@@ -50,7 +50,7 @@ BEGIN
     -- Provision default tools
     INSERT INTO public.org_tools (org_id, tool_id)
     VALUES 
-        (v_new_org_id, 'aura_search'),
+        (v_new_org_id, 'memzent_search'),
         (v_new_org_id, 'read_database')
     ON CONFLICT DO NOTHING;
 

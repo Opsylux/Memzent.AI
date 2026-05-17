@@ -4,7 +4,7 @@ syntax = "proto3";
 package router;
 
 // Ensure this matches your gateway's internal directory structure
-option go_package = "github.com/Opsylux/aura/services/gateway/internal/router";
+option go_package = "github.com/Opsylux/memzent/services/gateway/internal/router";
 
 service SemanticRouter {
   // Selects the most relevant tools for a given user prompt

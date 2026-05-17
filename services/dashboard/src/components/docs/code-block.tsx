@@ -32,10 +32,10 @@ export function CodeBlock({ code, language = "typescript", filename }: CodeBlock
         </pre>
         <button
           onClick={handleCopy}
-          className="absolute right-4 top-4 p-2 rounded-lg bg-white/5 border border-white/10 text-white/40 hover:text-aura-glow hover:border-aura-glow/20 transition-all opacity-0 group-hover:opacity-100"
+          className="absolute right-4 top-4 p-2 rounded-lg bg-white/5 border border-white/10 text-white/40 hover:text-memzent-glow hover:border-memzent-glow/20 transition-all opacity-0 group-hover:opacity-100"
           title="Copy to clipboard"
         >
-          {copied ? <Check size={14} className="text-aura-glow" /> : <Copy size={14} />}
+          {copied ? <Check size={14} className="text-memzent-glow" /> : <Copy size={14} />}
         </button>
       </div>
     </div>

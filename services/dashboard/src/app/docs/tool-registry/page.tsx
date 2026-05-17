@@ -37,12 +37,12 @@ curl https://${DOCS_CONFIG.domain}/v1/tools/status \\
   return (
     <div className="space-y-12">
       <header className="space-y-4">
-        <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-aura-glow/5 border border-aura-glow/20 w-fit">
-          <span className="text-[10px] font-black text-aura-glow uppercase tracking-tighter italic">Tool_Registry</span>
+        <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-memzent-glow/5 border border-memzent-glow/20 w-fit">
+          <span className="text-[10px] font-black text-memzent-glow uppercase tracking-tighter italic">Tool_Registry</span>
         </div>
         <h1 className="text-4xl font-black tracking-tighter uppercase sm:text-5xl">Dynamic Tool Registry</h1>
         <p className="text-lg text-white/60 leading-relaxed font-medium">
-          Connect any data source or API to Aura without restarting anything. New tools are automatically discovered and made available for AI routing within seconds.
+          Connect any data source or API to Memzent without restarting anything. New tools are automatically discovered and made available for AI routing within seconds.
         </p>
       </header>
 
@@ -53,24 +53,24 @@ curl https://${DOCS_CONFIG.domain}/v1/tools/status \\
           {[
             {
               icon: <Cpu size={18} />,
-              color: "text-aura-glow",
-              bg: "bg-aura-glow/10",
+              color: "text-memzent-glow",
+              bg: "bg-memzent-glow/10",
               title: "Register via API",
               desc: "Send a tool definition to the registry. It is stored and immediately available for your organization."
             },
             {
               icon: <RefreshCw size={18} />,
-              color: "text-aura-purple",
-              bg: "bg-aura-purple/10",
+              color: "text-memzent-purple",
+              bg: "bg-memzent-purple/10",
               title: "Automatic Discovery",
-              desc: "Every 30 seconds, Aura checks for newly registered tools and adds them to the AI routing pool automatically."
+              desc: "Every 30 seconds, Memzent checks for newly registered tools and adds them to the AI routing pool automatically."
             },
             {
               icon: <GitBranch size={18} />,
-              color: "text-aura-accent",
-              bg: "bg-aura-accent/10",
+              color: "text-memzent-accent",
+              bg: "bg-memzent-accent/10",
               title: "Instant Routing",
-              desc: "Once discovered, Aura routes relevant prompts to your tool based on the meaning of what the user asked."
+              desc: "Once discovered, Memzent routes relevant prompts to your tool based on the meaning of what the user asked."
             }
           ].map((item) => (
             <div key={item.title} className="p-5 rounded-2xl bg-white/[0.02] border border-white/5 space-y-3">
@@ -88,19 +88,19 @@ curl https://${DOCS_CONFIG.domain}/v1/tools/status \\
       <section className="space-y-5 pt-2">
         <h2 className="text-2xl font-black tracking-tighter uppercase">What You Can Connect</h2>
         <p className="text-sm text-white/60 leading-relaxed font-medium">
-          Aura supports multiple connection types. Choose the one that matches your data source — Aura handles the integration automatically.
+          Memzent supports multiple connection types. Choose the one that matches your data source — Memzent handles the integration automatically.
         </p>
         <div className="space-y-2">
           {[
-            { label: "REST API", desc: "Any HTTP/JSON API. Provide the URL and Aura handles authentication and request formatting." },
+            { label: "REST API", desc: "Any HTTP/JSON API. Provide the URL and Memzent handles authentication and request formatting." },
             { label: "Database", desc: "Query your database directly using a secure, read-only connection string stored in the tool config." },
             { label: "GraphQL", desc: "Run queries and mutations against GraphQL endpoints." },
-            { label: "Webhook", desc: "Fire-and-wait for async tools — Aura sends the request and waits for a response callback." },
+            { label: "Webhook", desc: "Fire-and-wait for async tools — Memzent sends the request and waits for a response callback." },
             { label: "Internal Service", desc: "High-speed binary protocol for calling internal microservices." },
-            { label: "Native Tool", desc: "Built-in Aura tools like semantic search, available to all organizations automatically." },
+            { label: "Native Tool", desc: "Built-in Memzent tools like semantic search, available to all organizations automatically." },
           ].map((c) => (
             <div key={c.label} className="flex items-start gap-4 p-3 rounded-xl hover:bg-white/[0.02] transition-colors">
-              <span className="text-[10px] font-black text-aura-glow font-mono bg-aura-glow/5 px-2 py-1 rounded border border-aura-glow/10 min-w-[96px] text-center shrink-0">{c.label}</span>
+              <span className="text-[10px] font-black text-memzent-glow font-mono bg-memzent-glow/5 px-2 py-1 rounded border border-memzent-glow/10 min-w-[96px] text-center shrink-0">{c.label}</span>
               <p className="text-xs text-white/40 font-bold leading-relaxed">{c.desc}</p>
             </div>
           ))}
@@ -115,10 +115,10 @@ curl https://${DOCS_CONFIG.domain}/v1/tools/status \\
         </p>
         <CodeBlock code={registerToolExample} language="bash" filename="POST /v1/tools" />
 
-        <div className="p-4 rounded-xl bg-aura-glow/5 border border-aura-glow/10 flex items-start gap-3">
-          <Zap size={16} className="text-aura-glow mt-0.5 shrink-0" />
-          <p className="text-xs text-aura-glow font-bold leading-relaxed">
-            Write tool descriptions the way a user would ask for the tool — not the way a developer would name it. This directly affects how accurately Aura can match prompts to your tool.
+        <div className="p-4 rounded-xl bg-memzent-glow/5 border border-memzent-glow/10 flex items-start gap-3">
+          <Zap size={16} className="text-memzent-glow mt-0.5 shrink-0" />
+          <p className="text-xs text-memzent-glow font-bold leading-relaxed">
+            Write tool descriptions the way a user would ask for the tool — not the way a developer would name it. This directly affects how accurately Memzent can match prompts to your tool.
           </p>
         </div>
       </section>
@@ -127,7 +127,7 @@ curl https://${DOCS_CONFIG.domain}/v1/tools/status \\
       <section className="space-y-5 pt-2">
         <h2 className="text-2xl font-black tracking-tighter uppercase">Listing Available Tools</h2>
         <p className="text-sm text-white/60 leading-relaxed font-medium">
-          Any authenticated user can list the tools available to their organization. The response includes all registered tools and any built-in Aura capabilities.
+          Any authenticated user can list the tools available to their organization. The response includes all registered tools and any built-in Memzent capabilities.
         </p>
         <CodeBlock code={listToolsExample} language="bash" filename="GET /v1/tools" />
       </section>
@@ -149,12 +149,12 @@ curl https://${DOCS_CONFIG.domain}/v1/tools/status \\
         <h2 className="text-2xl font-black tracking-tighter uppercase">Tool Permissions</h2>
         <div className="p-5 rounded-2xl bg-white/[0.02] border border-white/5 space-y-4">
           <div className="flex items-center gap-3">
-            <Shield size={16} className="text-aura-purple" />
+            <Shield size={16} className="text-memzent-purple" />
             <h3 className="text-sm font-black uppercase tracking-tight">Public vs. Restricted Tools</h3>
           </div>
           <div className="space-y-3 text-[11px] text-white/40 font-bold">
-            <p>Set <code className="text-aura-purple bg-aura-purple/10 px-1 rounded font-mono">requires_auth: true</code> to restrict the tool to users who have been explicitly granted access by an Admin.</p>
-            <p>Set <code className="text-aura-purple bg-aura-purple/10 px-1 rounded font-mono">requires_auth: false</code> for tools that any authenticated member of your organization should be able to use — for example, a general knowledge search.</p>
+            <p>Set <code className="text-memzent-purple bg-memzent-purple/10 px-1 rounded font-mono">requires_auth: true</code> to restrict the tool to users who have been explicitly granted access by an Admin.</p>
+            <p>Set <code className="text-memzent-purple bg-memzent-purple/10 px-1 rounded font-mono">requires_auth: false</code> for tools that any authenticated member of your organization should be able to use — for example, a general knowledge search.</p>
           </div>
         </div>
         <div className="p-4 rounded-xl bg-white/[0.01] border border-white/5 flex items-start gap-3">

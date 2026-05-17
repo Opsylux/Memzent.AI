@@ -3,7 +3,7 @@
 
 -- 1. Ensure System Organization Sentinel exists
 INSERT INTO organizations (id, name, slug, subscription_tier)
-VALUES ('00000000-0000-0000-0000-000000000000', 'Aura Platform (System)', 'aura-system', 'business')
+VALUES ('00000000-0000-0000-0000-000000000000', 'Memzent Platform (System)', 'memzent-system', 'business')
 ON CONFLICT (id) DO NOTHING;
 
 -- 2. Reconcile Tools Discrepancy

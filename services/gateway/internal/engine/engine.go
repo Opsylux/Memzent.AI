@@ -8,14 +8,15 @@ import (
 	"sync/atomic"
 	"time"
 
-	"aura-gateway/internal/auth"
-	cch "aura-gateway/internal/cache"
-	"aura-gateway/internal/connectors"
-	lp "aura-gateway/internal/llm"
-	mc "aura-gateway/internal/mcp"
-	rtr "aura-gateway/internal/router"
-	"aura-gateway/internal/metrics"
-	"aura-gateway/internal/tools"
+	"memzent-gateway/internal/auth"
+	"memzent-gateway/internal/billing"
+	cch "memzent-gateway/internal/cache"
+	"memzent-gateway/internal/connectors"
+	lp "memzent-gateway/internal/llm"
+	mc "memzent-gateway/internal/mcp"
+	rtr "memzent-gateway/internal/router"
+	"memzent-gateway/internal/metrics"
+	"memzent-gateway/internal/tools"
 
 	"golang.org/x/time/rate"
 )
@@ -38,13 +39,15 @@ type PromptResponse struct {
 	RequestID string `json:"request_id,omitempty"`
 }
 
-// AuraEngine orchestrates the flow between Cache, RBAC, Router, MCP, and LLM
-type AuraEngine struct {
-	cache               *cch.AuraCache
+// MemzentEngine orchestrates the flow between Cache, RBAC, Router, MCP, and LLM
+type MemzentEngine struct {
+	cache               *cch.MemzentCache
 	router              *rtr.RouterClient
 	rbac                *auth.RBACClient
+	ledger              *billing.Ledger
+	costCalc            *billing.CostCalculator
 	providers           map[string]lp.Provider // keyed by provider name e.g. "ollama"
-	defaultProvider     string                 // key used when no X-Aura-Provider header is set
+	defaultProvider     string                 // key used when no X-Memzent-Provider header is set
 	mcp                 *mc.MCPClient
 	registry            *tools.Registry               // Registry for user-provisioned tools
 	connectorRegistry   *connectors.ConnectorRegistry // Core/Native connectors
@@ -59,10 +62,12 @@ type AuraEngine struct {
 	orgHits       sync.Map // Tracks cache hits per org (map[string]*atomic.Uint64)
 }
 
-func NewAuraEngine(
-	cache *cch.AuraCache,
+func NewMemzentEngine(
+	cache *cch.MemzentCache,
 	rtrClient *rtr.RouterClient,
 	rbacClient *auth.RBACClient,
+	ledger *billing.Ledger,
+	costCalc *billing.CostCalculator,
 	mcp *mc.MCPClient,
 	reg *tools.Registry,
 	connReg *connectors.ConnectorRegistry,
@@ -71,11 +76,13 @@ func NewAuraEngine(
 	threshold float64,
 	ttl time.Duration,
 	audit *metrics.PersistentAuditLogger,
-) *AuraEngine {
-	return &AuraEngine{
+) *MemzentEngine {
+	return &MemzentEngine{
 		cache:             cache,
 		router:            rtrClient,
 		rbac:              rbacClient,
+		ledger:            ledger,
+		costCalc:          costCalc,
 		mcp:               mcp,
 		registry:          reg,
 		connectorRegistry: connReg,
@@ -87,7 +94,7 @@ func NewAuraEngine(
 	}
 }
 
-func (e *AuraEngine) ActiveProviderNames() []string {
+func (e *MemzentEngine) ActiveProviderNames() []string {
 	providers := make([]string, 0, len(e.providers))
 	for _, provider := range e.providers {
 		providers = append(providers, provider.GetProviderName())
@@ -95,7 +102,7 @@ func (e *AuraEngine) ActiveProviderNames() []string {
 	return providers
 }
 
-func (e *AuraEngine) GetProviderMetadata() []lp.ProviderMetadata {
+func (e *MemzentEngine) GetProviderMetadata() []lp.ProviderMetadata {
 	metadata := make([]lp.ProviderMetadata, 0, len(e.providers))
 	for _, provider := range e.providers {
 		metadata = append(metadata, provider.GetMetadata())
@@ -103,7 +110,7 @@ func (e *AuraEngine) GetProviderMetadata() []lp.ProviderMetadata {
 	return metadata
 }
 
-func (e *AuraEngine) GetStats(orgID string) (uint64, uint64) {
+func (e *MemzentEngine) GetStats(orgID string) (uint64, uint64) {
 	var reqs, hits uint64
 	if counter, ok := e.orgRequests.Load(orgID); ok {
 		reqs = counter.(*atomic.Uint64).Load()
@@ -114,18 +121,18 @@ func (e *AuraEngine) GetStats(orgID string) (uint64, uint64) {
 	return reqs, hits
 }
 
-func (e *AuraEngine) DefaultProviderName() string {
+func (e *MemzentEngine) DefaultProviderName() string {
 	if p, ok := e.providers[e.defaultProvider]; ok {
 		return p.GetProviderName()
 	}
 	return "unknown"
 }
 
-func (e *AuraEngine) ProviderCount() int {
+func (e *MemzentEngine) ProviderCount() int {
 	return len(e.providers)
 }
 
-func (e *AuraEngine) Process(ctx context.Context, req *PromptRequest) (*PromptResponse, error) {
+func (e *MemzentEngine) Process(ctx context.Context, req *PromptRequest) (*PromptResponse, error) {
 	e.TotalRequests.Add(1)
 
 	// A. Rate Limiting (Based on Tier extracted from JWT)
@@ -153,6 +160,17 @@ func (e *AuraEngine) Process(ctx context.Context, req *PromptRequest) (*PromptRe
 		return nil, fmt.Errorf("rate limit exceeded for organization %s (tier: %s)", orgID, tier)
 	}
 
+	// A.1 Billing Pre-Check
+	if e.ledger != nil {
+		hasBalance, err := e.ledger.HasSufficientBalance(ctx, orgID)
+		if err != nil {
+			slog.Error("Billing ledger check failed", "error", err, "org_id", orgID)
+		} else if !hasBalance {
+			slog.Warn("Organization out of tokens", "org_id", orgID)
+			return nil, fmt.Errorf("payment required: token balance depleted")
+		}
+	}
+
 	// B. Stage 1-2 Cache Lookup (Org-Isolated)
 	if e.cache != nil && !req.SkipCache {
 		cacheKey := fmt.Sprintf("org:%s:p:%s", orgID, req.Prompt)
@@ -172,6 +190,7 @@ func (e *AuraEngine) Process(ctx context.Context, req *PromptRequest) (*PromptRe
 					Latency:   0,
 				}, map[string]interface{}{"prompt": req.Prompt, "stage": 1})
 			}
+			e.chargeCacheHit(ctx, orgID, req.Provider, req.Model, req.Prompt)
 			return &PromptResponse{Text: cachedResp, Cached: true}, nil
 		}
 
@@ -185,6 +204,7 @@ func (e *AuraEngine) Process(ctx context.Context, req *PromptRequest) (*PromptRe
 			hitCounter.(*atomic.Uint64).Add(1)
 			slog.Info("🎯 Stage 1.5 Cache HIT (Org-Isolated)", "org_id", orgID, "canonical", cHash)
 			_ = e.cache.SetResult(ctx, cacheKey, cachedCanon, e.cacheTTL)
+			e.chargeCacheHit(ctx, orgID, req.Provider, req.Model, req.Prompt)
 			return &PromptResponse{Text: cachedCanon, Cached: true}, nil
 		}
 	}
@@ -221,6 +241,7 @@ func (e *AuraEngine) Process(ctx context.Context, req *PromptRequest) (*PromptRe
 			hitCounter, _ := e.orgHits.LoadOrStore(orgID, &atomic.Uint64{})
 			hitCounter.(*atomic.Uint64).Add(1)
 			slog.Info("🎯 Stage 2 Cache HIT (Org-Isolated)", "org_id", orgID, "similar_hash", similarPromptHash)
+			e.chargeCacheHit(ctx, orgID, req.Provider, req.Model, req.Prompt)
 			return &PromptResponse{Text: cachedResp, Cached: true}, nil
 		}
 	}
@@ -325,10 +346,19 @@ func (e *AuraEngine) Process(ctx context.Context, req *PromptRequest) (*PromptRe
 
 	slog.Info("🤖 LLM Provider selected", "provider", selectedProvider.GetProviderName(), "model_override", req.Model, "skip_cache", req.SkipCache)
 
-	aiResp, err := selectedProvider.Generate(ctx, contextPrompt, llmTools, req.Model)
+	aiResp, tokenUsage, err := selectedProvider.Generate(ctx, contextPrompt, llmTools, req.Model)
 	if err != nil {
 		slog.Error("LLM generation failed", "error", err, "provider", selectedProvider.GetProviderName())
 		return nil, err
+	}
+
+	if e.ledger != nil && e.costCalc != nil && tokenUsage != nil {
+		cost := e.costCalc.CalculateCost(selectedProvider.GetMetadata().Name, req.Model, tokenUsage.PromptTokens, tokenUsage.CompletionTokens)
+		if cost > 0 {
+			go func() {
+				_ = e.ledger.Deduct(context.Background(), orgID, cost, "llm_usage", fmt.Sprintf("Generation via %s", selectedProvider.GetProviderName()))
+			}()
+		}
 	}
 
 	// G. Populate Cache for future requests (Org-Isolated & Force Refresh)
@@ -367,4 +397,24 @@ func (e *AuraEngine) Process(ctx context.Context, req *PromptRequest) (*PromptRe
 		Provider: selectedProvider.GetProviderName(),
 		Tools:    llmTools,
 	}, nil
+}
+
+func (e *MemzentEngine) chargeCacheHit(ctx context.Context, orgID, provider, model, prompt string) {
+	if e.ledger != nil && e.costCalc != nil {
+		// Rough estimate: 1 token = ~4 chars
+		estimatedTokens := len(prompt) / 4
+		
+		providerName := provider
+		if providerName == "" {
+			providerName = e.defaultProvider
+		}
+
+		cost := e.costCalc.CalculateCacheDiscount(providerName, model, estimatedTokens)
+		if cost > 0 {
+			go func() {
+				// Async deduction to not block latency
+				_ = e.ledger.Deduct(context.Background(), orgID, cost, "cache_hit", "Semantic Cache Hit Discount")
+			}()
+		}
+	}
 }

@@ -1,4 +1,4 @@
--- Aura SaaS Foundation Migration
+-- Memzent SaaS Foundation Migration
 -- 1. Create Organizations Table
 CREATE TABLE IF NOT EXISTS organizations (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

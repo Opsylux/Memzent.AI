@@ -30,7 +30,7 @@ func (o *OpenAIProvider) GetMetadata() ProviderMetadata {
 	}
 }
 
-func (o *OpenAIProvider) Generate(ctx context.Context, prompt string, tools []any, model string) (string, error) {
+func (o *OpenAIProvider) Generate(ctx context.Context, prompt string, tools []any, model string) (string, *TokenUsage, error) {
 	url := "https://api.openai.com/v1/chat/completions"
 
 	// Resolve model: per-request override takes priority over configured default
@@ -39,7 +39,7 @@ func (o *OpenAIProvider) Generate(ctx context.Context, prompt string, tools []an
 		activeModel = model
 	}
 
-	system := "You are Aura, an enterprise-grade AI Gateway. "
+	system := "You are Memzent, an enterprise-grade AI Gateway. "
 	if len(tools) > 0 {
 		system += "\nYour request has been supplemented with data from semantic tools. Use this context ONLY if it is directly relevant to the user's prompt. If the tool data is irrelevant, ignore it and answer the user's prompt normally."
 	}
@@ -56,12 +56,12 @@ func (o *OpenAIProvider) Generate(ctx context.Context, prompt string, tools []an
 
 	jsonBody, err := json.Marshal(reqBody)
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
 
 	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(jsonBody))
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
 
 	req.Header.Set("Content-Type", "application/json")
@@ -69,7 +69,7 @@ func (o *OpenAIProvider) Generate(ctx context.Context, prompt string, tools []an
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
 	defer resp.Body.Close()
 
@@ -80,7 +80,7 @@ func (o *OpenAIProvider) Generate(ctx context.Context, prompt string, tools []an
 			} `json:"error"`
 		}
 		json.NewDecoder(resp.Body).Decode(&errResp)
-		return "", fmt.Errorf("openai error (%d): %s", resp.StatusCode, errResp.Error.Message)
+		return "", nil, fmt.Errorf("openai error (%d): %s", resp.StatusCode, errResp.Error.Message)
 	}
 
 	var result struct {
@@ -89,15 +89,26 @@ func (o *OpenAIProvider) Generate(ctx context.Context, prompt string, tools []an
 				Content string `json:"content"`
 			} `json:"message"`
 		} `json:"choices"`
+		Usage struct {
+			PromptTokens     int `json:"prompt_tokens"`
+			CompletionTokens int `json:"completion_tokens"`
+			TotalTokens      int `json:"total_tokens"`
+		} `json:"usage"`
 	}
 
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return "", err
+		return "", nil, err
 	}
 
 	if len(result.Choices) == 0 {
-		return "", fmt.Errorf("openai returned no choices")
+		return "", nil, fmt.Errorf("openai returned no choices")
 	}
 
-	return result.Choices[0].Message.Content, nil
+	usage := &TokenUsage{
+		PromptTokens:     result.Usage.PromptTokens,
+		CompletionTokens: result.Usage.CompletionTokens,
+		TotalTokens:      result.Usage.TotalTokens,
+	}
+
+	return result.Choices[0].Message.Content, usage, nil
 }

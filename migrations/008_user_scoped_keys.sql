@@ -1,4 +1,4 @@
--- Aura Migration: User-Scoped API Keys (Option A)
+-- Memzent Migration: User-Scoped API Keys (Option A)
 -- Adds individual ownership while maintaining admin oversight.
 
 -- 1. Add user_id column

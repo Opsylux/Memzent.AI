@@ -161,10 +161,10 @@ func (l *PersistentAuditLogger) GetCacheStats(orgID string) (uint64, uint64) {
 
 	query := `
 		SELECT 
-			COUNT(*) as total_requests,
-			SUM(CASE WHEN action LIKE 'CACHE:%' THEN 1 ELSE 0 END) as cache_hits
+			COUNT(*)::bigint as total_requests,
+			COALESCE(SUM(CASE WHEN action LIKE 'CACHE:%' THEN 1 ELSE 0 END), 0)::bigint as cache_hits
 		FROM audit_logs
-		WHERE ($1 = '' OR org_id::text = $1 OR org_id::text = '00000000-0000-0000-0000-000000000000')
+		WHERE ($1::text = '' OR org_id::text = $1 OR org_id::text = '00000000-0000-0000-0000-000000000000')
 	`
 
 	var total, hits sql.NullInt64

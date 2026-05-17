@@ -1,7 +1,7 @@
-# Project Aura: Architectural Abstract
+# Project Memzent: Architectural Abstract
 
 ## Overview
-Aura is an enterprise-grade AI infrastructure project designed for semantic routing and token optimization. It uses a high-performance Go Gateway for traffic management and a Rust-based Semantic Router for vector-based decision-making.
+Memzent is an enterprise-grade AI infrastructure project designed for semantic routing and token optimization. It uses a high-performance Go Gateway for traffic management and a Rust-based Semantic Router for vector-based decision-making.
 
 ## Core Architecture
 - **Gateway (Go):** Entry point, handles HTTP/Auth, and manages the Semantic Cache via Valkey.

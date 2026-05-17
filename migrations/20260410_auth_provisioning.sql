@@ -32,7 +32,7 @@ BEGIN
     -- These IDs must match the ones in public.tool_registry
     INSERT INTO public.org_tools (org_id, tool_id)
     VALUES 
-        (new_org_id, 'aura_search'),
+        (new_org_id, 'memzent_search'),
         (new_org_id, 'read_database')
     ON CONFLICT DO NOTHING;
 

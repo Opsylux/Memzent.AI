@@ -31,10 +31,10 @@ type Config struct {
 func LoadConfig() *Config {
 	return &Config{
 		Port:                   getEnv("PORT", ":8080"),
-		ValkeyURL:              getEnv("VALKEY_URL", "valkey:6379"),
+		ValkeyURL:              getEnv("VALKEY_URL", "http://localhost:6379"),
 		RouterURL:              getEnv("ROUTER_URL", "router:50051"),
-		PostgresURL:            getEnv("POSTGRES_URL", "postgres://user:password@postgres:5432/aura_db?sslmode=disable"),
-		MCPURL:                 getEnv("MCP_SERVER_URL", "http://aura-mcp-server:50052/mcp"),
+		PostgresURL:            getEnv("POSTGRES_URL", "postgres://user:password@postgres:5432/memzent_db?sslmode=disable"),
+		MCPURL:                 getEnv("MCP_SERVER_URL", "http://memzent-mcp-server:50052/mcp"),
 		AnthropicAPIKey:        getEnv("ANTHROPIC_API_KEY", ""),
 		OpenAIAPIKey:           getEnv("OPENAI_API_KEY", ""),
 		OpenAIModel:            getEnv("OPENAI_MODEL", "gpt-4o-mini"),
@@ -43,7 +43,7 @@ func LoadConfig() *Config {
 		OllamaEnabled:          getEnv("OLLAMA_ENABLED", "true") == "true",
 		OllamaURL:              getEnv("OLLAMA_URL", "http://host.docker.internal:11434"),
 		OllamaModel:            getEnv("OLLAMA_MODEL", "llama3.2"),
-		JWTSecret:              getEnv("JWT_SECRET", "aura-enterprise-secret-2026"),
+		JWTSecret:              getEnv("JWT_SECRET", "memzent-enterprise-secret-2026"),
 		JWKSURL:                getEnv("JWKS_URL", ""),
 		SupabaseKey:            getEnv("SUPABASE_ANON_KEY", ""),
 		LLMCacheTTL:            getEnvDuration("LLM_CACHE_TTL", 1*time.Hour),

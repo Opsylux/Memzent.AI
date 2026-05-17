@@ -1,6 +1,6 @@
-# Aura: Project Status & Roadmap
+# Memzent: Project Status & Roadmap
 
-This document tracks the current completion state of Aura features and provides "Pop Questions" to guide agents and human developers through the remaining tasks.
+This document tracks the current completion state of Memzent features and provides "Pop Questions" to guide agents and human developers through the remaining tasks.
 
 ## 1. Feature Completion Matrix
 
@@ -58,4 +58,4 @@ This document tracks the current completion state of Aura features and provides 
 
 ### Vector Model & Routing
 - **Current Decision:** Users and agents should NOT be restricted to a single model; they should be able to choose their preferred model.
-- **Action Item / Design Review:** We need a design review on how to handle caching for multiple models. This may involve adding custom headers (e.g., `X-Aura-Model`) to specify the model, and adjusting the cache lookup logic to ensure cache keys are scoped to the requested model. We'll also need to consider if/how we can share cached responses across different models if appropriate.
+- **Action Item / Design Review:** We need a design review on how to handle caching for multiple models. This may involve adding custom headers (e.g., `X-Memzent-Model`) to specify the model, and adjusting the cache lookup logic to ensure cache keys are scoped to the requested model. We'll also need to consider if/how we can share cached responses across different models if appropriate.

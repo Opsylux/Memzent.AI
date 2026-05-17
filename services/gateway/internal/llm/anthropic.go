@@ -30,7 +30,7 @@ func (a *AnthropicProvider) GetMetadata() ProviderMetadata {
 	}
 }
 
-func (a *AnthropicProvider) Generate(ctx context.Context, prompt string, tools []any, model string) (string, error) {
+func (a *AnthropicProvider) Generate(ctx context.Context, prompt string, tools []any, model string) (string, *TokenUsage, error) {
 	url := "https://api.anthropic.com/v1/messages"
 
 	// Resolve model: per-request override takes priority over configured default
@@ -39,7 +39,7 @@ func (a *AnthropicProvider) Generate(ctx context.Context, prompt string, tools [
 		activeModel = model
 	}
 
-	system := "You are Aura, an AI Gateway. "
+	system := "You are Memzent, an AI Gateway. "
 	if len(tools) > 0 {
 		system += "\nYour request has been supplemented with data from semantic tools. Use this context ONLY if it is directly relevant to the user's prompt. If the tool data is irrelevant, ignore it and answer the user's prompt normally."
 	}
@@ -57,7 +57,7 @@ func (a *AnthropicProvider) Generate(ctx context.Context, prompt string, tools [
 	jsonBody, _ := json.Marshal(reqBody)
 	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(jsonBody))
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
 
 	req.Header.Set("Content-Type", "application/json")
@@ -66,21 +66,31 @@ func (a *AnthropicProvider) Generate(ctx context.Context, prompt string, tools [
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
 	defer resp.Body.Close()
 
 	var result struct {
 		Content []struct{ Text string }  `json:"content"`
 		Error   struct{ Message string } `json:"error"`
+		Usage   struct {
+			InputTokens  int `json:"input_tokens"`
+			OutputTokens int `json:"output_tokens"`
+		} `json:"usage"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return "", err
+		return "", nil, err
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("anthropic error: %s", result.Error.Message)
+		return "", nil, fmt.Errorf("anthropic error: %s", result.Error.Message)
 	}
 
-	return result.Content[0].Text, nil
+	usage := &TokenUsage{
+		PromptTokens:     result.Usage.InputTokens,
+		CompletionTokens: result.Usage.OutputTokens,
+		TotalTokens:      result.Usage.InputTokens + result.Usage.OutputTokens,
+	}
+
+	return result.Content[0].Text, usage, nil
 }

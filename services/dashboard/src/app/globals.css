@@ -21,12 +21,12 @@
   --color-popover: var(--popover);
   --color-card: var(--card);
 
-  /* Aura Enterprise Branding Tokens */
-  --color-aura-dark: #050505;
-  --color-aura-glow: #00f3ff;
-  --color-aura-purple: #9d00ff;
-  --color-aura-accent: #00ff8e;
-  --color-aura-matrix: #0a0a0a;
+  /* Memzent Enterprise Branding Tokens */
+  --color-memzent-dark: #050505;
+  --color-memzent-glow: #00f3ff;
+  --color-memzent-purple: #9d00ff;
+  --color-memzent-accent: #00ff8e;
+  --color-memzent-matrix: #0a0a0a;
 
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
@@ -68,7 +68,7 @@
   }
 
   body {
-    @apply bg-aura-dark text-foreground antialiased;
+    @apply bg-memzent-dark text-foreground antialiased;
   }
 }
 
@@ -80,33 +80,41 @@
 
 @utility glow-cyan {
   /* CRITICAL: No spaces inside the shadow brackets */
-  @apply border-aura-glow/20 shadow-[0_0_20px_rgba(0,243,255,0.05)];
+  @apply border-memzent-glow/20 shadow-[0_0_20px_rgba(0,243,255,0.05)];
 }
 
 @utility glow-purple {
   /* CRITICAL: No spaces inside the shadow brackets */
-  @apply border-aura-purple/20 shadow-[0_0_20px_rgba(157,0,255,0.05)];
+  @apply border-memzent-purple/20 shadow-[0_0_20px_rgba(157,0,255,0.05)];
 }
 
 @utility stat-card {
   @apply glass p-6 rounded-3xl transition-all duration-300 hover:bg-white/[0.05] hover:border-white/20;
 }
 
-@utility prose-aura {
-  & h1, & h2, & h3, & h4 {
+@utility prose-memzent {
+
+  & h1,
+  & h2,
+  & h3,
+  & h4 {
     @apply uppercase tracking-tighter font-black text-white;
   }
+
   & a {
-    @apply text-aura-glow no-underline hover:underline font-bold transition-colors;
+    @apply text-memzent-glow no-underline hover:underline font-bold transition-colors;
   }
+
   & strong {
     @apply text-white font-black;
   }
+
   & code {
-    @apply text-aura-glow bg-aura-glow/5 px-1 rounded font-mono font-bold;
+    @apply text-memzent-glow bg-memzent-glow/5 px-1 rounded font-mono font-bold;
   }
+
   & ul {
-    @apply list-disc marker:text-aura-purple;
+    @apply list-disc marker:text-memzent-purple;
   }
 }
 

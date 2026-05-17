@@ -1,4 +1,4 @@
--- Aura SaaS Database Foundation & Gateway RBAC Setup
+-- Memzent SaaS Database Foundation & Gateway RBAC Setup
 -- Execute this file against Cloud Supabase to create the core tables
 
 -- 1. Organizations
@@ -25,19 +25,6 @@ CREATE TABLE IF NOT EXISTS members (
 -- Defines which tools an Organization has been granted access to
 CREATE TABLE IF NOT EXISTS org_tools (
     org_id UUID REFERENCES organizations(id) ON DELETE CASCADE,
-    tool_id TEXT NOT NULL,
+    tool_id VARCHAR(255) REFERENCES tools(id) ON DELETE CASCADE,
     PRIMARY KEY (org_id, tool_id)
 );
-
--- 4. Registry for Global Tools (Optional, but good for foreign keys if we want)
-CREATE TABLE IF NOT EXISTS tool_registry (
-    id TEXT PRIMARY KEY,
-    name TEXT NOT NULL,
-    description TEXT,
-    is_active BOOLEAN DEFAULT true,
-    created_at TIMESTAMPTZ DEFAULT now()
-);
-
--- Link org_tools to tool_registry
-ALTER TABLE org_tools ADD CONSTRAINT fk_org_tools_registry FOREIGN KEY (tool_id) REFERENCES tool_registry(id) ON DELETE CASCADE;
-

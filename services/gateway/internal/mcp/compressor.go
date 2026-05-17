@@ -32,7 +32,7 @@ func CompressToolOutput(rawOutput string, intent string) string {
 
 	// 2. Add a footer so the LLM knows the data was truncated
 	if len(lines) > len(filtered) {
-		filtered = append(filtered, "... [Aura Truncated 90% of data for token efficiency]")
+		filtered = append(filtered, "... [Memzent Truncated 90% of data for token efficiency]")
 	}
 
 	return strings.Join(filtered, "\n")

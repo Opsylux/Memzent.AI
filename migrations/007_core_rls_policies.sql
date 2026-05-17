@@ -1,4 +1,4 @@
--- Aura Core Infrastructure Security - RLS Policies
+-- Memzent Core Infrastructure Security - RLS Policies
 -- This completes the security link for multi-tenant isolation.
 
 -- 1. Organizations

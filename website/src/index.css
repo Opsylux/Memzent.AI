@@ -1,11 +1,11 @@
 @import "tailwindcss";
 
 @theme {
-  --color-aura-dark: #050505;
-  --color-aura-matrix: #0a0a0a;
-  --color-aura-glow: #00f3ff;
-  --color-aura-purple: #9d00ff;
-  --color-aura-accent: #00ff8e;
+  --color-memzent-dark: #050505;
+  --color-memzent-matrix: #0a0a0a;
+  --color-memzent-glow: #00f3ff;
+  --color-memzent-purple: #9d00ff;
+  --color-memzent-accent: #00ff8e;
 
   --font-outfit: "Outfit", sans-serif;
   --font-mono: "Roboto Mono", monospace;
@@ -23,7 +23,7 @@
 
 @layer base {
   body {
-    @apply font-outfit antialiased selection:bg-aura-glow selection:text-black;
+    @apply font-outfit antialiased selection:bg-memzent-glow selection:text-black;
   }
 }
 
@@ -32,12 +32,12 @@
 }
 
 @utility glow-text {
-  @apply text-aura-glow;
+  @apply text-memzent-glow;
   text-shadow: 0 0 10px rgba(0, 243, 255, 0.4);
 }
 
 @utility glow-border {
-  @apply border-aura-glow/30;
+  @apply border-memzent-glow/30;
   box-shadow: 0 0 20px rgba(0, 243, 255, 0.1);
 }
 

@@ -3,7 +3,7 @@
 > **Notice to AI System & Agents**: This file contains the mandatory operating rules, system constraints, and engineering stack for Project Memzent. You must parse and adhere strictly to these constraints before proposing any code edits and if need to change any of the rules,or add any new rules or new design decisions ask the user for approval.
 
 ## 1. Project Abstract
-**Memzent (memzent.ai)** is a high-performance, intelligent semantic proxy designed to serve as the long-term memory and orchestration layer for AI agents. Sitting seamlessly between user clients, MCP (Model Context Protocol) tools, and LLM endpoints, Memzent provides the stateful infrastructure agents need to scale—featuring ultra-low latency semantic caching, intelligent routing, robust RBAC, and secure context management.
+**Memzent (memzent.ai)** delivers the critical memory and security layer for autonomous workflows. Operating as an Intelligent Semantic Proxy, it intercepts and optimizes traffic between clients, MCP tools, and LLM providers. By combining semantic search and caching with enterprise-grade routing and RBAC, Memzent transforms stateless LLM calls into secure, context-aware agentic systems.
 - **Core Goal**: Minimize LLM latency and maximize token ROI by semantically caching and efficiently routing user prompts *before* hitting expensive LLMs.
 
 ## 2. Engineering Standards & Boundaries
@@ -53,6 +53,6 @@ When implementing new routing features, the AI must ensure the Engine follows th
 ## 5. Agent Skills & Instructions
 
 For detailed implementation patterns, pending roadmap items, and feature checklists, refer to:
-- **[.cursorrules](file:///c:/Users/nnaga/OneDrive/Documents/GitHub/AuraMCP/.cursorrules)**: IDE-specific rules for Antigravity, Copilot, and Cursor.
-- **[PROJECT_STATUS.md](file:///c:/Users/nnaga/OneDrive/Documents/GitHub/AuraMCP/PROJECT_STATUS.md)**: Live roadmap and "What's Pending" tracker.
-- **[INSTRUCTIONS.md](file:///c:/Users/nnaga/OneDrive/Documents/GitHub/AuraMCP/INSTRUCTIONS.md)**: Step-by-step checklists and "Pop Questions" for feature implementation.
+- **[.cursorrules](file:///c:/Users/nnaga/OneDrive/Documents/GitHub/MemzentMCP/.cursorrules)**: IDE-specific rules for Antigravity, Copilot, and Cursor.
+- **[PROJECT_STATUS.md](file:///c:/Users/nnaga/OneDrive/Documents/GitHub/MemzentMCP/PROJECT_STATUS.md)**: Live roadmap and "What's Pending" tracker.
+- **[INSTRUCTIONS.md](file:///c:/Users/nnaga/OneDrive/Documents/GitHub/MemzentMCP/INSTRUCTIONS.md)**: Step-by-step checklists and "Pop Questions" for feature implementation.

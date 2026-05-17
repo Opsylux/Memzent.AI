@@ -1,4 +1,4 @@
-module aura-gateway
+module memzent-gateway
 
 go 1.25.0
 

@@ -1,4 +1,4 @@
--- Aura Migration: Fix RBAC Recursion & Harden RLS
+-- Memzent Migration: Fix RBAC Recursion & Harden RLS
 -- Resolves "infinite recursion detected in policy for relation 'members'"
 
 -- 1. Create a helper function to bypass RLS recursion

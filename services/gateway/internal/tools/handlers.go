@@ -1,8 +1,8 @@
 package tools
 
 import (
-	"aura-gateway/internal/metrics"
-	"aura-gateway/internal/router"
+	"memzent-gateway/internal/metrics"
+	"memzent-gateway/internal/router"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -275,7 +275,7 @@ type ToolWithProvider struct {
 	ID             string                 `json:"id"`
 	Name           string                 `json:"name"`
 	Description    string                 `json:"description"`
-	Provider       string                 `json:"provider"` // "Aura-Core", "Aura-MCP", "Aura-REST", etc.
+	Provider       string                 `json:"provider"` // "Memzent-Core", "Memzent-MCP", "Memzent-REST", etc.
 	ConnectorType  string                 `json:"connector_type"`
 	Status         string                 `json:"status"` // "online", "offline", etc.
 	TimeoutSeconds int                    `json:"timeout_seconds,omitempty"`
@@ -285,7 +285,7 @@ type ToolWithProvider struct {
 
 // Utility function to convert Tool to API response format
 func ToolToAPI(t *Tool) ToolWithProvider {
-	provider := "Aura-" + strings.ToUpper(string(t.ConnectorType))
+	provider := "Memzent-" + strings.ToUpper(string(t.ConnectorType))
 	return ToolWithProvider{
 		ID:             t.ID,
 		Name:           t.Name,

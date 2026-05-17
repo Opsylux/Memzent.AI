@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { Badge } from '@/components/ui/badge'
 import { Activity, ShieldCheck, Zap, Server, ShieldAlert, KeyRound, Bot, Globe } from 'lucide-react'
-import { getAuraAudit, getAuraStats } from '@/app/actions'
+import { getMemzentAudit, getMemzentStats } from '@/app/actions'
 import { supabase } from '@/lib/supabase'
 
 export default function AuditPage() {
@@ -36,8 +36,8 @@ export default function AuditPage() {
 
         try {
           const [auditData, statsData] = await Promise.all([
-             getAuraAudit(resolvedOrgId),
-             getAuraStats(resolvedOrgId)
+            getMemzentAudit(resolvedOrgId),
+            getMemzentStats(resolvedOrgId)
           ])
           setLogs(auditData || [])
           setStats(statsData)
@@ -51,16 +51,16 @@ export default function AuditPage() {
   }, [])
 
   const hitRatio = stats && stats.total_requests > 0
-      ? ((stats.cache_hits / stats.total_requests) * 100).toFixed(1)
-      : '0.0'
+    ? ((stats.cache_hits / stats.total_requests) * 100).toFixed(1)
+    : '0.0'
 
   const getIcon = (type: string) => {
     switch (type) {
       case 'AUTH': return <ShieldCheck size={20} className="text-blue-400" />
       case 'CACHE': return <Zap size={20} className="text-yellow-400" />
-      case 'GENERATION': return <Bot size={20} className="text-aura-purple" />
+      case 'GENERATION': return <Bot size={20} className="text-memzent-purple" />
       case 'GATEWAY': return <Server size={20} className="text-green-400" />
-      case 'KEY_GEN': return <KeyRound size={20} className="text-aura-glow" />
+      case 'KEY_GEN': return <KeyRound size={20} className="text-memzent-glow" />
       default: return <Globe size={20} className="text-white/40" />
     }
   }
@@ -78,20 +78,20 @@ export default function AuditPage() {
 
       {/* KPI Row */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="stat-card neural-bg p-8 border-white/5 hover:border-aura-glow/20 transition-all">
+        <div className="stat-card neural-bg p-8 border-white/5 hover:border-memzent-glow/20 transition-all">
           <div className="text-[10px] font-black uppercase tracking-widest text-white/40 mb-2 whitespace-nowrap">Total Mesh Requests</div>
           <div className="text-3xl font-black text-white">{stats?.total_requests?.toLocaleString() || 0}</div>
         </div>
-        <div className="stat-card p-8 border-aura-glow/20 bg-aura-glow/5 shadow-[0_0_20px_rgba(0,243,255,0.05)] relative overflow-hidden transition-all">
-          <div className="absolute top-0 right-0 p-8 text-aura-glow/10 pointer-events-none">
-             <Zap size={64} />
+        <div className="stat-card p-8 border-memzent-glow/20 bg-memzent-glow/5 shadow-[0_0_20px_rgba(0,243,255,0.05)] relative overflow-hidden transition-all">
+          <div className="absolute top-0 right-0 p-8 text-memzent-glow/10 pointer-events-none">
+            <Zap size={64} />
           </div>
-          <div className="text-[10px] font-black uppercase tracking-widest text-aura-glow mb-2 whitespace-nowrap">Cache Intelligence Ratio</div>
+          <div className="text-[10px] font-black uppercase tracking-widest text-memzent-glow mb-2 whitespace-nowrap">Cache Intelligence Ratio</div>
           <div className="text-3xl font-black text-white flex items-end gap-2">
             {hitRatio}% <span className="text-sm font-bold text-white/40 uppercase tracking-widest mb-1 italic">hit_rate</span>
           </div>
         </div>
-        <div className="stat-card neural-bg p-8 border-white/5 hover:border-aura-purple/20 transition-all">
+        <div className="stat-card neural-bg p-8 border-white/5 hover:border-memzent-purple/20 transition-all">
           <div className="text-[10px] font-black uppercase tracking-widest text-white/40 mb-2 whitespace-nowrap">Node Uptime</div>
           <div className="text-3xl font-black text-white flex items-end gap-2">
             {(stats?.uptime_seconds / 3600).toFixed(1)} <span className="text-sm font-bold text-white/40 uppercase tracking-widest mb-1 italic">hours</span>
@@ -106,7 +106,7 @@ export default function AuditPage() {
             <p className="text-[10px] font-bold text-white/20 uppercase tracking-widest mt-1">Real-time organizational footprint</p>
           </div>
           <Badge variant="outline" className="border-green-500/20 bg-green-500/5 text-green-400 font-black tracking-widest uppercase text-[9px] px-3">
-             <Activity size={10} className="mr-2 animate-pulse" /> Live
+            <Activity size={10} className="mr-2 animate-pulse" /> Live
           </Badge>
         </div>
 
@@ -120,12 +120,12 @@ export default function AuditPage() {
               <div key={index} className="flex items-start md:items-center justify-between p-6 hover:bg-white/[0.02] transition-all group flex-col md:flex-row gap-4">
                 <div className="flex items-start md:items-center gap-6">
                   <div className="w-12 h-12 shrink-0 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center shadow-inner group-hover:scale-110 transition-transform">
-                     {getIcon(log.type)}
+                    {getIcon(log.type)}
                   </div>
                   <div>
                     <div className="text-sm font-black tracking-tight text-white uppercase italic truncate max-w-sm md:max-w-2xl">{log.detail}</div>
                     <div className="text-[10px] font-mono text-white/20 uppercase font-black flex items-center gap-3 mt-1.5 flex-wrap">
-                      <span className="text-white/40">ACTOR:</span> <span className={`${log.user === 'system' ? 'text-aura-purple' : 'text-aura-glow'}`}>{log.user || 'Unknown'}</span>
+                      <span className="text-white/40">ACTOR:</span> <span className={`${log.user === 'system' ? 'text-memzent-purple' : 'text-memzent-glow'}`}>{log.user || 'Unknown'}</span>
                       <span className="hidden md:inline-block w-1 h-1 rounded-full bg-white/10" />
                       <span className="text-white/40">TYPE:</span> {log.type}
                     </div>
@@ -144,7 +144,7 @@ export default function AuditPage() {
           )}
         </div>
       </div>
-      
+
       <footer className="stat-card border-white/5 bg-black/20 p-8 relative overflow-hidden group">
         <div className="absolute top-0 right-0 p-8 text-white/5 pointer-events-none">
           <ShieldAlert size={120} />

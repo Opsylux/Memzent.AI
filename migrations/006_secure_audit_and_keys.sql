@@ -1,5 +1,5 @@
 -- Migration: Secure Audit Logs and Hardened API Keys
--- Part of Aura RC1 (Public Readiness)
+-- Part of Memzent RC1 (Public Readiness)
 
 -- 1. Create Audit Logs table for persistent observability
 CREATE TABLE IF NOT EXISTS audit_logs (

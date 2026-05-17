@@ -46,5 +46,5 @@ debug
 
 .fastembed_cache
 *.log
-aura-gateway-bin
+*gateway-bin
 .next

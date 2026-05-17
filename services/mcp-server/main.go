@@ -14,7 +14,7 @@ import (
 	"github.com/valkey-io/valkey-go"
 )
 
-// ToolArgs defines the expected schema for the execute_aura_tool.
+// ToolArgs defines the expected schema for the execute_memzent_tool.
 // Using JSON tags ensures the MCP client and server agree on field names.
 type ToolArgs struct {
 	ToolID string `json:"tool_id"`
@@ -25,7 +25,7 @@ func main() {
 	// 1. Setup Structured Logging to Stderr
 	// MCP protocol uses Stdout for transport in some modes;
 	// logging to Stderr prevents protocol corruption.
-	logger := log.New(os.Stderr, "[AURA-MCP] ", log.LstdFlags|log.Lshortfile)
+	logger := log.New(os.Stderr, "[MEMZENT-MCP] ", log.LstdFlags|log.Lshortfile)
 
 	// 2. Initialize Valkey Client
 	valkeyAddr := os.Getenv("VALKEY_ADDR")
@@ -48,7 +48,7 @@ func main() {
 	server := mcp.NewServer(t)
 
 	// --- TOOL: GET TOOLS ---
-	server.RegisterTool("get_aura_tools", "Returns available tools from cache or registry", func(ctx context.Context) (string, error) {
+	server.RegisterTool("get_memzent_tools", "Returns available tools from cache or registry", func(ctx context.Context) (string, error) {
 		valkeyKey := "mcp:tools:list"
 
 		// Use a sub-context with timeout for Valkey calls to prevent hanging
@@ -68,7 +68,7 @@ func main() {
 	})
 
 	// --- TOOL: EXECUTE TOOL ---
-	server.RegisterTool("execute_aura_tool", "Runs a specific Aura tool", func(ctx context.Context, args ToolArgs) (string, error) {
+	server.RegisterTool("execute_memzent_tool", "Runs a specific Memzent tool", func(ctx context.Context, args ToolArgs) (string, error) {
 		logger.Printf("DEBUG: Tool handler invoked with raw args: %+v", args)
 		
 		toolID := args.ToolID
@@ -84,7 +84,7 @@ func main() {
 
         switch toolID {
         case "db_query":
-            return "SQL query executed successfully via Aura Gateway.", nil
+            return "SQL query executed successfully via Memzent Gateway.", nil
         case "get_user":
             if userID == "" {
                 return "", fmt.Errorf("user_id is required for get_user tool")
@@ -92,7 +92,7 @@ func main() {
             return fmt.Sprintf("User data for ID %s fetched from Postgres.", userID), nil
         // case "read_database": (MOVED TO CORE CONNECTOR)
         default:
-            return "", fmt.Errorf("unknown tool_id: %s. Use get_aura_tools to see valid options", toolID)
+            return "", fmt.Errorf("unknown tool_id: %s. Use get_memzent_tools to see valid options", toolID)
         }
     })
 
@@ -102,13 +102,13 @@ func main() {
 	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
 
 	go func() {
-		logger.Println("Aura MCP Server is running on :50052/mcp")
+		logger.Println("Memzent MCP Server is running on :50052/mcp")
 		if err := server.Serve(); err != nil {
 			logger.Printf("Server stopped: %v", err)
 		}
 	}()
 
 	<-stop
-	logger.Println("Shutting down Aura MCP Server...")
+	logger.Println("Shutting down Memzent MCP Server...")
 	// Add any specific cleanup logic here
 }

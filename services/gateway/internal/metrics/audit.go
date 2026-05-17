@@ -10,7 +10,7 @@ type AuditEvent struct {
 	Timestamp time.Time `json:"timestamp"`
 	OrgID     string    `json:"org_id"`
 	Type      string    `json:"type"`       // e.g. "AUTH", "SEMANTIC_HIT", "GATEWAY", "REGISTRY"
-	User      string    `json:"user"`       // e.g. "admin", "user@aura.io", etc.
+	User      string    `json:"user"`       // e.g. "admin", "user@memzent.io", etc.
 	Detail    string    `json:"detail"`     // e.g. "Session Active", "Intent: 'analyze gateway latency' - L1.5 Resolved"
 	Status    string    `json:"status"`     // e.g. "success", "error", "warning"
 	Latency   float64   `json:"latency_ms"` // processing latency
@@ -37,7 +37,7 @@ func init() {
 		OrgID:     "system",
 		Type:      "GATEWAY",
 		User:      "system",
-		Detail:    "Aura Gateway Infrastructure Initialized",
+		Detail:    "Memzent Gateway Infrastructure Initialized",
 		Status:    "success",
 	})
 }

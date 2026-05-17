@@ -14,30 +14,28 @@ interface MetricCardProps {
   detail: string;
 }
 
-export function MetricCard({ 
-  label, 
-  value, 
-  trend, 
-  trendDirection, 
-  icon, 
+export function MetricCard({
+  label,
+  value,
+  trend,
+  trendDirection,
+  icon,
   color,
   detail
 }: MetricCardProps) {
   return (
-    <motion.div 
+    <motion.div
       whileHover={{ y: -5 }}
       className={`stat-card relative overflow-hidden group ${color === 'cyan' ? 'glow-cyan' : 'glow-purple'}`}
     >
       <div className="flex justify-between items-start mb-6">
-        <div className={`w-12 h-12 rounded-2xl flex items-center justify-center bg-white/5 border border-white/10 ${
-            color === 'cyan' ? 'text-aura-glow' : 'text-aura-purple'
-        }`}>
+        <div className={`w-12 h-12 rounded-2xl flex items-center justify-center bg-white/5 border border-white/10 ${color === 'cyan' ? 'text-memzent-glow' : 'text-memzent-purple'
+          }`}>
           {icon}
         </div>
         {trend && (
-          <div className={`flex items-center gap-1 text-[10px] font-black px-2 py-1 rounded-lg border ${
-            trendDirection === 'up' ? "bg-aura-accent/10 text-aura-accent border-aura-accent/20" : "bg-red-500/10 text-red-500 border-red-500/20"
-          }`}>
+          <div className={`flex items-center gap-1 text-[10px] font-black px-2 py-1 rounded-lg border ${trendDirection === 'up' ? "bg-memzent-accent/10 text-memzent-accent border-memzent-accent/20" : "bg-red-500/10 text-red-500 border-red-500/20"
+            }`}>
             {trendDirection === 'up' ? <TrendingUp size={12} /> : <TrendingDown size={12} />}
             {trend}
           </div>
@@ -51,13 +49,12 @@ export function MetricCard({
 
       <div className="mt-6 flex items-center justify-between">
         <span className="text-[10px] font-mono font-bold text-white/20 uppercase tracking-tighter">{detail}</span>
-        <div className={`w-1 h-1 rounded-full ${color === 'cyan' ? 'bg-aura-glow shadow-[0_0_10px_#00f3ff]' : 'bg-aura-purple shadow-[0_0_10px_#9d00ff]'}`} />
+        <div className={`w-1 h-1 rounded-full ${color === 'cyan' ? 'bg-memzent-glow shadow-[0_0_10px_#00f3ff]' : 'bg-memzent-purple shadow-[0_0_10px_#9d00ff]'}`} />
       </div>
 
       {/* Background Glow */}
-      <div className={`absolute -right-8 -bottom-8 w-32 h-32 rounded-full blur-[60px] opacity-10 group-hover:opacity-20 transition-opacity ${
-          color === 'cyan' ? 'bg-aura-glow' : 'bg-aura-purple'
-      }`} />
+      <div className={`absolute -right-8 -bottom-8 w-32 h-32 rounded-full blur-[60px] opacity-10 group-hover:opacity-20 transition-opacity ${color === 'cyan' ? 'bg-memzent-glow' : 'bg-memzent-purple'
+        }`} />
     </motion.div>
   );
 }

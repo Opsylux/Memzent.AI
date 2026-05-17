@@ -2,7 +2,7 @@
 
 import { useState } from "react"
 import { RefreshCcw, Loader2, CheckCircle2, ShieldAlert } from "lucide-react"
-import { syncAuraTools } from "@/app/actions"
+import { syncMemzentTools } from "@/app/actions"
 
 export function SyncRegistryBtn({ orgId }: { orgId?: string }) {
   const [status, setStatus] = useState<'idle' | 'syncing' | 'success' | 'error'>('idle')
@@ -11,9 +11,9 @@ export function SyncRegistryBtn({ orgId }: { orgId?: string }) {
   const handleSync = async () => {
     setStatus('syncing')
     setError(null)
-    
+
     try {
-      await syncAuraTools(orgId)
+      await syncMemzentTools(orgId)
       setStatus('success')
       setTimeout(() => setStatus('idle'), 3000)
     } catch (err: any) {
@@ -25,15 +25,14 @@ export function SyncRegistryBtn({ orgId }: { orgId?: string }) {
 
   return (
     <div className="relative">
-      <button 
+      <button
         onClick={handleSync}
         disabled={status === 'syncing'}
-        className={`glass px-6 py-3 rounded-2xl text-xs font-black tracking-widest uppercase flex items-center gap-2 transition-all group overflow-hidden ${
-          status === 'syncing' ? 'text-aura-glow' : 
-          status === 'success' ? 'text-aura-accent border-aura-accent/30' :
-          status === 'error' ? 'text-red-400 border-red-500/30' :
-          'text-white/40 hover:text-white hover:bg-white/5'
-        }`}
+        className={`glass px-6 py-3 rounded-2xl text-xs font-black tracking-widest uppercase flex items-center gap-2 transition-all group overflow-hidden ${status === 'syncing' ? 'text-memzent-glow' :
+          status === 'success' ? 'text-memzent-accent border-memzent-accent/30' :
+            status === 'error' ? 'text-red-400 border-red-500/30' :
+              'text-white/40 hover:text-white hover:bg-white/5'
+          }`}
       >
         {status === 'syncing' ? (
           <Loader2 size={14} className="animate-spin" />
@@ -44,14 +43,14 @@ export function SyncRegistryBtn({ orgId }: { orgId?: string }) {
         ) : (
           <RefreshCcw size={14} className="group-hover:rotate-180 transition-transform duration-500" />
         )}
-        
-        {status === 'syncing' ? 'SYNCING_NODES' : 
-         status === 'success' ? 'SYNC_COMPLETE' :
-         status === 'error' ? 'SYNC_FAILED' :
-         'Sync Registry'}
+
+        {status === 'syncing' ? 'SYNCING_NODES' :
+          status === 'success' ? 'SYNC_COMPLETE' :
+            status === 'error' ? 'SYNC_FAILED' :
+              'Sync Registry'}
 
         {status === 'syncing' && (
-          <div className="absolute inset-0 bg-aura-glow/5 animate-pulse" />
+          <div className="absolute inset-0 bg-memzent-glow/5 animate-pulse" />
         )}
       </button>
 

@@ -7,9 +7,15 @@ type Message struct {
 	Content string `json:"content"`
 }
 
+type TokenUsage struct {
+	PromptTokens     int
+	CompletionTokens int
+	TotalTokens      int
+}
+
 type Provider interface {
 	// Generate produces an LLM response. Model may be empty to use the provider default.
-	Generate(ctx context.Context, prompt string, tools []any, model string) (string, error)
+	Generate(ctx context.Context, prompt string, tools []any, model string) (string, *TokenUsage, error)
 	GetProviderName() string
 	GetMetadata() ProviderMetadata
 }

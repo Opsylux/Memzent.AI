@@ -1,11 +1,11 @@
-# Aura: Feature Implementation Instructions
+# Memzent: Feature Implementation Instructions
 
-This document provides step-by-step checklists for common engineering tasks in Aura. Follow these to ensure architectural consistency across service boundaries.
+This document provides step-by-step checklists for common engineering tasks in Memzent. Follow these to ensure architectural consistency across service boundaries.
 
 ---
 
 ## 1. Adding a New LLM Provider
-Aura supports pluggable LLM providers in the Gateway.
+Memzent supports pluggable LLM providers in the Gateway.
 
 ### Checklist:
 1.  **Define Provider**: Create a new file in `/services/gateway/internal/llm/` (e.g., `mistral.go`).
@@ -35,7 +35,7 @@ Connectors allow the Gateway to execute non-MCP tools (SQL, REST, GraphQL).
 
 > [!IMPORTANT]
 > **Pop Question**: Does every execution of a tool need to be logged in the Audit Log?
-> *   *Yes*: Authentication middleware and the Aura Engine handle this; do not reinvent logging inside the connector.
+> *   *Yes*: Authentication middleware and the Memzent Engine handle this; do not reinvent logging inside the connector.
 
 ---
 
@@ -60,5 +60,5 @@ The Command Center uses a high-end, dark, glassmorphic aesthetic.
 - **Tailwind**: Do NOT use `tailwind.config.js`. Use `@theme inline` in `globals.css`.
 
 > [!TIP]
-> **Pop Question**: Should I use standard Radix UI colors or Aura theme tokens?
-> *   *Aura Tokens*: Always use `--color-aura-*` variables for a cohesive enterprise feel.
+> **Pop Question**: Should I use standard Radix UI colors or Memzent theme tokens?
+> *   *Memzent Tokens*: Always use `--color-memzent-*` variables for a cohesive enterprise feel.

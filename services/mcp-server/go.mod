@@ -1,4 +1,4 @@
-module aura-mcp
+module memzent-mcp
 
 go 1.24.9
 

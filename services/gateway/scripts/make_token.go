@@ -8,7 +8,7 @@ import (
 )
 
 func MakeToken() {
-	secret := "aura-enterprise-secret-2026"
+	secret := "memzent-enterprise-secret-2026"
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
 		"sub":  "admin-01",

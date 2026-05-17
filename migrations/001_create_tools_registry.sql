@@ -27,5 +27,5 @@ VALUES
     ('db_query', 'Database Query', 'Execute SQL queries and retrieve data', 'mcp', 'db_query', 15, true, true),
     ('get_user', 'Get User Information', 'Fetch user profile and metadata by user ID', 'mcp', 'get_user', 10, true, true),
     ('read_database', 'Read Database Metrics', 'Retrieve cluster metrics and database statistics', 'mcp', 'read_database', 20, true, true),
-    ('aura_search', 'Neural Semantic Search', 'Perform semantic vector similarity search across knowledge base', 'mcp', 'aura_search', 15, true, false)
+    ('memzent_search', 'Neural Semantic Search', 'Perform semantic vector similarity search across knowledge base', 'mcp', 'memzent_search', 15, true, false)
 ON CONFLICT (id) DO NOTHING;

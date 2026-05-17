@@ -1,6 +1,6 @@
-# Aura: AI Agent & IDE Rules (.cursorrules)
+# Memzent: AI Agent & IDE Rules (.cursorrules)
 
-> **Role**: You are an expert engineer working on Aura, an enterprise-grade AI Gateway.
+> **Role**: You are an expert engineer working on Memzent, an enterprise-grade AI Gateway.
 > **Context**: These rules apply to Antigravity, GitHub Copilot, and any other agentic IDE.
 
 ## 1. Domain-Specific Guidelines
@@ -26,7 +26,7 @@ Every feature implementation MUST follow this sequence:
 1. **Proto Update**: Modify `/proto/router.proto` if gRPC changes are needed.
 2. **Rust implementation**: Add logic to `/services/router`.
 3. **Go Wrapper**: Update `/services/gateway/internal/router` to match new gRPC client methods.
-4. **Engine logic**: Integrate the new logic into `auraEngine.Process`.
+4. **Engine logic**: Integrate the new logic into `memzentEngine.Process`.
 5. **Dashboard View**: Add the UI component to the Command Center.
 
 ## 3. Coding for AI Clarity
@@ -34,6 +34,6 @@ Every feature implementation MUST follow this sequence:
 - **Antigravity Instructions**: If you see a violation of `AGENTS.md`, stop and warn the user. Never mix service responsibilities (e.g., dont add DB queries to the Rust Router).
 
 ## 4. Pending Features Checkpoints
-Before implementing a Phase 2/3 item, check [PROJECT_STATUS.md](file:///c:/Users/nnaga/OneDrive/Documents/GitHub/AuraMCP/PROJECT_STATUS.md).
+Before implementing a Phase 2/3 item, check [PROJECT_STATUS.md](file:///c:/Users/nnaga/OneDrive/Documents/GitHub/MemzentMCP/PROJECT_STATUS.md).
 - **Pop Question**: "Does this tool registration require a new Qdrant collection?"
 - **Pop Question**: "Is the connector type already registered in the Gateway's `connRegistry`?"

@@ -1,4 +1,4 @@
--- Aura API Keys Table
+-- Memzent API Keys Table
 -- Provides hashed storage for external agent access tokens
 
 CREATE TABLE IF NOT EXISTS api_keys (

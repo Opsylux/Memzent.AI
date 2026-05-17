@@ -1,6 +1,6 @@
 # services/router/Cargo.toml
 [package]
-name = "aura-router"
+name = "memzent-router"
 version = "0.1.0"
 edition = "2021" 
 

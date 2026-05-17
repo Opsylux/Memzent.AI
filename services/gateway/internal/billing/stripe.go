@@ -11,25 +11,27 @@ import (
 	"github.com/stripe/stripe-go/v78"
 	"github.com/stripe/stripe-go/v78/checkout/session"
 	"github.com/stripe/stripe-go/v78/webhook"
-	"aura-gateway/internal/metrics"
+	"memzent-gateway/internal/metrics"
 	"context"
 	"fmt"
 	"time"
 )
 type StripeHandler struct {
 	db            *sql.DB
+	ledger        *Ledger
 	webhookSecret string
 	proProductID  string
 	bizProductID  string
 	auditLogger   *metrics.PersistentAuditLogger
 }
 
-func NewStripeHandler(db *sql.DB, secret, proID, bizID string, audit *metrics.PersistentAuditLogger) *StripeHandler {
+func NewStripeHandler(db *sql.DB, ledger *Ledger, secret, proID, bizID string, audit *metrics.PersistentAuditLogger) *StripeHandler {
 	// Configure Stripe key globally for this handler
 	stripe.Key = os.Getenv("STRIPE_SECRET_KEY")
 	
 	return &StripeHandler{
 		db:            db,
+		ledger:        ledger,
 		webhookSecret: secret,
 		proProductID:  proID,
 		bizProductID:  bizID,
@@ -63,7 +65,29 @@ func (h *StripeHandler) HandleWebhook(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
-		slog.Info("Stripe Checkout Completed", "customer_id", session.Customer.ID, "status", session.Status)
+		slog.Info("Stripe Checkout Completed", "customer_id", session.Customer.ID, "status", session.Status, "mode", session.Mode)
+		
+		if session.Mode == stripe.CheckoutSessionModePayment && h.ledger != nil {
+			orgID := session.Metadata["org_id"]
+			amount := float64(session.AmountTotal) / 100.0
+			if orgID != "" {
+				err := h.ledger.TopUp(context.Background(), orgID, amount, "Stripe Token Top-Up")
+				if err != nil {
+					slog.Error("Failed to apply top-up to ledger", "org", orgID, "error", err)
+				} else {
+					slog.Info("Successfully applied top-up", "org", orgID, "amount", amount)
+					if h.auditLogger != nil {
+						h.auditLogger.Log(context.Background(), metrics.AuditEvent{
+							Timestamp: time.Now(),
+							OrgID:     orgID,
+							Type:      "BILLING",
+							Detail:    fmt.Sprintf("Top-up of $%.2f applied", amount),
+							Status:    "success",
+						}, map[string]interface{}{"amount": amount, "session_id": session.ID})
+					}
+				}
+			}
+		}
 
 	case "customer.subscription.created", "customer.subscription.updated":
 		var sub stripe.Subscription
@@ -99,34 +123,18 @@ func (h *StripeHandler) CreateCheckoutSession(w http.ResponseWriter, r *http.Req
 	}
 
 	var req struct {
-		Tier string `json:"tier"`
+		Tier   string  `json:"tier"`
+		Amount float64 `json:"amount"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "Invalid Request", http.StatusBadRequest)
 		return
 	}
 
-	priceID := ""
-	switch req.Tier {
-	case "pro":
-		priceID = os.Getenv("STRIPE_PRO_PRICE_ID")
-	case "business":
-		priceID = os.Getenv("STRIPE_BIZ_PRICE_ID")
-	default:
-		http.Error(w, "Invalid Tier", http.StatusBadRequest)
-		return
-	}
-
-	// Guard: fail fast if the price ID env var is not configured.
-	// Passing an empty string to Stripe causes a cryptic 400 error.
-	if priceID == "" {
-		slog.Error("Stripe price ID not configured", "tier", req.Tier)
-		http.Error(w, fmt.Sprintf("Billing not configured for tier %q — contact support", req.Tier), http.StatusServiceUnavailable)
-		return
-	}
-
 	orgID := r.Header.Get("X-Org-ID")
-	slog.Info("Creating real Stripe Checkout Session", "tier", req.Tier, "org_id", orgID, "price_id", priceID)
+	if orgID == "" {
+		orgID = "default"
+	}
 
 	successURL := os.Getenv("STRIPE_SUCCESS_URL")
 	if successURL == "" {
@@ -137,20 +145,73 @@ func (h *StripeHandler) CreateCheckoutSession(w http.ResponseWriter, r *http.Req
 		cancelURL = "http://localhost:3000/dashboard/billing?status=cancel"
 	}
 
-	params := &stripe.CheckoutSessionParams{
-		SuccessURL: stripe.String(successURL),
-		CancelURL:  stripe.String(cancelURL),
-		Mode:       stripe.String(string(stripe.CheckoutSessionModeSubscription)),
-		LineItems: []*stripe.CheckoutSessionLineItemParams{
-			{
-				Price:    stripe.String(priceID),
-				Quantity: stripe.Int64(1),
+	var params *stripe.CheckoutSessionParams
+
+	if req.Amount > 0 {
+		// Minimum $5 top-up
+		if req.Amount < 5.0 {
+			http.Error(w, "Minimum top-up amount is $5.00", http.StatusBadRequest)
+			return
+		}
+		slog.Info("Creating Stripe Top-Up Session", "amount", req.Amount, "org_id", orgID)
+
+		params = &stripe.CheckoutSessionParams{
+			SuccessURL: stripe.String(successURL),
+			CancelURL:  stripe.String(cancelURL),
+			Mode:       stripe.String(string(stripe.CheckoutSessionModePayment)),
+			LineItems: []*stripe.CheckoutSessionLineItemParams{
+				{
+					PriceData: &stripe.CheckoutSessionLineItemPriceDataParams{
+						Currency: stripe.String("usd"),
+						ProductData: &stripe.CheckoutSessionLineItemPriceDataProductDataParams{
+							Name: stripe.String("Memzent Token Top-Up"),
+						},
+						UnitAmount: stripe.Int64(int64(req.Amount * 100)),
+					},
+					Quantity: stripe.Int64(1),
+				},
 			},
-		},
-		Metadata: map[string]string{
-			"org_id": orgID,
-			"tier":   req.Tier,
-		},
+			Metadata: map[string]string{
+				"org_id": orgID,
+				"type":   "topup",
+			},
+		}
+	} else {
+		// Legacy Tier Subscription
+		priceID := ""
+		switch req.Tier {
+		case "pro":
+			priceID = os.Getenv("STRIPE_PRO_PRICE_ID")
+		case "business":
+			priceID = os.Getenv("STRIPE_BIZ_PRICE_ID")
+		default:
+			http.Error(w, "Invalid Tier", http.StatusBadRequest)
+			return
+		}
+
+		if priceID == "" {
+			slog.Error("Stripe price ID not configured", "tier", req.Tier)
+			http.Error(w, fmt.Sprintf("Billing not configured for tier %q — contact support", req.Tier), http.StatusServiceUnavailable)
+			return
+		}
+
+		slog.Info("Creating Stripe Subscription Session", "tier", req.Tier, "org_id", orgID, "price_id", priceID)
+
+		params = &stripe.CheckoutSessionParams{
+			SuccessURL: stripe.String(successURL),
+			CancelURL:  stripe.String(cancelURL),
+			Mode:       stripe.String(string(stripe.CheckoutSessionModeSubscription)),
+			LineItems: []*stripe.CheckoutSessionLineItemParams{
+				{
+					Price:    stripe.String(priceID),
+					Quantity: stripe.Int64(1),
+				},
+			},
+			Metadata: map[string]string{
+				"org_id": orgID,
+				"tier":   req.Tier,
+			},
+		}
 	}
 
 	sess, err := session.New(params)

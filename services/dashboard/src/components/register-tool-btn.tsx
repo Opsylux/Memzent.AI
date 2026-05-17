@@ -2,13 +2,13 @@
 
 import { useState } from "react"
 import { Plus, X, Globe, Database, Terminal, Shield, Loader2 } from "lucide-react"
-import { registerAuraTool } from "@/app/actions"
+import { registerMemzentTool } from "@/app/actions"
 
 export function RegisterToolBtn({ orgId }: { orgId?: string }) {
   const [isOpen, setIsOpen] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  
+
   const [formData, setFormData] = useState({
     id: "",
     name: "",
@@ -22,10 +22,10 @@ export function RegisterToolBtn({ orgId }: { orgId?: string }) {
     e.preventDefault()
     setIsSubmitting(true)
     setError(null)
-    
+
     try {
       if (!orgId) throw new Error("Organization context missing")
-      await registerAuraTool(orgId, formData)
+      await registerMemzentTool(orgId, formData)
       setIsOpen(false)
       // Refresh the page or update state
       window.location.reload()
@@ -38,9 +38,9 @@ export function RegisterToolBtn({ orgId }: { orgId?: string }) {
 
   return (
     <>
-      <button 
+      <button
         onClick={() => setIsOpen(true)}
-        className="bg-aura-glow text-black px-6 py-3 rounded-2xl text-xs font-black tracking-widest uppercase hover:scale-105 transition-all shadow-[0_0_20px_rgba(0,243,255,0.2)] flex items-center gap-2"
+        className="bg-memzent-glow text-black px-6 py-3 rounded-2xl text-xs font-black tracking-widest uppercase hover:scale-105 transition-all shadow-[0_0_20px_rgba(0,243,255,0.2)] flex items-center gap-2"
       >
         <Plus size={14} />
         Register New Tool
@@ -49,7 +49,7 @@ export function RegisterToolBtn({ orgId }: { orgId?: string }) {
       {isOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setIsOpen(false)} />
-          
+
           <div className="stat-card w-full max-w-2xl bg-[#0a0a0c] border-white/10 p-0 overflow-hidden relative z-10 animate-in fade-in zoom-in duration-200">
             <header className="p-8 border-b border-white/5 flex items-center justify-between">
               <div>
@@ -71,45 +71,45 @@ export function RegisterToolBtn({ orgId }: { orgId?: string }) {
               <div className="grid grid-cols-2 gap-6">
                 <div className="space-y-2">
                   <label className="text-[10px] font-black uppercase text-white/30 tracking-widest ml-1">Unique Identifier</label>
-                  <input 
+                  <input
                     required
                     placeholder="e.g. stripe_billing"
-                    className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm font-bold focus:border-aura-glow outline-none transition-all"
+                    className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm font-bold focus:border-memzent-glow outline-none transition-all"
                     value={formData.id}
-                    onChange={(e) => setFormData({...formData, id: e.target.value})}
+                    onChange={(e) => setFormData({ ...formData, id: e.target.value })}
                   />
                 </div>
                 <div className="space-y-2">
                   <label className="text-[10px] font-black uppercase text-white/30 tracking-widest ml-1">Display Name</label>
-                  <input 
+                  <input
                     required
                     placeholder="e.g. Stripe Manager"
-                    className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm font-bold focus:border-aura-glow outline-none transition-all"
+                    className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm font-bold focus:border-memzent-glow outline-none transition-all"
                     value={formData.name}
-                    onChange={(e) => setFormData({...formData, name: e.target.value})}
+                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                   />
                 </div>
               </div>
 
               <div className="space-y-2">
                 <label className="text-[10px] font-black uppercase text-white/30 tracking-widest ml-1">Description</label>
-                <textarea 
+                <textarea
                   required
                   placeholder="What does this tool enable the LLM to do?"
                   rows={2}
-                  className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm font-bold focus:border-aura-glow outline-none transition-all resize-none"
+                  className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm font-bold focus:border-memzent-glow outline-none transition-all resize-none"
                   value={formData.description}
-                  onChange={(e) => setFormData({...formData, description: e.target.value})}
+                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-6">
                 <div className="space-y-2">
                   <label className="text-[10px] font-black uppercase text-white/30 tracking-widest ml-1">Connector Type</label>
-                  <select 
-                    className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm font-bold focus:border-aura-glow outline-none transition-all appearance-none"
+                  <select
+                    className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm font-bold focus:border-memzent-glow outline-none transition-all appearance-none"
                     value={formData.connector_type}
-                    onChange={(e) => setFormData({...formData, connector_type: e.target.value})}
+                    onChange={(e) => setFormData({ ...formData, connector_type: e.target.value })}
                   >
                     <option value="mcp" className="bg-[#0a0a0c]">MCP (Model Context Protocol)</option>
                     <option value="rest" className="bg-[#0a0a0c]">REST API</option>
@@ -118,12 +118,12 @@ export function RegisterToolBtn({ orgId }: { orgId?: string }) {
                 </div>
                 <div className="space-y-2">
                   <label className="text-[10px] font-black uppercase text-white/30 tracking-widest ml-1">Timeout (Seconds)</label>
-                  <input 
+                  <input
                     type="number"
                     min="1"
-                    className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm font-bold focus:border-aura-glow outline-none transition-all"
+                    className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm font-bold focus:border-memzent-glow outline-none transition-all"
                     value={formData.timeout_seconds}
-                    onChange={(e) => setFormData({...formData, timeout_seconds: parseInt(e.target.value)})}
+                    onChange={(e) => setFormData({ ...formData, timeout_seconds: parseInt(e.target.value) })}
                   />
                 </div>
               </div>
@@ -136,38 +136,38 @@ export function RegisterToolBtn({ orgId }: { orgId?: string }) {
                     {formData.connector_type === 'rest' && <Globe size={16} />}
                     {formData.connector_type === 'sql' && <Database size={16} />}
                   </div>
-                  <input 
+                  <input
                     required
-                    placeholder={formData.connector_type === 'mcp' ? "Tool ID within MCP" : "https://api.service.com/v1" }
-                    className="w-full bg-white/5 border border-white/10 rounded-xl pl-12 pr-4 py-3 text-sm font-bold focus:border-aura-glow outline-none transition-all"
+                    placeholder={formData.connector_type === 'mcp' ? "Tool ID within MCP" : "https://api.service.com/v1"}
+                    className="w-full bg-white/5 border border-white/10 rounded-xl pl-12 pr-4 py-3 text-sm font-bold focus:border-memzent-glow outline-none transition-all"
                     value={formData.endpoint}
-                    onChange={(e) => setFormData({...formData, endpoint: e.target.value})}
+                    onChange={(e) => setFormData({ ...formData, endpoint: e.target.value })}
                   />
                 </div>
               </div>
 
               <div className="flex items-center justify-end gap-4 pt-4">
-                 <button 
+                <button
                   type="button"
                   onClick={() => setIsOpen(false)}
                   className="px-6 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-white/5 transition-all text-white/30 hover:text-white"
-                 >
-                   Cancel
-                 </button>
-                 <button 
+                >
+                  Cancel
+                </button>
+                <button
                   type="submit"
                   disabled={isSubmitting}
-                  className="bg-aura-glow text-black px-8 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:scale-105 transition-all shadow-[0_0_20px_rgba(0,243,255,0.2)] flex items-center gap-2 disabled:opacity-50 disabled:scale-100"
-                 >
-                   {isSubmitting ? (
-                     <>
-                        <Loader2 size={14} className="animate-spin" />
-                        Synchronizing...
-                     </>
-                   ) : (
-                     "Authorize Node"
-                   )}
-                 </button>
+                  className="bg-memzent-glow text-black px-8 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:scale-105 transition-all shadow-[0_0_20px_rgba(0,243,255,0.2)] flex items-center gap-2 disabled:opacity-50 disabled:scale-100"
+                >
+                  {isSubmitting ? (
+                    <>
+                      <Loader2 size={14} className="animate-spin" />
+                      Synchronizing...
+                    </>
+                  ) : (
+                    "Authorize Node"
+                  )}
+                </button>
               </div>
             </form>
           </div>

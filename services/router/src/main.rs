@@ -267,7 +267,7 @@ impl SemanticRouter for MyRouter {
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let addr = "[::]:50051".parse()?;
-    let qdrant_url = std::env::var("QDRANT_URL").unwrap_or_else(|_| "http://qdrant:6333".to_string());
+    let qdrant_url = std::env::var("QDRANT_URL").unwrap_or_else(|_| "http://qdrant:6334".to_string());
     
     let q_client = Qdrant::from_url(&qdrant_url).build()?;
     
@@ -313,7 +313,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         embedding_model: Arc::new(model), 
     };
 
-    println!("Aura Semantic Router listening on {}", addr);
+    println!("Memzent Semantic Router listening on {}", addr);
     Server::builder()
         .add_service(SemanticRouterServer::new(router_service))
         .serve(addr)

@@ -6,12 +6,12 @@ export default function DocsIntroduction() {
   return (
     <div className="space-y-14">
       <header className="space-y-4">
-        <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-aura-glow/5 border border-aura-glow/20 w-fit">
-          <span className="text-[10px] font-black text-aura-glow uppercase tracking-tighter">Documentation</span>
+        <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-memzent-glow/5 border border-memzent-glow/20 w-fit">
+          <span className="text-[10px] font-black text-memzent-glow uppercase tracking-tighter">Documentation</span>
         </div>
-        <h1 className="text-4xl font-black tracking-tighter uppercase sm:text-5xl">Introduction to Aura</h1>
+        <h1 className="text-4xl font-black tracking-tighter uppercase sm:text-5xl">Introduction to Memzent</h1>
         <p className="text-lg text-white/60 leading-relaxed font-medium max-w-2xl">
-          Aura is an AI infrastructure layer that sits between your application and your AI models. It makes every request faster, smarter, and cheaper — without changing your existing code.
+          Memzent is an AI infrastructure layer that sits between your application and your AI models. It makes every request faster, smarter, and cheaper — without changing your existing code.
         </p>
       </header>
 
@@ -20,29 +20,29 @@ export default function DocsIntroduction() {
         {[
           {
             icon: <Search size={20} />,
-            color: "text-aura-glow",
-            bg: "bg-aura-glow/10",
+            color: "text-memzent-glow",
+            bg: "bg-memzent-glow/10",
             title: "Semantic Memory",
-            desc: "Aura remembers the meaning of past answers, not just exact words. Similar questions get instant responses — at zero cost."
+            desc: "Memzent remembers the meaning of past answers, not just exact words. Similar questions get instant responses — at zero cost."
           },
           {
             icon: <Layers size={20} />,
-            color: "text-aura-purple",
-            bg: "bg-aura-purple/10",
+            color: "text-memzent-purple",
+            bg: "bg-memzent-purple/10",
             title: "Smart Routing",
             desc: "Every prompt is matched to the most relevant tool or data source first, so your AI always responds with accurate, current information."
           },
           {
             icon: <Shield size={20} />,
-            color: "text-aura-accent",
-            bg: "bg-aura-accent/10",
+            color: "text-memzent-accent",
+            bg: "bg-memzent-accent/10",
             title: "Zero-Trust Security",
             desc: "Every request is verified against your organization's live permissions — before any AI or tool is invoked."
           },
           {
             icon: <Zap size={20} />,
-            color: "text-aura-glow",
-            bg: "bg-aura-glow/10",
+            color: "text-memzent-glow",
+            bg: "bg-memzent-glow/10",
             title: "Any AI Model",
             desc: "Switch between OpenAI, Anthropic, Gemini, or your own self-hosted model with a single header. One API for all of them."
           }
@@ -59,14 +59,14 @@ export default function DocsIntroduction() {
 
       {/* Why section */}
       <section className="space-y-6">
-        <h2 className="text-2xl font-black tracking-tighter uppercase">Why use Aura?</h2>
+        <h2 className="text-2xl font-black tracking-tighter uppercase">Why use Memzent?</h2>
         <div className="space-y-4 text-sm text-white/60 leading-relaxed font-medium">
           <p>
             Most teams connect their app directly to an AI API and manage caching, routing, and security themselves. As usage grows, that becomes expensive and fragile.
           </p>
-          <ul className="list-disc pl-6 space-y-3 marker:text-aura-glow">
+          <ul className="list-disc pl-6 space-y-3 marker:text-memzent-glow">
             <li><strong className="text-white">Cut AI costs by up to 80%</strong> — repeat questions are answered from memory instantly, without calling the model.</li>
-            <li><strong className="text-white">Eliminate hallucinations</strong> — Aura enriches every prompt with live data from your tools before the model ever sees it.</li>
+            <li><strong className="text-white">Eliminate hallucinations</strong> — Memzent enriches every prompt with live data from your tools before the model ever sees it.</li>
             <li><strong className="text-white">One secure entry point</strong> — manage all AI access, rate limits, and permissions from a single place.</li>
           </ul>
         </div>
@@ -97,7 +97,7 @@ export default function DocsIntroduction() {
 
       {/* CTA */}
       <div className="flex items-center gap-4 pt-4 border-t border-white/5">
-        <Link href="/docs/quickstart" className="flex items-center gap-2 px-5 py-3 rounded-xl bg-aura-glow text-black text-xs font-black uppercase tracking-widest hover:scale-105 transition-all">
+        <Link href="/docs/quickstart" className="flex items-center gap-2 px-5 py-3 rounded-xl bg-memzent-glow text-black text-xs font-black uppercase tracking-widest hover:scale-105 transition-all">
           Get Started <ArrowRight size={13} />
         </Link>
         <Link href="/docs/architecture" className="text-xs text-white/40 font-black uppercase tracking-widest hover:text-white transition-colors">

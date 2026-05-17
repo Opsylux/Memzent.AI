@@ -11,8 +11,8 @@ export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState<'profile' | 'security' | 'api' | 'alerts'>('profile')
   const [loading, setLoading] = useState(false)
   const [orgId, setOrgId] = useState<string | null>(null)
-  const [orgName, setOrgName] = useState('Aura Global HQ')
-  const [contactEmail, setContactEmail] = useState('ops@aura.io')
+  const [orgName, setOrgName] = useState('Memzent Global HQ')
+  const [contactEmail, setContactEmail] = useState('ops@memzent.io')
   const [saved, setSaved] = useState(false)
   const [members, setMembers] = useState<any[]>([])
 
@@ -88,7 +88,7 @@ export default function SettingsPage() {
           <Button
             variant="ghost"
             onClick={() => setActiveTab('profile')}
-            className={`w-full justify-start gap-4 rounded-2xl py-6 font-black uppercase text-[10px] tracking-widest transition-all ${activeTab === 'profile' ? 'bg-white/5 text-aura-glow border border-aura-glow/20 shadow-[0_0_15px_rgba(0,243,255,0.1)]' : 'text-white/30 hover:text-white hover:bg-white/5'
+            className={`w-full justify-start gap-4 rounded-2xl py-6 font-black uppercase text-[10px] tracking-widest transition-all ${activeTab === 'profile' ? 'bg-white/5 text-memzent-glow border border-memzent-glow/20 shadow-[0_0_15px_rgba(0,243,255,0.1)]' : 'text-white/30 hover:text-white hover:bg-white/5'
               }`}
           >
             <User size={18} /> Profile & Org
@@ -96,26 +96,26 @@ export default function SettingsPage() {
           <Button
             variant="ghost"
             onClick={() => setActiveTab('security')}
-            className={`w-full justify-start gap-4 rounded-2xl py-6 font-black uppercase text-[10px] tracking-widest group transition-all ${activeTab === 'security' ? 'bg-white/5 text-aura-purple border border-aura-purple/20 shadow-[0_0_15px_rgba(157,0,255,0.1)]' : 'text-white/30 hover:text-white hover:bg-white/5'
+            className={`w-full justify-start gap-4 rounded-2xl py-6 font-black uppercase text-[10px] tracking-widest group transition-all ${activeTab === 'security' ? 'bg-white/5 text-memzent-purple border border-memzent-purple/20 shadow-[0_0_15px_rgba(157,0,255,0.1)]' : 'text-white/30 hover:text-white hover:bg-white/5'
               }`}
           >
-            <Shield size={18} className={activeTab === 'security' ? "text-aura-purple" : "group-hover:text-aura-purple"} /> Security & RBAC
+            <Shield size={18} className={activeTab === 'security' ? "text-memzent-purple" : "group-hover:text-memzent-purple"} /> Security & RBAC
           </Button>
           <Button
             variant="ghost"
             onClick={() => setActiveTab('api')}
-            className={`w-full justify-start gap-4 rounded-2xl py-6 font-black uppercase text-[10px] tracking-widest group transition-all ${activeTab === 'api' ? 'bg-white/5 text-aura-glow border border-aura-glow/20 shadow-[0_0_15px_rgba(0,243,255,0.1)]' : 'text-white/30 hover:text-white hover:bg-white/5'
+            className={`w-full justify-start gap-4 rounded-2xl py-6 font-black uppercase text-[10px] tracking-widest group transition-all ${activeTab === 'api' ? 'bg-white/5 text-memzent-glow border border-memzent-glow/20 shadow-[0_0_15px_rgba(0,243,255,0.1)]' : 'text-white/30 hover:text-white hover:bg-white/5'
               }`}
           >
-            <Zap size={18} className={activeTab === 'api' ? "text-aura-glow" : "group-hover:text-aura-glow"} /> API Integration
+            <Zap size={18} className={activeTab === 'api' ? "text-memzent-glow" : "group-hover:text-memzent-glow"} /> API Integration
           </Button>
           <Button
             variant="ghost"
             onClick={() => setActiveTab('alerts')}
-            className={`w-full justify-start gap-4 rounded-2xl py-6 font-black uppercase text-[10px] tracking-widest group transition-all ${activeTab === 'alerts' ? 'bg-white/5 text-aura-accent border border-aura-accent/20 shadow-[0_0_15px_rgba(0,277,142,0.1)]' : 'text-white/30 hover:text-white hover:bg-white/5'
+            className={`w-full justify-start gap-4 rounded-2xl py-6 font-black uppercase text-[10px] tracking-widest group transition-all ${activeTab === 'alerts' ? 'bg-white/5 text-memzent-accent border border-memzent-accent/20 shadow-[0_0_15px_rgba(0,277,142,0.1)]' : 'text-white/30 hover:text-white hover:bg-white/5'
               }`}
           >
-            <Bell size={18} className={activeTab === 'alerts' ? "text-aura-accent" : "group-hover:text-aura-accent"} /> Alerts & Webhooks
+            <Bell size={18} className={activeTab === 'alerts' ? "text-memzent-accent" : "group-hover:text-memzent-accent"} /> Alerts & Webhooks
           </Button>
         </aside>
 
@@ -125,7 +125,7 @@ export default function SettingsPage() {
             <>
               <div className="stat-card glow-purple p-8 neural-bg border-white/5 overflow-hidden relative">
                 <div className="flex items-center gap-6 mb-8 pb-6 border-b border-white/5">
-                  <div className="w-14 h-14 rounded-2xl bg-aura-purple/10 border border-aura-purple/20 flex items-center justify-center text-aura-purple shadow-[0_0_15px_rgba(157,0,255,0.2)]">
+                  <div className="w-14 h-14 rounded-2xl bg-memzent-purple/10 border border-memzent-purple/20 flex items-center justify-center text-memzent-purple shadow-[0_0_15px_rgba(157,0,255,0.2)]">
                     <User size={28} />
                   </div>
                   <div>
@@ -138,7 +138,7 @@ export default function SettingsPage() {
                   <div className="space-y-3">
                     <label className="text-[10px] font-black uppercase tracking-widest text-white/40 italic pl-1">Entity Name</label>
                     <input
-                      className="w-full bg-black/40 border border-white/10 rounded-2xl px-5 py-4 text-sm font-bold text-white focus:border-aura-glow outline-none transition-all placeholder:text-white/10 shadow-inner"
+                      className="w-full bg-black/40 border border-white/10 rounded-2xl px-5 py-4 text-sm font-bold text-white focus:border-memzent-glow outline-none transition-all placeholder:text-white/10 shadow-inner"
                       value={orgName}
                       onChange={(e) => setOrgName(e.target.value)}
                     />
@@ -146,7 +146,7 @@ export default function SettingsPage() {
                   <div className="space-y-3">
                     <label className="text-[10px] font-black uppercase tracking-widest text-white/40 italic pl-1">Technical Contact</label>
                     <input
-                      className="w-full bg-black/40 border border-white/10 rounded-2xl px-5 py-4 text-sm font-bold text-white focus:border-aura-glow outline-none transition-all placeholder:text-white/10 shadow-inner"
+                      className="w-full bg-black/40 border border-white/10 rounded-2xl px-5 py-4 text-sm font-bold text-white focus:border-memzent-glow outline-none transition-all placeholder:text-white/10 shadow-inner"
                       value={contactEmail}
                       onChange={(e) => setContactEmail(e.target.value)}
                     />
@@ -155,12 +155,12 @@ export default function SettingsPage() {
 
                 <div className="flex items-center justify-end gap-4 pt-4 border-t border-white/5">
                   {saved && (
-                    <span className="text-[10px] font-black text-aura-accent uppercase tracking-widest animate-pulse">Changes Synchronized</span>
+                    <span className="text-[10px] font-black text-memzent-accent uppercase tracking-widest animate-pulse">Changes Synchronized</span>
                   )}
                   <Button
                     onClick={handleSave}
                     disabled={loading}
-                    className="bg-aura-glow text-black font-black uppercase tracking-[0.3em] text-[10px] px-8 h-14 rounded-2xl hover:scale-102 hover:shadow-[0_0_20px_rgba(0,243,255,0.3)] transition-all"
+                    className="bg-memzent-glow text-black font-black uppercase tracking-[0.3em] text-[10px] px-8 h-14 rounded-2xl hover:scale-102 hover:shadow-[0_0_20px_rgba(0,243,255,0.3)] transition-all"
                   >
                     <Save size={16} className="mr-2" /> {loading ? 'Syncing...' : 'Sync Changes'}
                   </Button>
@@ -194,7 +194,7 @@ export default function SettingsPage() {
           {activeTab === 'security' && (
             <div className="stat-card glow-purple p-8 neural-bg border-white/5">
               <div className="flex items-center gap-6 mb-8 pb-6 border-b border-white/5">
-                <div className="w-14 h-14 rounded-2xl bg-aura-purple/10 border border-aura-purple/20 flex items-center justify-center text-aura-purple">
+                <div className="w-14 h-14 rounded-2xl bg-memzent-purple/10 border border-memzent-purple/20 flex items-center justify-center text-memzent-purple">
                   <Shield size={28} />
                 </div>
                 <div>
@@ -241,7 +241,7 @@ export default function SettingsPage() {
               </div>
               <h3 className="text-lg font-black tracking-tighter uppercase italic text-white/20">Protocol Under Development</h3>
               <p className="text-[10px] font-bold text-white/10 uppercase tracking-[0.3em] mt-2 mb-8">Phase 3 Integration Expansion Pending</p>
-              <Badge variant="outline" className="border-aura-glow/20 text-aura-glow/40 uppercase text-[9px] font-black tracking-tighter italic">L2 Synchronicity Required</Badge>
+              <Badge variant="outline" className="border-memzent-glow/20 text-memzent-glow/40 uppercase text-[9px] font-black tracking-tighter italic">L2 Synchronicity Required</Badge>
             </div>
           )}
         </div>

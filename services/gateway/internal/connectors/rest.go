@@ -61,8 +61,8 @@ func (c *RESTConnector) Execute(ctx context.Context, req *ExecutionRequest) (*Ex
 	}
 
 	httpReq.Header.Set("Content-Type", "application/json")
-	httpReq.Header.Set("X-Aura-User-ID", req.UserID)
-	httpReq.Header.Set("X-Aura-Tool-ID", req.ToolID)
+	httpReq.Header.Set("X-Memzent-User-ID", req.UserID)
+	httpReq.Header.Set("X-Memzent-Tool-ID", req.ToolID)
 
 	// Execute request
 	httpResp, err := c.client.Do(httpReq)
