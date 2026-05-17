@@ -1,0 +1,24 @@
+# ==========================================================
+# 🚀 Marketing Website Production Multi-Stage Dockerfile
+# ==========================================================
+
+# --- Stage 1: Build Static Assets ---
+FROM node:24-alpine AS builder
+
+WORKDIR /app
+
+COPY website/package.json website/package-lock.json* ./
+RUN npm install
+
+COPY website/ .
+RUN npm run build
+
+# --- Stage 2: Serve High-Performance Static Web Assets ---
+FROM nginx:alpine AS runtime
+
+# Copy compiled build output straight to Nginx html root
+COPY --from=builder /app/dist /usr/share/nginx/html
+
+EXPOSE 80
+
+CMD ["nginx", "-g", "daemon off;"]

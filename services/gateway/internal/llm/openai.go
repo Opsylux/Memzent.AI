@@ -39,10 +39,7 @@ func (o *OpenAIProvider) Generate(ctx context.Context, prompt string, tools []an
 		activeModel = model
 	}
 
-	system := "You are Memzent, an enterprise-grade AI Gateway. "
-	if len(tools) > 0 {
-		system += "\nYour request has been supplemented with data from semantic tools. Use this context ONLY if it is directly relevant to the user's prompt. If the tool data is irrelevant, ignore it and answer the user's prompt normally."
-	}
+	system := BuildSystemPrompt(tools)
 
 	// 2. Prepare OpenAI Request Body
 	reqBody := map[string]interface{}{

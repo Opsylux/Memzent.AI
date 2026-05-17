@@ -299,15 +299,15 @@ const Footer = () => (
         <div className="font-black text-white mb-4">PLATFORM</div>
         <a href="#payg" className="block hover:text-memzent-glow">Pricing</a>
         <a href="#security" className="block hover:text-memzent-glow">Gateway API</a>
-        <a href="#" className="block hover:text-memzent-glow">Semantic Router</a>
-        <a href="#" className="block hover:text-memzent-glow">MCP Tools</a>
+        <a href={appUrl + "/docs/semantic-proxy"} className="block hover:text-memzent-glow">Semantic Router</a>
+        <a href={appUrl + "/docs/tool-registry"} className="block hover:text-memzent-glow">MCP Tools</a>
       </div>
       <div className="space-y-3">
         <div className="font-black text-white mb-4">COMPANY</div>
         <a href={appUrl + "/login"} className="block hover:text-memzent-glow">Dashboard</a>
-        <a href="#" className="block hover:text-memzent-glow">Documentation</a>
-        <a href="#" className="block hover:text-memzent-glow">Status</a>
-        <a href="#" className="block hover:text-memzent-glow">Contact</a>
+        <a href={appUrl + "/docs"} className="block hover:text-memzent-glow">Documentation</a>
+        <a href={appUrl + "/docs/quickstart"} className="block hover:text-memzent-glow">Quickstart</a>
+        <a href={appUrl + "/playground"} className="block hover:text-memzent-glow">Playground</a>
       </div>
     </div>
     <div className="max-w-7xl mx-auto flex items-center justify-between text-[10px] font-black uppercase tracking-widest opacity-20">

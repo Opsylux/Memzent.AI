@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react"
 import { Terminal } from "lucide-react"
 import { getMemzentAudit } from "@/app/actions"
+import Link from "next/link"
 
 interface AuditEvent {
   timestamp: string
@@ -10,6 +11,18 @@ interface AuditEvent {
   detail: string
   status: string
   user: string
+}
+
+function formatTime(isoString: string) {
+  try {
+    const parts = isoString.split("T")
+    if (parts[1]) {
+      return parts[1].split(".")[0] || parts[1]
+    }
+    return isoString
+  } catch {
+    return isoString
+  }
 }
 
 export function AuditLogFeed({ orgId }: { orgId?: string }) {
@@ -53,7 +66,7 @@ export function AuditLogFeed({ orgId }: { orgId?: string }) {
                 'border-white/5'
               }`}>
               <span className="text-memzent-glow/40 font-bold">
-                {new Date(event.timestamp).toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                {formatTime(event.timestamp)}
               </span>
               <span className={`transition-colors ${event.status === 'error' ? 'text-red-400' :
                 event.status === 'warning' ? 'text-memzent-purple' :
@@ -67,9 +80,11 @@ export function AuditLogFeed({ orgId }: { orgId?: string }) {
       </div>
 
       <div className="mt-8 pt-6 border-t border-white/5">
-        <button className="w-full py-3 rounded-xl bg-white/5 border border-white/10 text-[10px] font-black uppercase tracking-[0.3em] text-white/30 hover:text-white hover:bg-white/10 transition-all">
-          OPEN INSPECTOR ENGINE
-        </button>
+        <Link href="/audit" className="block w-full">
+          <button className="w-full py-3 rounded-xl bg-white/5 border border-white/10 text-[10px] font-black uppercase tracking-[0.3em] text-white/30 hover:text-white hover:bg-white/10 hover:border-white/20 transition-all cursor-pointer">
+            OPEN INSPECTOR ENGINE
+          </button>
+        </Link>
       </div>
 
       <div className="absolute inset-x-0 bottom-0 h-32 bg-gradient-to-t from-memzent-dark to-transparent pointer-events-none" />

@@ -43,12 +43,7 @@ func (o *OllamaProvider) Generate(ctx context.Context, prompt string, tools []an
 		activeModel = model
 	}
 
-	system := "You are Memzent, an enterprise-grade open-source AI Gateway. "
-	if len(tools) > 0 {
-		system += "\nYour request has been supplemented with data from semantic tools. Use this context ONLY if it is directly relevant to the user's prompt. If the tool data is irrelevant (e.g. database metrics for a math question), ignore it and answer the user's prompt normally."
-	} else {
-		system += "\nProvide a helpful, concise response to the user's prompt."
-	}
+	system := BuildSystemPrompt(tools)
 
 	// 2. Prepare Ollama Request Body
 	reqBody := map[string]interface{}{

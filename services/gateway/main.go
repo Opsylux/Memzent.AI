@@ -285,6 +285,10 @@ func main() {
 		slog.Info("Tool Registry background sync started", "interval", "30s")
 	}
 
+	// 8.0.5 Pre-warm the memory cache from PostgreSQL persistent B-Tree store in the background
+	go memzentEngine.WarmCache(ctx)
+
+
 	// 8.1 Initialize Stripe Handler (SaaS Billing)
 	stripeHandler := billing.NewStripeHandler(
 		rbacClient.GetDB(),
@@ -379,6 +383,49 @@ func main() {
 
 			w.WriteHeader(http.StatusInternalServerError)
 			_ = json.NewEncoder(w).Encode(map[string]string{"error": "Internal Server Error: " + errMsg})
+			return
+		}
+
+		// Support Server-Sent Events (SSE) streaming if requested
+		if req.Stream || r.Header.Get("Accept") == "text/event-stream" {
+			w.Header().Set("Content-Type", "text/event-stream")
+			w.Header().Set("Cache-Control", "no-cache")
+			w.Header().Set("Connection", "keep-alive")
+			w.Header().Set("Transfer-Encoding", "chunked")
+			if resp.Cached {
+				w.Header().Set("X-Cache", "HIT")
+			}
+
+			flusher, ok := w.(http.Flusher)
+			if !ok {
+				http.Error(w, "Streaming unsupported", http.StatusInternalServerError)
+				return
+			}
+
+			// Split the final generated response into words to simulate smooth premium SSE stream
+			words := strings.Fields(resp.Text)
+			for idx, word := range words {
+				select {
+				case <-r.Context().Done():
+					return
+				default:
+					chunk := word
+					if idx < len(words)-1 {
+						chunk += " "
+					}
+					data, _ := json.Marshal(map[string]any{
+						"text":     chunk,
+						"cached":   resp.Cached,
+						"provider": resp.Provider,
+					})
+					fmt.Fprintf(w, "data: %s\n\n", data)
+					flusher.Flush()
+					time.Sleep(20 * time.Millisecond) // Premium smooth typewriter delay
+				}
+			}
+			// Write termination packet
+			fmt.Fprint(w, "data: [DONE]\n\n")
+			flusher.Flush()
 			return
 		}
 

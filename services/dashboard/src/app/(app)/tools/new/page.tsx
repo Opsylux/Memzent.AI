@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Globe, Database, Shield, ArrowRight, Save, Info, Plus, Trash2 } from 'lucide-react'
 import { createMemzentTool } from '../../../actions'
-import { supabase } from '@/lib/supabase'
+import { getCurrentOrg } from '@/lib/user-context'
 
 export default function NewToolPage() {
   const router = useRouter()
@@ -30,9 +30,9 @@ export default function NewToolPage() {
 
   useEffect(() => {
     async function load() {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (user) {
-        setOrgId(user.id) // Mocking org_id as user_id
+      const org = await getCurrentOrg()
+      if (org) {
+        setOrgId(org.orgId)
       }
     }
     load()

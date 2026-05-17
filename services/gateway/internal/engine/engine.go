@@ -29,6 +29,7 @@ type PromptRequest struct {
 	Provider  string `json:"provider,omitempty"`  // e.g. "ollama", "openai", "anthropic", "gemini"
 	Model     string `json:"model,omitempty"`     // optional per-request model override
 	SkipCache bool   `json:"skip_cache,omitempty"` // set by X-Skip-Cache header
+	Stream    bool   `json:"stream,omitempty"`
 }
 
 // PromptResponse defines the gateway's response to the client
@@ -173,9 +174,26 @@ func (e *MemzentEngine) Process(ctx context.Context, req *PromptRequest) (*Promp
 		}
 	}
 
-	// B. Stage 1-2 Cache Lookup (Org-Isolated)
+	// Resolve selected provider and model for cache key partitioning
+	providerKey := req.Provider
+	if providerKey == "" {
+		providerKey = e.defaultProvider
+	}
+	selectedProvider, ok := e.providers[providerKey]
+	if !ok {
+		selectedProvider = e.providers[e.defaultProvider]
+	}
+	resolvedModel := req.Model
+	if resolvedModel == "" && selectedProvider != nil {
+		resolvedModel = selectedProvider.GetMetadata().DefaultModel
+	}
+	if resolvedModel == "" {
+		resolvedModel = "default"
+	}
+
+	// B. Stage 1-2 Cache Lookup (Org-Isolated & Model-Scoped)
 	if e.cache != nil && !req.SkipCache {
-		cacheKey := fmt.Sprintf("org:%s:p:%s", orgID, req.Prompt)
+		cacheKey := e.buildCacheKey(orgID, "p", resolvedModel, req.Prompt)
 		cachedResp, err := e.cache.GetSemanticResult(ctx, cacheKey)
 		if err != nil || cachedResp == "" {
 			// Valkey cache miss or restart/crash - fallback to persistent DB cache
@@ -208,9 +226,9 @@ func (e *MemzentEngine) Process(ctx context.Context, req *PromptRequest) (*Promp
 			return &PromptResponse{Text: cachedResp, Cached: true}, nil
 		}
 
-		// Stage 1.5: Canonical Match (Normalized & Org-Isolated)
+		// Stage 1.5: Canonical Match (Normalized, Org-Isolated & Model-Scoped)
 		_, cHash := NormalizePrompt(req.Prompt)
-		canonKey := fmt.Sprintf("org:%s:c:%s", orgID, cHash)
+		canonKey := e.buildCacheKey(orgID, "c", resolvedModel, cHash)
 		cachedCanon, err := e.cache.GetSemanticResult(ctx, canonKey)
 		if err != nil || cachedCanon == "" {
 			// Fallback to persistent DB cache
@@ -258,9 +276,9 @@ func (e *MemzentEngine) Process(ctx context.Context, req *PromptRequest) (*Promp
 		slog.Warn("Router fallback engaged", "error", err)
 	}
 
-	// NEW: Stage 2 Cache Check (Fuzzy Vector Semantic Match) — Org-Isolated
+	// NEW: Stage 2 Cache Check (Fuzzy Vector Semantic Match) — Org-Isolated & Model-Scoped
 	if similarPromptHash != "" && e.cache != nil && !req.SkipCache {
-		simKey := fmt.Sprintf("org:%s:s:%s", orgID, similarPromptHash)
+		simKey := e.buildCacheKey(orgID, "s", resolvedModel, similarPromptHash)
 		cachedResp, err := e.cache.GetSemanticResult(ctx, simKey)
 		if err != nil || cachedResp == "" {
 			// Fallback to persistent DB cache
@@ -370,17 +388,8 @@ func (e *MemzentEngine) Process(ctx context.Context, req *PromptRequest) (*Promp
 		llmTools = append(llmTools, t)
 	}
 
-	// G. Provider Selection
+	// G. Provider Selection (already resolved at start of Process)
 
-	providerKey := req.Provider
-	if providerKey == "" {
-		providerKey = e.defaultProvider
-	}
-	selectedProvider, ok := e.providers[providerKey]
-	if !ok {
-		slog.Warn("Unknown provider requested, falling back to default", "requested", providerKey, "default", e.defaultProvider)
-		selectedProvider = e.providers[e.defaultProvider]
-	}
 
 	slog.Info("🤖 LLM Provider selected", "provider", selectedProvider.GetProviderName(), "model_override", req.Model, "skip_cache", req.SkipCache)
 
@@ -399,22 +408,22 @@ func (e *MemzentEngine) Process(ctx context.Context, req *PromptRequest) (*Promp
 		}
 	}
 
-	// G. Populate Cache for future requests (Org-Isolated & Force Refresh)
+	// G. Populate Cache for future requests (Org-Isolated, Model-Scoped & Force Refresh)
 	if e.cache != nil {
 		// Layer 1: Literal Match
-		cacheKey := fmt.Sprintf("org:%s:p:%s", orgID, req.Prompt)
+		cacheKey := e.buildCacheKey(orgID, "p", resolvedModel, req.Prompt)
 		_ = e.cache.SetResult(ctx, cacheKey, aiResp, e.cacheTTL)
 		e.setPersistentCache(ctx, orgID, cacheKey, aiResp, e.cacheTTL)
 
 		// Layer 2: Canonical Match
 		_, cHash := NormalizePrompt(req.Prompt)
-		canonKey := fmt.Sprintf("org:%s:c:%s", orgID, cHash)
+		canonKey := e.buildCacheKey(orgID, "c", resolvedModel, cHash)
 		_ = e.cache.SetResult(ctx, canonKey, aiResp, e.cacheTTL)
 		e.setPersistentCache(ctx, orgID, canonKey, aiResp, e.cacheTTL)
 
 		// Layer 3: Semantic Match
 		if currentPromptHash != "" {
-			simKey := fmt.Sprintf("org:%s:s:%s", orgID, currentPromptHash)
+			simKey := e.buildCacheKey(orgID, "s", resolvedModel, currentPromptHash)
 			_ = e.cache.SetResult(ctx, simKey, aiResp, e.cacheTTL)
 			e.setPersistentCache(ctx, orgID, simKey, aiResp, e.cacheTTL)
 		}
@@ -497,4 +506,52 @@ func (e *MemzentEngine) setPersistentCache(ctx context.Context, orgID, cacheKey,
 			slog.Error("Failed to write to persistent database cache", "error", err, "key", cacheKey)
 		}
 	}()
+}
+
+func (e *MemzentEngine) buildCacheKey(orgID, keyType, model, value string) string {
+	return fmt.Sprintf("org:%s:m:%s:%s:%s", orgID, model, keyType, value)
+}
+
+// WarmCache queries PostgreSQL persistent cache for active entries and pre-warms Valkey in the background
+func (e *MemzentEngine) WarmCache(ctx context.Context) {
+	if e.cache == nil || e.rbac == nil || e.rbac.GetDB() == nil {
+		slog.Info("Cache warming skipped: Valkey or Postgres not initialized")
+		return
+	}
+
+	slog.Info("🔥 Pre-warming memory cache from PostgreSQL persistent B-Tree...")
+	
+	query := `
+		SELECT cache_key, response, expires_at 
+		FROM persistent_cache 
+		WHERE expires_at > NOW() 
+		ORDER BY updated_at DESC 
+		LIMIT 1000
+	`
+	rows, err := e.rbac.GetDB().QueryContext(ctx, query)
+	if err != nil {
+		slog.Error("Failed to query persistent cache for pre-warming", "error", err)
+		return
+	}
+	defer rows.Close()
+
+	warmedCount := 0
+	for rows.Next() {
+		var cacheKey, response string
+		var expiresAt time.Time
+		if err := rows.Scan(&cacheKey, &response, &expiresAt); err != nil {
+			slog.Error("Failed to scan persistent cache row for pre-warming", "error", err)
+			continue
+		}
+
+		remainingTTL := expiresAt.Sub(time.Now())
+		if remainingTTL > 0 {
+			// Write directly into Valkey
+			if err := e.cache.SetResult(ctx, cacheKey, response, remainingTTL); err == nil {
+				warmedCount++
+			}
+		}
+	}
+
+	slog.Info("🔥 Memory cache pre-warming completed successfully!", "records_warmed", warmedCount)
 }

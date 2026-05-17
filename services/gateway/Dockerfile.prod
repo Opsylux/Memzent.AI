@@ -1,0 +1,48 @@
+# ==========================================================
+# 🚀 Memzent Go Gateway Production Multi-Stage Dockerfile
+# ==========================================================
+
+# --- Stage 1: Build & Compile ---
+FROM golang:1.24-alpine AS builder
+
+# Install build dependencies
+RUN apk add --no-cache git gcc musl-dev protobuf-dev protoc
+
+# Install protobuf plugins
+RUN go install google.golang.org/protobuf/cmd/protoc-gen-go@latest && \
+    go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
+ENV PATH="$PATH:/go/bin"
+
+WORKDIR /app
+
+# Copy module definition and download dependencies
+COPY services/gateway/go.mod services/gateway/go.sum ./
+RUN go mod download
+
+# Copy proto schema and source files
+COPY proto/ /proto/
+COPY services/gateway/ .
+
+# Generate Proto Bindings at build time
+RUN mkdir -p internal/router && \
+    protoc -I/proto --go_out=internal/router --go_opt=paths=source_relative --go-grpc_out=internal/router --go-grpc_opt=paths=source_relative /proto/router.proto
+
+# Compile a statically-linked, space-optimized production binary
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o memzent-gateway main.go
+
+# --- Stage 2: Minimal Runtime ---
+FROM alpine:3.19 AS runtime
+
+RUN apk add --no-cache ca-certificates tzdata
+
+WORKDIR /app
+
+# Copy compiled binary from builder
+COPY --from=builder /app/memzent-gateway .
+# Copy database migrations
+COPY services/gateway/migrations/ ./migrations/
+
+EXPOSE 8080
+
+# Run the statically compiled binary immediately on startup
+ENTRYPOINT ["./memzent-gateway"]

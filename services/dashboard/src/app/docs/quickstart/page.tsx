@@ -120,8 +120,8 @@ console.log(response.text);`;
             Learn how to connect your own tools, pick specific AI models per request, and manage team permissions.
           </p>
           <div className="flex flex-wrap items-center gap-3">
-            <Link href="/docs/first-request" className="flex items-center gap-2 px-5 py-3 rounded-xl bg-memzent-glow text-black text-xs font-black uppercase tracking-widest hover:scale-105 transition-all">
-              Explore Model Selection <ArrowRight size={13} />
+            <Link href="/docs/first-request" className="flex items-center gap-2 px-5 py-3 rounded-xl bg-memzent-glow text-black text-xs font-black uppercase tracking-widest hover:scale-105 transition-all whitespace-nowrap">
+              Explore Models <ArrowRight size={13} />
             </Link>
             <Link href="/docs/tool-registry" className="text-xs text-white/40 font-black uppercase tracking-widest hover:text-white transition-colors">
               Connect Tools →

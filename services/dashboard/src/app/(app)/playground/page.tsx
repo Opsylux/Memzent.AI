@@ -8,6 +8,7 @@ import {
 } from 'lucide-react'
 import { executeMemzentPrompt } from '@/app/actions'
 import { supabase } from '@/lib/supabase'
+import { Markdown } from '@/components/markdown'
 
 const EXAMPLE_PROMPTS = [
   "What database metrics are available?",
@@ -152,7 +153,7 @@ export default function PlaygroundPage() {
 
             {/* Result */}
             {result && !result.error && (
-              <div className={`p-5 rounded-2xl border transition-all ${
+              <div className={`p-5 rounded-2xl border transition-all max-w-full overflow-x-auto break-words ${
                 result.cached
                   ? 'bg-memzent-glow/5 border-memzent-glow/20'
                   : 'bg-memzent-purple/5 border-memzent-purple/20'
@@ -160,7 +161,7 @@ export default function PlaygroundPage() {
                 <div className="text-[10px] font-black uppercase tracking-widest text-white/30 mb-3 flex items-center gap-2">
                   {result.cached ? <><Zap size={10} className="text-memzent-glow" /> Semantic Cache Response</> : <><Bot size={10} className="text-memzent-purple" /> LLM Generated Response</>}
                 </div>
-                <p className="text-sm text-white/80 font-medium leading-relaxed whitespace-pre-wrap">{result.text}</p>
+                <Markdown content={result.text} />
               </div>
             )}
 

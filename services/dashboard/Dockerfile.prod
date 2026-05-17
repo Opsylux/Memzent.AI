@@ -1,0 +1,41 @@
+# ==========================================================
+# 🚀 Next.js Dashboard Production Multi-Stage Dockerfile
+# ==========================================================
+
+# --- Stage 1: Dependencies ---
+FROM oven/bun:alpine AS deps
+WORKDIR /app
+COPY services/dashboard/package.json services/dashboard/bun.lock ./
+RUN bun install --frozen-lockfile
+
+# --- Stage 2: Builder ---
+FROM oven/bun:alpine AS builder
+WORKDIR /app
+COPY --from=deps /app/node_modules ./node_modules
+COPY services/dashboard/ .
+
+# Enforce production build environment
+ENV NEXT_TELEMETRY_DISABLED=1
+ENV NODE_ENV=production
+
+# Compile production-ready static assets
+RUN bun run build
+
+# --- Stage 3: Runner ---
+FROM oven/bun:alpine AS runner
+WORKDIR /app
+
+ENV NODE_ENV=production
+ENV NEXT_TELEMETRY_DISABLED=1
+
+# Copy next server configurations
+COPY --from=builder /app/next.config.ts ./
+COPY --from=builder /app/package.json ./
+COPY --from=builder /app/public ./public
+COPY --from=builder /app/.next ./.next
+COPY --from=builder /app/node_modules ./node_modules
+
+EXPOSE 3000
+
+# Start Next.js production server instantly without any dependency installs
+CMD ["bun", "run", "start"]

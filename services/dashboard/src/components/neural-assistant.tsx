@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from "react"
 import { Send, Bot, User, Loader2, X, MessageSquare, Zap, ShieldCheck } from "lucide-react"
 import { executeMemzentPrompt } from "@/app/actions"
+import { Markdown } from "@/components/markdown"
 
 interface Message {
   role: 'user' | 'assistant'
@@ -34,9 +35,20 @@ export function NeuralAssistant({ orgId }: { orgId?: string }) {
     setLoading(true)
 
     try {
-      // For now, we reuse the existing executeMemzentPrompt
-      // but later we can add a specific 'assistant' flag/intent
-      const res = await executeMemzentPrompt(userMsg, orgId)
+      // Build context-aware prompt from recent messages (limit context window to last 6 turns)
+      const recentMessages = messages.slice(-6)
+      let contextualPrompt = ""
+      if (recentMessages.length > 0) {
+        contextualPrompt = "You are in an interactive conversation. Use the following chat history for context:\n\n"
+        recentMessages.forEach(m => {
+          contextualPrompt += `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}\n`
+        })
+        contextualPrompt += `User: ${userMsg}\nAssistant:`
+      } else {
+        contextualPrompt = userMsg
+      }
+
+      const res = await executeMemzentPrompt(contextualPrompt, orgId)
       console.log("Chat response:", res)
       setMessages(prev => [...prev, { role: 'assistant', content: res.text || JSON.stringify(res) }])
     } catch (err: any) {
@@ -88,11 +100,11 @@ export function NeuralAssistant({ orgId }: { orgId?: string }) {
                     }`}>
                     {msg.role === 'user' ? <User size={16} /> : <Bot size={16} />}
                   </div>
-                  <div className={`p-4 rounded-2xl text-xs font-bold leading-relaxed ${msg.role === 'user'
+                  <div className={`p-4 rounded-2xl text-xs font-bold leading-relaxed max-w-full overflow-x-hidden break-words ${msg.role === 'user'
                     ? 'bg-memzent-glow/10 border border-memzent-glow/20 text-white rounded-tr-none shadow-[0_0_15px_rgba(0,243,255,0.05)]'
                     : 'bg-white/5 border border-white/5 text-white/60 rounded-tl-none'
                     }`}>
-                    {msg.content}
+                    <Markdown content={msg.content} />
                   </div>
                 </div>
               </div>

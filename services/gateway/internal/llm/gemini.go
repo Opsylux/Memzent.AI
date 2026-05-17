@@ -38,10 +38,7 @@ func (g *GeminiProvider) Generate(ctx context.Context, prompt string, tools []an
 	}
 	url := fmt.Sprintf("https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent?key=%s", activeModel, g.APIKey)
 
-	system := "You are Memzent, an enterprise-grade AI Gateway. "
-	if len(tools) > 0 {
-		system += "\nYour request has been supplemented with data from semantic tools. Use this context ONLY if it is directly relevant to the user's prompt. If the tool data is irrelevant, ignore it and answer the user's prompt normally."
-	}
+	system := BuildSystemPrompt(tools)
 
 	// 2. Prepare Gemini Request Body
 	reqBody := map[string]interface{}{

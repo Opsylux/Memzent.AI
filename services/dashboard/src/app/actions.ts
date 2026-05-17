@@ -203,6 +203,14 @@ export async function createMemzentTool(orgId: string, tool: any) {
         });
 
     if (error) throw error;
+
+    // Immediately trigger a background sync to vectorize this new tool in Qdrant with zero delay!
+    try {
+        await syncMemzentTools(orgId);
+    } catch (e) {
+        console.error("Immediate background tool sync failed", e);
+    }
+
     return { success: true };
 }
 

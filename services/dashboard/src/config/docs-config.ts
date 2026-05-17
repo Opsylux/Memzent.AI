@@ -1,5 +1,5 @@
 export const DOCS_CONFIG = {
-  domain: "memzent.gateway.yourdomain.com",
+  domain: "api.memzent.ai",
   github: "https://github.com/Opsylux/MemzentMCP",
   dashboard: "/login"
 };

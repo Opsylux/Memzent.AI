@@ -34,8 +34,8 @@ export default async function AppLayout({
           role={org.role}
         />
 
-        {/* Page Content - Padded to avoid overlapping with TopNav */}
-        <main className="flex-1 overflow-auto p-8 mt-40">
+        {/* Page Content - Adjusted margin to fit perfectly with sticky header flow */}
+        <main className="flex-1 overflow-auto p-8 mt-2">
           <div className="max-w-7xl mx-auto">
             {children}
           </div>

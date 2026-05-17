@@ -86,6 +86,23 @@ func (rc *RouterClient) RegisterTool(ctx context.Context, id, name, description,
 	return true, nil
 }
 
+// PlanToolChain plans a sequence of sequential tools for complex user intents
+func (rc *RouterClient) PlanToolChain(ctx context.Context, prompt string, userID string, allowedToolIDs []string) ([]*ToolStep, float32, error) {
+	req := &ToolChainRequest{
+		Prompt:                 prompt,
+		UserId:                 userID,
+		AllowedToolIds:         allowedToolIDs,
+		ScoreThresholdOverride: 0.65,
+	}
+
+	resp, err := rc.client.PlanToolChain(ctx, req)
+	if err != nil {
+		return nil, 0, fmt.Errorf("gRPC PlanToolChain failed: %w", err)
+	}
+
+	return resp.Steps, resp.ConfidenceScore, nil
+}
+
 
 // Close cleans up the gRPC connection
 func (rc *RouterClient) Close() {

@@ -6,6 +6,15 @@ import { Activity, ShieldCheck, Zap, Server, ShieldAlert, KeyRound, Bot, Globe }
 import { getMemzentAudit, getMemzentStats } from '@/app/actions'
 import { supabase } from '@/lib/supabase'
 
+function formatTimestampUTC(isoString: string) {
+  try {
+    const clean = isoString.replace('T', ' ').split('.')[0] || isoString
+    return clean.endsWith('Z') ? clean.slice(0, -1) : clean
+  } catch {
+    return isoString
+  }
+}
+
 export default function AuditPage() {
   const [logs, setLogs] = useState<any[]>([])
   const [stats, setStats] = useState<any>(null)
@@ -133,7 +142,7 @@ export default function AuditPage() {
                 </div>
                 <div className="flex flex-col items-end gap-2 shrink-0">
                   <div className="text-[10px] font-black tracking-widest text-white/40 uppercase font-mono">
-                    {new Date(log.timestamp).toLocaleString()}
+                    {formatTimestampUTC(log.timestamp)}
                   </div>
                   <Badge variant="outline" className={`border-white/10 text-[9px] uppercase font-black tracking-widest px-3 ${log.status === 'success' ? 'bg-green-500/10 text-green-400 border-green-500/20' : 'bg-red-500/10 text-red-500 border-red-500/20'}`}>
                     {log.status}

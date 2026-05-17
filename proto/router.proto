@@ -12,6 +12,9 @@ service SemanticRouter {
 
   // Registers or updates a tool in the vector database
   rpc RegisterTool (RegisterToolRequest) returns (RegisterToolResponse);
+
+  // Computes a sequence/chain of tools required for complex multi-step prompt execution
+  rpc PlanToolChain (ToolChainRequest) returns (ToolChainResponse);
 }
 
 message RegisterToolRequest {
@@ -47,6 +50,24 @@ message ToolResponse {
   string compressed_prompt = 3;
   string similar_prompt_hash = 4; // Hash of a previously seen similar prompt (if any)
   string current_prompt_hash = 5; // Canonical hash of the incoming prompt
+}
+
+message ToolChainRequest {
+  string prompt = 1;
+  string user_id = 2;
+  repeated string allowed_tool_ids = 3;
+  float score_threshold_override = 4;
+}
+
+message ToolStep {
+  int32 step_order = 1;
+  string tool_name = 2;
+  string parameters_json = 3;
+}
+
+message ToolChainResponse {
+  repeated ToolStep steps = 1;
+  float confidence_score = 2;
 }
 
 

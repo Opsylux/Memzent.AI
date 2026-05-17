@@ -11,7 +11,7 @@ pub mod router_proto {
 }
 
 use router_proto::semantic_router_server::{SemanticRouter, SemanticRouterServer};
-use router_proto::{ToolRequest, ToolResponse, Tool, RegisterToolRequest, RegisterToolResponse};
+use router_proto::{ToolRequest, ToolResponse, Tool, RegisterToolRequest, RegisterToolResponse, ToolChainRequest, ToolChainResponse, ToolStep};
 
 pub struct MyRouter {
     q_client: Qdrant,
@@ -261,6 +261,76 @@ impl SemanticRouter for MyRouter {
                 }))
             }
         }
+    }
+
+    async fn plan_tool_chain(
+        &self,
+        request: Request<ToolChainRequest>,
+    ) -> Result<Response<ToolChainResponse>, Status> {
+        let req = request.into_inner();
+        println!("🔮 Planning sequential tool chain for prompt: \"{}\"", req.prompt);
+
+        // 1. Generate Vector Embedding using FastEmbed
+        let documents = vec![req.prompt.clone()];
+        let embeddings = self.embedding_model.embed(documents, None)
+            .map_err(|e| Status::internal(format!("Failed to generate chain embeddings: {}", e)))?;
+        let real_vector = embeddings[0].clone();
+
+        // 2. Search points in Qdrant tools_collection
+        let mut filter_conditions = Vec::new();
+        // Limit query to allowed tools if provided
+        if !req.allowed_tool_ids.is_empty() {
+            let values = req.allowed_tool_ids.iter().map(|id| Value::from(id.clone())).collect();
+            filter_conditions.push(Condition {
+                condition_one_of: Some(ConditionOneOf::Field(FieldCondition {
+                    key: "tool_id".to_string(),
+                    r#match: Some(Match {
+                        match_value: Some(MatchValue::Any(qdrant_client::qdrant::r#match::Any {
+                            any: values,
+                        })),
+                    }),
+                    ..Default::default()
+                })),
+            });
+        }
+
+        let search_request = SearchPointsBuilder::new("tools_collection", real_vector, 5)
+            .with_payload(true)
+            .filter(Filter::all(filter_conditions))
+            .build();
+
+        let mut steps = Vec::new();
+        let mut confidence_score = 0.0;
+
+        if let Ok(search_res) = self.q_client.search_points(search_request).await {
+            let mut matched_tools = search_res.result;
+            // Sort by score descending to get sequence order
+            matched_tools.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+
+            for (idx, hit) in matched_tools.iter().enumerate() {
+                if hit.score > req.score_threshold_override {
+                    let tool_name = hit.payload.get("tool_name")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("unknown_tool")
+                        .to_string();
+
+                    steps.push(ToolStep {
+                        step_order: (idx + 1) as i32,
+                        tool_name,
+                        parameters_json: "{\"status\": \"scheduled\"}".to_string(),
+                    });
+                }
+            }
+
+            if !steps.is_empty() {
+                confidence_score = 0.95;
+            }
+        }
+
+        Ok(Response::new(ToolChainResponse {
+            steps,
+            confidence_score,
+        }))
     }
 }
 
