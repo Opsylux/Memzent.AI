@@ -17,7 +17,7 @@ export default function FirstRequestPage() {
   -H "X-API-Key: your_key" \\
   -H "X-Memzent-Provider: openai" \\
   -H "X-Memzent-Model: gpt-4-turbo" \\
-  -d '{"prompt": "Summarize the latest activity"}'`;
+  -d '{"messages": [{"role": "user", "content": "Summarize the latest activity"}]}'`;
 
   return (
     <div className="space-y-12">

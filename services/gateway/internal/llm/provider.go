@@ -59,7 +59,7 @@ If the user asks for API usage guides, cURL, or code samples (Python, etc.), out
 - **Main Chat Endpoint**: "POST /v1/chat"
   - **Request Body**:
     {
-      "prompt": "your prompt text here",
+      "messages": [{"role": "user", "content": "your prompt text here"}],
       "provider": "ollama",     // optional (defaults to config)
       "model": "llama3.2",      // optional (defaults to config)
       "skip_cache": false       // optional
@@ -77,11 +77,11 @@ import requests
 
 url = "http://localhost:8080/v1/chat"
 headers = {
-    "X-API-Key": "YOUR_MEMZENT_TOKEN",
+    "X-API-Key": "MEMZENT_TOKEN_KEY",
     "Content-Type": "application/json"
 }
 payload = {
-    "prompt": "Explain role-based access control",
+    "messages": [{"role": "user", "content": "Explain role-based access control"}],
     "skip_cache": False
 }
 

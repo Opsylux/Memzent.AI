@@ -7,7 +7,7 @@ export default function SemanticProxyPage() {
   const skipCacheExample = `curl -X POST https://${DOCS_CONFIG.domain}/v1/chat \\
   -H "X-API-Key: your_key" \\
   -H "X-Skip-Cache: true" \\
-  -d '{"prompt": "Get real-time server status"}'`;
+  -d '{"messages": [{"role": "user", "content": "Get real-time server status"}]}'`;
 
   return (
     <div className="space-y-12">

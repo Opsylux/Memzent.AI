@@ -6,11 +6,11 @@ import { DOCS_CONFIG } from "@/config/docs-config";
 export default function AuthPage() {
   const apiKeyExample = `curl -X POST https://${DOCS_CONFIG.domain}/v1/chat \\
   -H "X-API-Key: memzent_f7c9...8e2a" \\
-  -d '{"prompt": "Hello World"}'`;
+  -d '{"messages": [{"role": "user", "content": "Hello World"}]}'`;
 
   const jwtExample = `curl -X POST https://${DOCS_CONFIG.domain}/v1/chat \\
   -H "Authorization: Bearer eyJhbGci..." \\
-  -d '{"prompt": "Hello World"}'`;
+  -d '{"messages": [{"role": "user", "content": "Hello World"}]}'`;
 
   return (
     <div className="space-y-12">
