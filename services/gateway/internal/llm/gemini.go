@@ -30,7 +30,7 @@ func (g *GeminiProvider) GetMetadata() ProviderMetadata {
 	}
 }
 
-func (g *GeminiProvider) Generate(ctx context.Context, prompt string, tools []any, model string) (string, *TokenUsage, error) {
+func (g *GeminiProvider) Generate(ctx context.Context, messages []Message, tools []any, model string) (string, *TokenUsage, error) {
 	// Resolve model: per-request override takes priority over configured default
 	activeModel := g.Model
 	if model != "" {
@@ -40,15 +40,23 @@ func (g *GeminiProvider) Generate(ctx context.Context, prompt string, tools []an
 
 	system := BuildSystemPrompt(tools)
 
+	var apiContents []map[string]interface{}
+	for _, m := range messages {
+		role := m.Role
+		if role == "assistant" {
+			role = "model" // Gemini uses "model" instead of "assistant"
+		}
+		apiContents = append(apiContents, map[string]interface{}{
+			"role": role,
+			"parts": []map[string]string{
+				{"text": m.Content},
+			},
+		})
+	}
+
 	// 2. Prepare Gemini Request Body
 	reqBody := map[string]interface{}{
-		"contents": []map[string]interface{}{
-			{
-				"parts": []map[string]string{
-					{"text": prompt},
-				},
-			},
-		},
+		"contents": apiContents,
 		"systemInstruction": map[string]interface{}{
 			"parts": []map[string]string{
 				{"text": system},

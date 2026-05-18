@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 	"memzent-gateway/internal/billing"
+	"memzent-gateway/internal/llm"
 
 	"github.com/DATA-DOG/go-sqlmock"
 )
@@ -14,7 +15,7 @@ func TestMemzentEngine_Process_RateLimit(t *testing.T) {
 	ctx = context.WithValue(ctx, "org_id", "org1")
 	ctx = context.WithValue(ctx, "tier", "free")
 
-	req := &PromptRequest{UserID: "user1", Prompt: "test"}
+	req := &PromptRequest{UserID: "user1", Messages: []llm.Message{{Role: "user", Content: "test"}}}
 
 	// Drain the rate limiter (limit 10)
 	for i := 0; i < 10; i++ {
@@ -48,7 +49,7 @@ func TestMemzentEngine_Process_BillingFailure(t *testing.T) {
 	// Must not be JWT otherwise billing is skipped
 	ctx = context.WithValue(ctx, "auth_method", "api_key")
 	
-	req := &PromptRequest{UserID: "user1", Prompt: "test"}
+	req := &PromptRequest{UserID: "user1", Messages: []llm.Message{{Role: "user", Content: "test"}}}
 
 	_, err := e.Process(ctx, req)
 	if err == nil {
@@ -64,7 +65,7 @@ func TestMemzentEngine_Process_NoProviderFallback(t *testing.T) {
 	ctx := context.Background()
 	ctx = context.WithValue(ctx, "org_id", "admin-01") // bypass RBAC
 
-	req := &PromptRequest{UserID: "user1", Prompt: "test", Provider: "invalid-provider"}
+	req := &PromptRequest{UserID: "user1", Messages: []llm.Message{{Role: "user", Content: "test"}}, Provider: "invalid-provider"}
 
 	// Without a real router client, it will panic or error out on router.GetBestTools
 	// But before that it resolves the provider. We can't reach the end without panicking on nil router.

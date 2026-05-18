@@ -30,7 +30,7 @@ func (o *OpenAIProvider) GetMetadata() ProviderMetadata {
 	}
 }
 
-func (o *OpenAIProvider) Generate(ctx context.Context, prompt string, tools []any, model string) (string, *TokenUsage, error) {
+func (o *OpenAIProvider) Generate(ctx context.Context, messages []Message, tools []any, model string) (string, *TokenUsage, error) {
 	url := "https://api.openai.com/v1/chat/completions"
 
 	// Resolve model: per-request override takes priority over configured default
@@ -40,14 +40,14 @@ func (o *OpenAIProvider) Generate(ctx context.Context, prompt string, tools []an
 	}
 
 	system := BuildSystemPrompt(tools)
+	
+	apiMessages := []Message{{Role: "system", Content: system}}
+	apiMessages = append(apiMessages, messages...)
 
 	// 2. Prepare OpenAI Request Body
 	reqBody := map[string]interface{}{
 		"model": activeModel,
-		"messages": []Message{
-			{Role: "system", Content: system},
-			{Role: "user", Content: prompt},
-		},
+		"messages": apiMessages,
 		"temperature": 0.5,
 	}
 

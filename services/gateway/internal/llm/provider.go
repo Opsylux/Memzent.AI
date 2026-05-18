@@ -15,7 +15,7 @@ type TokenUsage struct {
 
 type Provider interface {
 	// Generate produces an LLM response. Model may be empty to use the provider default.
-	Generate(ctx context.Context, prompt string, tools []any, model string) (string, *TokenUsage, error)
+	Generate(ctx context.Context, messages []Message, tools []any, model string) (string, *TokenUsage, error)
 	GetProviderName() string
 	GetMetadata() ProviderMetadata
 }

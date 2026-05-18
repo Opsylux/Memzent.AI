@@ -67,14 +67,15 @@ export async function getMemzentStats(orgId?: string) {
     }
 }
 
-export async function executeMemzentPrompt(prompt: string, orgId?: string) {
+export async function executeMemzentPrompt(messages: {role: string, content: string}[], orgId?: string) {
     try {
         const headers = await gatewayHeaders(orgId)
+        headers["X-Request-ID"] = crypto.randomUUID()
         const res = await fetch(`${GATEWAY_URL}/v1/chat`, {
             method: "POST",
             headers,
             body: JSON.stringify({
-                prompt: prompt,
+                messages: messages,
             }),
             cache: 'no-store'
         });

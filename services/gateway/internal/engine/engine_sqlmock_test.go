@@ -19,18 +19,23 @@ import (
 type mockProvider struct {
 	name     string
 	metadata llm.ProviderMetadata
+	res      string
+	err      error
 }
 
 func (m *mockProvider) GetProviderName() string { return m.name }
 func (m *mockProvider) GetMetadata() llm.ProviderMetadata { return m.metadata }
-func (m *mockProvider) Generate(ctx context.Context, prompt string, tools []any, model string) (string, *llm.TokenUsage, error) {
-	return "mock response", &llm.TokenUsage{}, nil
+func (m *mockProvider) Generate(ctx context.Context, messages []llm.Message, tools []any, model string) (string, *llm.TokenUsage, error) {
+	if m.err != nil {
+		return "", nil, m.err
+	}
+	return m.res, &llm.TokenUsage{PromptTokens: 10, CompletionTokens: 20, TotalTokens: 30}, nil
 }
 
 func newTestEngineWithProviders() *MemzentEngine {
 	providers := map[string]llm.Provider{
-		"mock1": &mockProvider{name: "mock1", metadata: llm.ProviderMetadata{Name: "mock1", DefaultModel: "default1"}},
-		"mock2": &mockProvider{name: "mock2", metadata: llm.ProviderMetadata{Name: "mock2", DefaultModel: "default2"}},
+		"mock1": &mockProvider{name: "mock1", metadata: llm.ProviderMetadata{Name: "mock1", DefaultModel: "default1"}, res: "mock response"},
+		"mock2": &mockProvider{name: "mock2", metadata: llm.ProviderMetadata{Name: "mock2", DefaultModel: "default2"}, res: "mock response"},
 	}
 	return &MemzentEngine{
 		providers:       providers,

@@ -8,6 +8,8 @@ import { Markdown } from "@/components/markdown"
 interface Message {
   role: 'user' | 'assistant'
   content: string
+  cached?: boolean
+  tools?: any[]
 }
 
 export function NeuralAssistant({ orgId }: { orgId?: string }) {
@@ -36,21 +38,17 @@ export function NeuralAssistant({ orgId }: { orgId?: string }) {
 
     try {
       // Build context-aware prompt from recent messages (limit context window to last 6 turns)
-      const recentMessages = messages.slice(-6)
-      let contextualPrompt = ""
-      if (recentMessages.length > 0) {
-        contextualPrompt = "You are in an interactive conversation. Use the following chat history for context:\n\n"
-        recentMessages.forEach(m => {
-          contextualPrompt += `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}\n`
-        })
-        contextualPrompt += `User: ${userMsg}\nAssistant:`
-      } else {
-        contextualPrompt = userMsg
-      }
+      const recentMessages = messages.slice(-6).map(m => ({ role: m.role, content: m.content }))
+      recentMessages.push({ role: 'user', content: userMsg })
 
-      const res = await executeMemzentPrompt(contextualPrompt, orgId)
+      const res = await executeMemzentPrompt(recentMessages, orgId)
       console.log("Chat response:", res)
-      setMessages(prev => [...prev, { role: 'assistant', content: res.text || JSON.stringify(res) }])
+      setMessages(prev => [...prev, { 
+        role: 'assistant', 
+        content: res.text || JSON.stringify(res),
+        cached: res.cached,
+        tools: res.tools
+      }])
     } catch (err: any) {
       setMessages(prev => [...prev, { role: 'assistant', content: `CRITICAL_ERROR: ${err.message}` }])
     } finally {
@@ -105,6 +103,20 @@ export function NeuralAssistant({ orgId }: { orgId?: string }) {
                     : 'bg-white/5 border border-white/5 text-white/60 rounded-tl-none'
                     }`}>
                     <Markdown content={msg.content} />
+                    {msg.role === 'assistant' && (msg.cached || (msg.tools && msg.tools.length > 0)) && (
+                      <div className="mt-3 pt-3 border-t border-white/5 flex flex-wrap gap-2">
+                        {msg.cached && (
+                          <span className="flex items-center gap-1 text-[9px] uppercase tracking-widest font-black text-memzent-accent bg-memzent-accent/10 px-2 py-1 rounded">
+                            <Zap size={10} /> Semantic Cache Hit
+                          </span>
+                        )}
+                        {msg.tools && msg.tools.map((tool, tIdx) => (
+                          <span key={tIdx} className="flex items-center gap-1 text-[9px] uppercase tracking-widest font-black text-memzent-purple bg-memzent-purple/10 px-2 py-1 rounded">
+                            <ShieldCheck size={10} /> Tool Executed: {tool.name || tool.id || 'Unknown'}
+                          </span>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>

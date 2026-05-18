@@ -34,7 +34,7 @@ func (o *OllamaProvider) GetMetadata() ProviderMetadata {
 	}
 }
 
-func (o *OllamaProvider) Generate(ctx context.Context, prompt string, tools []any, model string) (string, *TokenUsage, error) {
+func (o *OllamaProvider) Generate(ctx context.Context, messages []Message, tools []any, model string) (string, *TokenUsage, error) {
 	url := fmt.Sprintf("%s/api/chat", o.BaseURL)
 
 	// Resolve model: per-request override takes priority over configured default
@@ -45,13 +45,17 @@ func (o *OllamaProvider) Generate(ctx context.Context, prompt string, tools []an
 
 	system := BuildSystemPrompt(tools)
 
+	apiMessages := []map[string]string{
+		{"role": "system", "content": system},
+	}
+	for _, m := range messages {
+		apiMessages = append(apiMessages, map[string]string{"role": m.Role, "content": m.Content})
+	}
+
 	// 2. Prepare Ollama Request Body
 	reqBody := map[string]interface{}{
 		"model": activeModel,
-		"messages": []map[string]string{
-			{"role": "system", "content": system},
-			{"role": "user", "content": prompt},
-		},
+		"messages": apiMessages,
 		"stream": false, // We want the full block before returning to the Go engine
 	}
 

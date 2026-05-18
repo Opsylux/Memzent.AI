@@ -18,14 +18,15 @@ import (
 	rtr "memzent-gateway/internal/router"
 	"memzent-gateway/internal/metrics"
 	"memzent-gateway/internal/tools"
+	"memzent-gateway/internal/llm"
 
 	"golang.org/x/time/rate"
 )
 
 // PromptRequest defines the incoming user payload
 type PromptRequest struct {
-	UserID    string `json:"user_id"`
-	Prompt    string `json:"prompt"`
+	UserID    string        `json:"user_id"`
+	Messages  []llm.Message `json:"messages"`
 	Provider  string `json:"provider,omitempty"`  // e.g. "ollama", "openai", "anthropic", "gemini"
 	Model     string `json:"model,omitempty"`     // optional per-request model override
 	SkipCache bool   `json:"skip_cache,omitempty"` // set by X-Skip-Cache header
@@ -137,6 +138,18 @@ func (e *MemzentEngine) ProviderCount() int {
 func (e *MemzentEngine) Process(ctx context.Context, req *PromptRequest) (*PromptResponse, error) {
 	e.TotalRequests.Add(1)
 
+	if req == nil {
+		return nil, fmt.Errorf("invalid request")
+	}
+
+	var queryPrompt string
+	if len(req.Messages) > 0 {
+		queryPrompt = req.Messages[len(req.Messages)-1].Content
+	}
+	if queryPrompt == "" {
+		return nil, fmt.Errorf("no messages provided")
+	}
+
 	// A. Rate Limiting (Based on Tier extracted from JWT)
 	tier, _ := ctx.Value("tier").(string)
 	orgID, _ := ctx.Value("org_id").(string)
@@ -193,7 +206,7 @@ func (e *MemzentEngine) Process(ctx context.Context, req *PromptRequest) (*Promp
 
 	// B. Stage 1-2 Cache Lookup (Org-Isolated & Model-Scoped)
 	if e.cache != nil && !req.SkipCache {
-		cacheKey := e.buildCacheKey(orgID, "p", resolvedModel, req.Prompt)
+		cacheKey := e.buildCacheKey(orgID, "p", resolvedModel, queryPrompt)
 		cachedResp, err := e.cache.GetSemanticResult(ctx, cacheKey)
 		if err != nil || cachedResp == "" {
 			// Valkey cache miss or restart/crash - fallback to persistent DB cache
@@ -217,17 +230,16 @@ func (e *MemzentEngine) Process(ctx context.Context, req *PromptRequest) (*Promp
 					OrgID:     orgID,
 					Type:      "CACHE",
 					User:      req.UserID,
-					Detail:    "Stage 1 HIT: " + req.Prompt,
+					Detail:    "Stage 1 HIT: " + queryPrompt,
 					Status:    "success",
-					Latency:   0,
-				}, map[string]interface{}{"prompt": req.Prompt, "stage": 1})
+				}, map[string]interface{}{"prompt": queryPrompt, "stage": 1})
 			}
-			e.chargeCacheHit(ctx, orgID, req.Provider, req.Model, req.Prompt)
+			e.chargeCacheHit(ctx, orgID, req.Provider, req.Model, queryPrompt)
 			return &PromptResponse{Text: cachedResp, Cached: true}, nil
 		}
 
 		// Stage 1.5: Canonical Match (Normalized, Org-Isolated & Model-Scoped)
-		_, cHash := NormalizePrompt(req.Prompt)
+		_, cHash := NormalizePrompt(queryPrompt)
 		canonKey := e.buildCacheKey(orgID, "c", resolvedModel, cHash)
 		cachedCanon, err := e.cache.GetSemanticResult(ctx, canonKey)
 		if err != nil || cachedCanon == "" {
@@ -248,7 +260,7 @@ func (e *MemzentEngine) Process(ctx context.Context, req *PromptRequest) (*Promp
 			hitCounter.(*atomic.Uint64).Add(1)
 			slog.Info("🎯 Stage 1.5 Cache HIT (Org-Isolated)", "org_id", orgID, "canonical", cHash)
 			_ = e.cache.SetResult(ctx, cacheKey, cachedCanon, e.cacheTTL)
-			e.chargeCacheHit(ctx, orgID, req.Provider, req.Model, req.Prompt)
+			e.chargeCacheHit(ctx, orgID, req.Provider, req.Model, queryPrompt)
 			return &PromptResponse{Text: cachedCanon, Cached: true}, nil
 		}
 	}
@@ -271,7 +283,7 @@ func (e *MemzentEngine) Process(ctx context.Context, req *PromptRequest) (*Promp
 	}
 
 	// D. Semantic Routing (includes Vector Search & Prompt Compression via Rust)
-	tools, compressedPrompt, similarPromptHash, currentPromptHash, err := e.router.GetBestTools(ctx, req.Prompt, orgID, allowedTools)
+	tools, compressedPrompt, similarPromptHash, currentPromptHash, err := e.router.GetBestTools(ctx, queryPrompt, orgID, allowedTools)
 	if err != nil {
 		slog.Warn("Router fallback engaged", "error", err)
 	}
@@ -297,7 +309,7 @@ func (e *MemzentEngine) Process(ctx context.Context, req *PromptRequest) (*Promp
 			hitCounter, _ := e.orgHits.LoadOrStore(orgID, &atomic.Uint64{})
 			hitCounter.(*atomic.Uint64).Add(1)
 			slog.Info("🎯 Stage 2 Cache HIT (Org-Isolated)", "org_id", orgID, "similar_hash", similarPromptHash)
-			e.chargeCacheHit(ctx, orgID, req.Provider, req.Model, req.Prompt)
+			e.chargeCacheHit(ctx, orgID, req.Provider, req.Model, queryPrompt)
 			return &PromptResponse{Text: cachedResp, Cached: true}, nil
 		}
 	}
@@ -373,13 +385,11 @@ func (e *MemzentEngine) Process(ctx context.Context, req *PromptRequest) (*Promp
 
 
 	// F. Build LLM context from compressed prompt + tool results
-	// Use the compressed prompt from the Rust layer to save costs and latency.
-	contextPrompt := compressedPrompt
-	if contextPrompt == "" {
-		contextPrompt = req.Prompt // Fallback
+	if compressedPrompt != "" {
+		req.Messages[len(req.Messages)-1].Content = compressedPrompt
 	}
 	if len(toolResults) > 0 {
-		contextPrompt = fmt.Sprintf("%s\n\n### SUPPLEMENTARY TOOL CONTEXT\n%v\n--- END TOOL CONTEXT ---", contextPrompt, toolResults)
+		req.Messages[len(req.Messages)-1].Content = fmt.Sprintf("%s\n\n### SUPPLEMENTARY TOOL CONTEXT\n%v\n--- END TOOL CONTEXT ---", req.Messages[len(req.Messages)-1].Content, toolResults)
 	}
 
 	// Mapping *router.Tool to any slice for the prompt response payload
@@ -393,7 +403,7 @@ func (e *MemzentEngine) Process(ctx context.Context, req *PromptRequest) (*Promp
 
 	slog.Info("🤖 LLM Provider selected", "provider", selectedProvider.GetProviderName(), "model_override", req.Model, "skip_cache", req.SkipCache)
 
-	aiResp, tokenUsage, err := selectedProvider.Generate(ctx, contextPrompt, llmTools, req.Model)
+	aiResp, tokenUsage, err := selectedProvider.Generate(ctx, req.Messages, llmTools, req.Model)
 	if err != nil {
 		slog.Error("LLM generation failed", "error", err, "provider", selectedProvider.GetProviderName())
 		return nil, err
@@ -411,12 +421,12 @@ func (e *MemzentEngine) Process(ctx context.Context, req *PromptRequest) (*Promp
 	// G. Populate Cache for future requests (Org-Isolated, Model-Scoped & Force Refresh)
 	if e.cache != nil {
 		// Layer 1: Literal Match
-		cacheKey := e.buildCacheKey(orgID, "p", resolvedModel, req.Prompt)
+		cacheKey := e.buildCacheKey(orgID, "p", resolvedModel, queryPrompt)
 		_ = e.cache.SetResult(ctx, cacheKey, aiResp, e.cacheTTL)
 		e.setPersistentCache(ctx, orgID, cacheKey, aiResp, e.cacheTTL)
 
 		// Layer 2: Canonical Match
-		_, cHash := NormalizePrompt(req.Prompt)
+		_, cHash := NormalizePrompt(queryPrompt)
 		canonKey := e.buildCacheKey(orgID, "c", resolvedModel, cHash)
 		_ = e.cache.SetResult(ctx, canonKey, aiResp, e.cacheTTL)
 		e.setPersistentCache(ctx, orgID, canonKey, aiResp, e.cacheTTL)

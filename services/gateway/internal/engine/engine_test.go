@@ -2,6 +2,7 @@ package engine
 
 import (
 	"testing"
+	"memzent-gateway/internal/llm"
 )
 
 // ---------------------------------------------------------------------------
@@ -85,7 +86,7 @@ func TestBuildCacheKey_EmptyComponents(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestPromptRequest_Defaults(t *testing.T) {
-	req := PromptRequest{Prompt: "hello"}
+	req := PromptRequest{Messages: []llm.Message{{Role: "user", Content: "hello"}}}
 	if req.SkipCache {
 		t.Error("SkipCache should default to false")
 	}

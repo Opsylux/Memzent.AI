@@ -30,7 +30,7 @@ func (a *AnthropicProvider) GetMetadata() ProviderMetadata {
 	}
 }
 
-func (a *AnthropicProvider) Generate(ctx context.Context, prompt string, tools []any, model string) (string, *TokenUsage, error) {
+func (a *AnthropicProvider) Generate(ctx context.Context, messages []Message, tools []any, model string) (string, *TokenUsage, error) {
 	url := "https://api.anthropic.com/v1/messages"
 
 	// Resolve model: per-request override takes priority over configured default
@@ -46,9 +46,7 @@ func (a *AnthropicProvider) Generate(ctx context.Context, prompt string, tools [
 		"model":      activeModel,
 		"system":     system,
 		"max_tokens": 1024,
-		"messages": []Message{
-			{Role: "user", Content: prompt},
-		},
+		"messages":   messages,
 	}
 
 	jsonBody, _ := json.Marshal(reqBody)

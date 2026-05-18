@@ -11,6 +11,8 @@ import (
 	"strings"
 	"syscall"
 	"time"
+	"crypto/rand"
+	"encoding/hex"
 
 	"memzent-gateway/internal/auth"
 	"memzent-gateway/internal/billing"
@@ -364,6 +366,15 @@ func main() {
 			req.Model = m
 		}
 
+		reqID := r.Header.Get("X-Request-ID")
+		if reqID == "" {
+			b := make([]byte, 16)
+			rand.Read(b)
+			reqID = hex.EncodeToString(b)
+		}
+		
+		w.Header().Set("X-Request-ID", reqID)
+
 		resp, err := memzentEngine.Process(r.Context(), &req)
 		if err != nil {
 			slog.Error("Engine Processing Error", "error", err, "user", req.UserID)
@@ -414,9 +425,10 @@ func main() {
 						chunk += " "
 					}
 					data, _ := json.Marshal(map[string]any{
-						"text":     chunk,
-						"cached":   resp.Cached,
-						"provider": resp.Provider,
+						"text":       chunk,
+						"cached":     resp.Cached,
+						"provider":   resp.Provider,
+						"request_id": reqID,
 					})
 					fmt.Fprintf(w, "data: %s\n\n", data)
 					flusher.Flush()
@@ -433,7 +445,8 @@ func main() {
 		if resp.Cached {
 			w.Header().Set("X-Cache", "HIT")
 		}
-		json.NewEncoder(w).Encode(resp)
+		resp.RequestID = reqID
+		_ = json.NewEncoder(w).Encode(resp)
 	})))
 
 	// Tools API
