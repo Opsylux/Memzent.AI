@@ -47,6 +47,7 @@ This document tracks the current completion state of Memzent features and provid
 *   **Task 5.1**: Define Envoy Load Balancing profiles for gRPC streams.
 *   **Task 5.2**: Implement custom retry policies with exponential backoff on native tools.
 *   **Task 5.3**: Add Dynamic Similarity Threshold settings to the Next.js Dashboard.
+*   **Task 5.4**: Refactor `RouterClient` into a `SemanticRouterInterface` to allow mock injection, unlocking 80-100% code coverage for `engine.Process`.
 
 ---
 

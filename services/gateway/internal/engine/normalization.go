@@ -22,7 +22,7 @@ func NormalizePrompt(prompt string) (canonical string, hash string) {
 
 	// 2. ID Masking: Replace numeric sequences (2+ digits) with a generic <ID> token.
 	// This ensures "write011" and "write111" become identical intents.
-	text = regexDigits.ReplaceAllString(text, "<ID>")
+	text = regexDigits.ReplaceAllString(text, "<id>")
 
 	// 3. Remove punctuation and stabilize spaces
 	text = strings.Map(func(r rune) rune {

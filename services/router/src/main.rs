@@ -278,20 +278,21 @@ impl SemanticRouter for MyRouter {
 
         // 2. Search points in Qdrant tools_collection
         let mut filter_conditions = Vec::new();
-        // Limit query to allowed tools if provided
+        // Limit query to allowed tools if provided — use individual should-conditions
+        // mirroring select_tools (MatchValue::Any is not available in qdrant-client 1.10)
         if !req.allowed_tool_ids.is_empty() {
-            let values = req.allowed_tool_ids.iter().map(|id| Value::from(id.clone())).collect();
-            filter_conditions.push(Condition {
-                condition_one_of: Some(ConditionOneOf::Field(FieldCondition {
-                    key: "tool_id".to_string(),
-                    r#match: Some(Match {
-                        match_value: Some(MatchValue::Any(qdrant_client::qdrant::r#match::Any {
-                            any: values,
-                        })),
-                    }),
-                    ..Default::default()
-                })),
-            });
+            let should_conditions: Vec<Condition> = req.allowed_tool_ids.iter().map(|id| {
+                Condition {
+                    condition_one_of: Some(ConditionOneOf::Field(FieldCondition {
+                        key: "tool_id".to_string(),
+                        r#match: Some(Match {
+                            match_value: Some(MatchValue::Keyword(id.clone())),
+                        }),
+                        ..Default::default()
+                    })),
+                }
+            }).collect();
+            filter_conditions.extend(should_conditions);
         }
 
         let search_request = SearchPointsBuilder::new("tools_collection", real_vector, 5)
@@ -310,9 +311,12 @@ impl SemanticRouter for MyRouter {
             for (idx, hit) in matched_tools.iter().enumerate() {
                 if hit.score > req.score_threshold_override {
                     let tool_name = hit.payload.get("tool_name")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("unknown_tool")
-                        .to_string();
+                        .and_then(|v| v.kind.as_ref())
+                        .map(|k| match k {
+                            qdrant_client::qdrant::value::Kind::StringValue(s) => s.clone(),
+                            _ => "unknown_tool".to_string(),
+                        })
+                        .unwrap_or_else(|| "unknown_tool".to_string());
 
                     steps.push(ToolStep {
                         step_order: (idx + 1) as i32,

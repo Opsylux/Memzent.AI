@@ -76,6 +76,9 @@ func (l *PersistentAuditLogger) StartRetentionJob(ctx context.Context, retention
 }
 
 func (l *PersistentAuditLogger) Cleanup(ctx context.Context, days int) {
+	if l.db == nil {
+		return
+	}
 	cutoff := time.Now().AddDate(0, 0, -days)
 	slog.Info("Running Audit Retention Job", "cutoff", cutoff)
 
