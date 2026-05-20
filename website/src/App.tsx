@@ -27,14 +27,14 @@ const Navbar = () => (
       </div>
       <span className="text-2xl font-black tracking-tighter">MEMZENT</span>
     </div>
-    <div className="hidden md:flex gap-8 text-sm font-medium opacity-70">
+    <div className="hidden md:flex gap-8 text-sm font-medium opacity-80">
       <a href="#payg" className="hover:text-memzent-glow transition-colors">Pricing</a>
       <a href="#security" className="hover:text-memzent-glow transition-colors">Security</a>
       <a href="#observability" className="hover:text-memzent-glow transition-colors">Observability</a>
       <a href="#cost" className="hover:text-memzent-glow transition-colors">Cost Savings</a>
     </div>
     <div className="flex gap-4">
-      <a href={appUrl + "/login"} className="text-sm font-bold opacity-60 hover:opacity-100 px-4 py-2 transition-all cursor-pointer">Login</a>
+      <a href={appUrl + "/login"} className="text-sm font-bold opacity-75 hover:opacity-100 px-4 py-2 transition-all cursor-pointer">Login</a>
       <a href={appUrl + "/login"} className="bg-memzent-glow text-black text-sm font-black px-6 py-2 rounded-xl hover:shadow-[0_0_20px_rgba(0,243,255,0.4)] hover:scale-105 transition-all cursor-pointer">Get Started Free</a>
     </div>
   </nav>
@@ -49,7 +49,7 @@ const Hero = () => (
       className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full glass border-memzent-glow/20 mb-8"
     >
       <Brain size={14} className="text-memzent-glow" />
-      <span className="text-xs font-bold tracking-widest uppercase opacity-70">Memory & Security Layer for AI Agents</span>
+      <span className="text-xs font-bold tracking-widest uppercase opacity-80">Memory & Security Layer for AI Agents</span>
     </motion.div>
 
     <motion.h1
@@ -66,7 +66,7 @@ const Hero = () => (
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       transition={{ delay: 0.5, duration: 1 }}
-      className="text-lg md:text-xl opacity-60 max-w-2xl mb-4 leading-relaxed"
+      className="text-lg md:text-xl opacity-80 max-w-2xl mb-4 leading-relaxed"
     >
       Memzent operates as an Intelligent Semantic Proxy — intercepting and optimizing traffic between
       your agents, MCP tools, and LLM providers with semantic caching, RBAC, and enterprise-grade routing.
@@ -76,7 +76,7 @@ const Hero = () => (
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       transition={{ delay: 0.7, duration: 1 }}
-      className="text-sm opacity-40 max-w-xl mb-12"
+      className="text-sm opacity-60 max-w-xl mb-12"
     >
       Pay only for what you use. Top up from $5. Cache hits cost 80% less.
     </motion.p>
@@ -106,7 +106,7 @@ const Hero = () => (
         { icon: <Zap size={12} />, label: "80% cache savings", color: "text-memzent-glow" },
         { icon: <Shield size={12} />, label: "Zero-trust RBAC", color: "text-memzent-purple" },
         { icon: <Brain size={12} />, label: "Semantic memory", color: "text-memzent-accent" },
-        { icon: <Cpu size={12} />, label: "Multi-LLM routing", color: "text-white/60" },
+        { icon: <Cpu size={12} />, label: "Multi-LLM routing", color: "text-white/80" },
       ].map(b => (
         <div key={b.label} className={`flex items-center gap-2 px-4 py-2 rounded-full glass border-white/5 text-xs font-bold ${b.color}`}>
           {b.icon} {b.label}
@@ -122,7 +122,7 @@ const PAYGSection = () => (
       <h2 className="text-5xl md:text-7xl font-black tracking-tighter mb-6">
         PAY AS YOU <span className="text-transparent bg-clip-text bg-gradient-to-r from-memzent-glow to-memzent-accent">GO</span>
       </h2>
-      <p className="text-lg opacity-50 max-w-2xl mx-auto">No surprise bills. No seat licenses. Start free, top up when needed, and let the semantic cache do the heavy lifting.</p>
+      <p className="text-lg opacity-70 max-w-2xl mx-auto">No surprise bills. No seat licenses. Start free, top up when needed, and let the semantic cache do the heavy lifting.</p>
     </div>
 
     {/* Pricing Tiers */}
@@ -159,16 +159,16 @@ const PAYGSection = () => (
         <div key={plan.name} className={`p-10 rounded-[40px] glass flex flex-col gap-8 border-white/5 transition-all hover:border-memzent-glow/20 ${plan.highlight ? 'bg-memzent-glow/5 border-memzent-glow/20 scale-105 z-10 shadow-[0_0_40px_rgba(0,243,255,0.1)]' : ''}`}>
           <div>
             <div className="text-3xl font-black italic tracking-tighter mb-1">{plan.name}</div>
-            <p className="text-xs font-bold opacity-40 uppercase tracking-wide">{plan.desc}</p>
+            <p className="text-xs font-bold opacity-60 uppercase tracking-wide">{plan.desc}</p>
           </div>
           <div className="flex items-baseline gap-2">
             <span className="text-6xl font-black tracking-tighter">{plan.price}</span>
-            <span className="text-xs font-black uppercase opacity-20">{plan.priceDetail}</span>
+            <span className="text-xs font-black uppercase opacity-50">{plan.priceDetail}</span>
           </div>
           <ul className="space-y-3 flex-1">
             {plan.features.map(f => (
-              <li key={f} className="flex gap-3 text-sm font-bold opacity-70">
-                <Check size={16} className={plan.highlight ? "text-memzent-glow" : "text-white/40"} /> {f}
+              <li key={f} className="flex gap-3 text-sm font-bold opacity-80">
+                <Check size={16} className={plan.highlight ? "text-memzent-glow" : "text-white/60"} /> {f}
               </li>
             ))}
           </ul>
@@ -193,15 +193,15 @@ const PAYGSection = () => (
         <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
           {[
             { step: "01", title: "Top Up Balance", desc: "Add any amount ($5 minimum) to your organization's token balance via Stripe.", icon: <DollarSign size={24} />, color: "text-memzent-glow" },
-            { step: "02", title: "Send Prompts", desc: "Agents send prompts through the Memzent Gateway. Rate limiting and RBAC are enforced first.", icon: <ArrowRight size={24} />, color: "text-white/60" },
+            { step: "02", title: "Send Prompts", desc: "Agents send prompts through the Memzent Gateway. Rate limiting and RBAC are enforced first.", icon: <ArrowRight size={24} />, color: "text-white/80" },
             { step: "03", title: "Cache Check", desc: "Memzent checks its semantic vector cache. Hits cost 80% less — only infra overhead.", icon: <Zap size={24} />, color: "text-memzent-glow" },
             { step: "04", title: "Deducted Transparently", desc: "LLM tokens are charged at provider cost. Cache hits are discounted. You see every deduction.", icon: <Activity size={24} />, color: "text-memzent-accent" },
           ].map(item => (
             <div key={item.step} className="space-y-3">
-              <div className={`text-[10px] font-black uppercase tracking-[0.3em] opacity-30`}>{item.step}</div>
+              <div className={`text-[10px] font-black uppercase tracking-[0.3em] opacity-50`}>{item.step}</div>
               <div className={item.color}>{item.icon}</div>
               <h4 className="text-sm font-black uppercase tracking-tight">{item.title}</h4>
-              <p className="text-xs opacity-40 leading-relaxed">{item.desc}</p>
+              <p className="text-xs opacity-65 leading-relaxed">{item.desc}</p>
             </div>
           ))}
         </div>
@@ -216,15 +216,15 @@ const Pillars = () => (
     <div id="security" className="grid grid-cols-1 md:grid-cols-2 gap-12 items-center">
       <div>
         <h2 className="text-4xl md:text-5xl font-black tracking-tighter mb-6">BULLETPROOF<br /><span className="text-memzent-purple">GOVERNANCE</span></h2>
-        <p className="text-lg opacity-60 mb-8 leading-relaxed">
+        <p className="text-lg opacity-80 mb-8 leading-relaxed">
           Memzent enforces enterprise-grade security at the semantic layer.
           Audit every prompt, restrict model access via RBAC, and protect your
           data with gRPC mTLS and hardware-backed JWT authentication.
         </p>
         <ul className="space-y-4">
-          <li className="flex items-center gap-3 font-bold opacity-80"><Lock className="text-memzent-purple" size={18} /> Zero-Trust AI Access</li>
-          <li className="flex items-center gap-3 font-bold opacity-80"><Shield className="text-memzent-purple" size={18} /> Semantic Data Guardrails</li>
-          <li className="flex items-center gap-3 font-bold opacity-80"><Database className="text-memzent-purple" size={18} /> Full RBAC & Auth Integration</li>
+          <li className="flex items-center gap-3 font-bold opacity-90"><Lock className="text-memzent-purple" size={18} /> Zero-Trust AI Access</li>
+          <li className="flex items-center gap-3 font-bold opacity-90"><Shield className="text-memzent-purple" size={18} /> Semantic Data Guardrails</li>
+          <li className="flex items-center gap-3 font-bold opacity-90"><Database className="text-memzent-purple" size={18} /> Full RBAC & Auth Integration</li>
         </ul>
       </div>
       <div className="grid grid-cols-1 gap-6">
@@ -237,7 +237,7 @@ const Pillars = () => (
     <div id="observability" className="grid grid-cols-1 md:grid-cols-2 gap-12 items-center">
       <div className="order-1 md:order-2">
         <h2 className="text-4xl md:text-5xl font-black tracking-tighter mb-6">INTELLIGENCE<br /><span className="text-memzent-glow">MONITORING</span></h2>
-        <p className="text-lg opacity-60 mb-8 leading-relaxed">
+        <p className="text-lg opacity-80 mb-8 leading-relaxed">
           Stop guessing AI performance. Memzent provides deep telemetry into every LLM request.
           Monitor latency, token cost, and cache hit rates in real-time.
         </p>
@@ -261,22 +261,22 @@ const Pillars = () => (
       <h2 className="text-5xl md:text-7xl font-black tracking-tighter text-transparent bg-clip-text bg-gradient-to-r from-memzent-glow via-memzent-accent to-memzent-purple">
         80% COST REDUCTION
       </h2>
-      <p className="text-xl opacity-60 leading-relaxed">
+      <p className="text-xl opacity-80 leading-relaxed">
         Our semantic cache engine detects repeat intents across your organization.
         Cache hits are charged at infra cost only — 80% less than full LLM inference.
       </p>
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <div className="glass p-8 rounded-3xl border-memzent-accent/20">
           <div className="text-4xl font-black text-memzent-accent mb-2">80%</div>
-          <div className="text-xs font-bold uppercase opacity-40">Cache Discount</div>
+          <div className="text-xs font-bold uppercase opacity-65">Cache Discount</div>
         </div>
         <div className="glass p-8 rounded-3xl border-memzent-glow/20">
           <div className="text-4xl font-black text-memzent-glow mb-2">&lt;15ms</div>
-          <div className="text-xs font-bold uppercase opacity-40">Cache Latency</div>
+          <div className="text-xs font-bold uppercase opacity-65">Cache Latency</div>
         </div>
         <div className="glass p-8 rounded-3xl border-memzent-accent/20">
           <div className="text-4xl font-black text-memzent-accent mb-2">$5</div>
-          <div className="text-xs font-bold uppercase opacity-40">Minimum Top-Up</div>
+          <div className="text-xs font-bold uppercase opacity-65">Minimum Top-Up</div>
         </div>
       </div>
     </div>
@@ -285,7 +285,7 @@ const Pillars = () => (
 
 const Footer = () => (
   <footer className="pt-40 pb-10 px-6 border-t border-white/5">
-    <div className="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-4 gap-12 mb-20 text-sm opacity-40 font-medium tracking-tight">
+    <div className="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-4 gap-12 mb-20 text-sm opacity-65 font-medium tracking-tight">
       <div className="col-span-2">
         <div className="flex items-center gap-2 mb-4 opacity-100 italic font-black text-xl">
           <div className="w-6 h-6 rounded-md bg-gradient-to-br from-memzent-glow to-memzent-purple flex items-center justify-center">
@@ -310,7 +310,7 @@ const Footer = () => (
         <a href={appUrl + "/playground"} className="block hover:text-memzent-glow">Playground</a>
       </div>
     </div>
-    <div className="max-w-7xl mx-auto flex items-center justify-between text-[10px] font-black uppercase tracking-widest opacity-20">
+    <div className="max-w-7xl mx-auto flex items-center justify-between text-[10px] font-black uppercase tracking-widest opacity-40">
       <span>© 2026 Memzent.ai — All rights reserved</span>
       <span>memzent.ai</span>
     </div>

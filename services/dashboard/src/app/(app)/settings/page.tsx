@@ -77,7 +77,7 @@ export default function SettingsPage() {
         <h1 className="text-4xl font-black tracking-tighter text-white mb-2 uppercase italic">
           CORE_SETTINGS
         </h1>
-        <p className="text-white/20 font-black uppercase tracking-[0.3em] text-[10px] italic">
+        <p className="text-white/50 font-black uppercase tracking-[0.3em] text-[10px] italic">
           {orgName ? `${orgName} — ` : ''}Governance & Infrastructure Configuration
         </p>
       </header>
@@ -88,7 +88,7 @@ export default function SettingsPage() {
           <Button
             variant="ghost"
             onClick={() => setActiveTab('profile')}
-            className={`w-full justify-start gap-4 rounded-2xl py-6 font-black uppercase text-[10px] tracking-widest transition-all ${activeTab === 'profile' ? 'bg-white/5 text-memzent-glow border border-memzent-glow/20 shadow-[0_0_15px_rgba(0,243,255,0.1)]' : 'text-white/30 hover:text-white hover:bg-white/5'
+            className={`w-full justify-start gap-4 rounded-2xl py-6 font-black uppercase text-[10px] tracking-widest transition-all ${activeTab === 'profile' ? 'bg-white/5 text-memzent-glow border border-memzent-glow/20 shadow-[0_0_15px_rgba(0,243,255,0.1)]' : 'text-white/55 hover:text-white hover:bg-white/5'
               }`}
           >
             <User size={18} /> Profile & Org
@@ -130,7 +130,7 @@ export default function SettingsPage() {
                   </div>
                   <div>
                     <h3 className="text-xl font-black tracking-tight uppercase italic leading-none">Organization Profile</h3>
-                    <p className="text-[10px] font-bold text-white/20 uppercase tracking-widest mt-1">Managed Neural Entity Identity</p>
+                    <p className="text-[10px] font-bold text-white/50 uppercase tracking-widest mt-1">Managed Neural Entity Identity</p>
                   </div>
                 </div>
 
@@ -180,7 +180,7 @@ export default function SettingsPage() {
                   </div>
                 </div>
 
-                <p className="text-[10px] text-white/30 mb-8 uppercase font-bold leading-relaxed max-w-xl tracking-widest">
+                <p className="text-[10px] text-white/60 mb-8 uppercase font-bold leading-relaxed max-w-xl tracking-widest">
                   Deactivating the organization sector will purge all semantic clusters, vector points, and provisioned tool bindings. This action will initiate an IRREVERSIBLE data scrubbing protocol.
                 </p>
 
@@ -199,7 +199,7 @@ export default function SettingsPage() {
                 </div>
                 <div>
                   <h3 className="text-xl font-black tracking-tight uppercase italic leading-none">Access Control Registry</h3>
-                  <p className="text-[10px] font-bold text-white/20 uppercase tracking-widest mt-1">Multi-Tenant Member Management</p>
+                  <p className="text-[10px] font-bold text-white/50 uppercase tracking-widest mt-1">Multi-Tenant Member Management</p>
                 </div>
               </div>
 
@@ -207,12 +207,12 @@ export default function SettingsPage() {
                 {members.map((m) => (
                   <div key={m.id} className="py-6 flex items-center justify-between group">
                     <div className="flex items-center gap-4">
-                      <div className="w-10 h-10 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-[10px] font-black text-white/20 uppercase">
+                      <div className="w-10 h-10 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-[10px] font-black text-white/40 uppercase">
                         {m.user_id.substring(0, 2)}
                       </div>
                       <div>
                         <p className="text-sm font-black text-white italic">{m.user_id}</p>
-                        <p className="text-[10px] font-bold text-white/20 uppercase tracking-widest mt-0.5">{m.role}</p>
+                        <p className="text-[10px] font-bold text-white/45 uppercase tracking-widest mt-0.5">{m.role}</p>
                       </div>
                     </div>
                     <Badge variant="outline" className="border-white/10 text-white/40 uppercase text-[9px] font-black tracking-widest px-3">
@@ -239,8 +239,8 @@ export default function SettingsPage() {
               <div className="w-20 h-20 rounded-full bg-white/5 border border-white/5 flex items-center justify-center mb-6 text-white/10">
                 <Zap size={40} />
               </div>
-              <h3 className="text-lg font-black tracking-tighter uppercase italic text-white/20">Protocol Under Development</h3>
-              <p className="text-[10px] font-bold text-white/10 uppercase tracking-[0.3em] mt-2 mb-8">Phase 3 Integration Expansion Pending</p>
+              <h3 className="text-lg font-black tracking-tighter uppercase italic text-white/45">Protocol Under Development</h3>
+              <p className="text-[10px] font-bold text-white/35 uppercase tracking-[0.3em] mt-2 mb-8">Phase 3 Integration Expansion Pending</p>
               <Badge variant="outline" className="border-memzent-glow/20 text-memzent-glow/40 uppercase text-[9px] font-black tracking-tighter italic">L2 Synchronicity Required</Badge>
             </div>
           )}

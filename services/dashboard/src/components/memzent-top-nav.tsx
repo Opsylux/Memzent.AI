@@ -35,28 +35,28 @@ export function MemzentTopNav({ orgName, email, initials, tier, role }: MemzentT
                 <Cpu size={12} />
                 <span>ROUTER_RUST</span>
               </div>
-              <div className="text-white/20">99.2% Uptime</div>
+              <div className="text-white/50">99.2% Uptime</div>
             </div>
             <div className="flex flex-col gap-1 items-end">
               <div className="flex items-center gap-2 text-memzent-purple">
                 <Cloud size={12} />
                 <span>GATEWAY_GO</span>
               </div>
-              <div className="text-white/20">0.42ms Latency</div>
+              <div className="text-white/50">0.42ms Latency</div>
             </div>
             <div className="flex flex-col gap-1 items-end">
               <div className="flex items-center gap-2 text-memzent-accent">
                 <Database size={12} />
                 <span>VECTOR_QDRANT</span>
               </div>
-              <div className="text-white/20">1.21M Points</div>
+              <div className="text-white/50">1.21M Points</div>
             </div>
           </div>
         )}
 
         <div className="flex items-center gap-4">
           <div className="relative p-4 rounded-xl hover:bg-white/5 cursor-pointer transition-all border border-transparent hover:border-white/10 group">
-            <Bell size={20} className="text-white/40 group-hover:text-white" />
+            <Bell size={20} className="text-white/60 group-hover:text-white" />
             <div className="absolute top-4 right-4 w-2 h-2 bg-memzent-glow rounded-full shadow-[0_0_8px_#00f3ff] border-2 border-[#050505]" />
           </div>
 
@@ -72,7 +72,7 @@ export function MemzentTopNav({ orgName, email, initials, tier, role }: MemzentT
                 )}
                 <div className="text-sm font-black tracking-tight truncate max-w-[140px] uppercase italic">{orgName}</div>
               </div>
-              <div className="text-[10px] font-bold text-white/30 uppercase truncate max-w-[140px] tracking-widest">{email}</div>
+              <div className="text-[10px] font-bold text-white/50 uppercase truncate max-w-[140px] tracking-widest">{email}</div>
             </div>
             <div className={`w-12 h-12 rounded-xl bg-gradient-to-br from-memzent-matrix to-memzent-dark border flex items-center justify-center p-0.5 shadow-xl transition-all ${role === 'platform_staff' ? 'border-memzent-purple/50 shadow-[0_0_15px_rgba(157,0,255,0.2)]' : 'border-white/10'
               }`}>

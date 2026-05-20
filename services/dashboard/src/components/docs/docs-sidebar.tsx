@@ -43,7 +43,7 @@ export function DocsSidebar() {
     <div className="space-y-8">
       {docSections.map((section) => (
         <div key={section.title} className="space-y-3">
-          <h4 className="text-[10px] font-black uppercase tracking-[0.2em] text-white/20 px-4 italic">
+          <h4 className="text-[10px] font-black uppercase tracking-[0.2em] text-white/45 px-4 italic">
             {section.title}
           </h4>
           <nav className="flex flex-col gap-1">
@@ -55,10 +55,10 @@ export function DocsSidebar() {
                   href={item.href}
                   className={`flex items-center gap-3 px-4 py-2 rounded-lg text-xs font-bold transition-all ${isActive
                     ? "bg-memzent-glow/10 text-memzent-glow border border-memzent-glow/20 shadow-[0_0_15px_rgba(0,243,255,0.03)]"
-                    : "text-white/40 hover:text-white hover:bg-white/5"
+                    : "text-white/60 hover:text-white hover:bg-white/5"
                     }`}
                 >
-                  <item.icon size={14} className={isActive ? "text-memzent-glow" : "text-white/20"} />
+                  <item.icon size={14} className={isActive ? "text-memzent-glow" : "text-white/40"} />
                   {item.name}
                 </Link>
               );

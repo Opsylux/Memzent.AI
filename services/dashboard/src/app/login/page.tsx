@@ -68,11 +68,11 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="flex items-center justify-center min-h-screen bg-slate-950">
-      <Card className="w-[400px] border-slate-800 bg-slate-900 text-slate-100">
+    <div className="flex items-center justify-center min-h-screen neural-bg">
+      <Card className="w-[400px] border-white/10 bg-white/[0.03] backdrop-blur-xl text-white">
         <CardHeader className="text-center">
           <CardTitle className="text-2xl font-bold tracking-tight text-white">Welcome to Memzent</CardTitle>
-          <CardDescription className="text-slate-400">
+          <CardDescription className="text-white/60">
             Sign in to the memory of an agent
           </CardDescription>
         </CardHeader>
@@ -80,7 +80,7 @@ export default function LoginPage() {
           <div className="grid grid-cols-2 gap-3">
             <Button 
               variant="outline" 
-              className="border-slate-700 bg-slate-800 hover:bg-slate-700 transition-colors"
+              className="border-white/20 bg-white/5 hover:bg-white/10 text-white transition-colors"
               onClick={() => handleOAuthLogin('github')}
             >
               <Github className="mr-2 h-4 w-4" />
@@ -88,7 +88,7 @@ export default function LoginPage() {
             </Button>
             <Button 
               variant="outline"
-              className="border-slate-700 bg-slate-800 hover:bg-slate-700 transition-colors"
+              className="border-white/20 bg-white/5 hover:bg-white/10 text-white transition-colors"
               onClick={() => handleOAuthLogin('google')}
             >
               <Mail className="mr-2 h-4 w-4" />
@@ -98,10 +98,10 @@ export default function LoginPage() {
           
           <div className="relative">
             <div className="absolute inset-0 flex items-center">
-              <span className="w-full border-t border-slate-800" />
+              <span className="w-full border-t border-white/10" />
             </div>
             <div className="relative flex justify-center text-xs uppercase">
-              <span className="bg-slate-900 px-2 text-slate-500">Or continue with</span>
+              <span className="bg-[#050505] px-2 text-white/50">Or continue with</span>
             </div>
           </div>
 
@@ -111,12 +111,12 @@ export default function LoginPage() {
               placeholder="name@company.com"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="border-slate-700 bg-slate-950 text-white placeholder:text-slate-600 focus:ring-blue-500"
+              className="border-white/20 bg-white/5 text-white placeholder:text-white/30 focus:ring-memzent-glow/50"
               required
             />
             <Button 
               type="submit" 
-              className="w-full bg-blue-600 hover:bg-blue-500 text-white font-medium"
+              className="w-full bg-memzent-glow text-black font-bold hover:shadow-[0_0_20px_rgba(0,243,255,0.3)] transition-all"
               disabled={loading}
             >
               {loading ? 'Sending...' : 'Sign in with Email'}
@@ -124,7 +124,7 @@ export default function LoginPage() {
           </form>
           {message && <p className="text-center text-sm text-blue-400">{message}</p>}
         </CardContent>
-        <CardFooter className="flex flex-col text-center text-xs text-slate-500">
+        <CardFooter className="flex flex-col text-center text-xs text-white/50">
           <p>By signing in, you agree to our Terms of Service</p>
           <p>and Privacy Policy.</p>
         </CardFooter>

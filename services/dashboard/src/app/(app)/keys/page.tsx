@@ -111,7 +111,7 @@ export default function ApiKeysPage() {
         <h1 className="text-4xl font-black tracking-tighter text-white mb-2 uppercase italic">
           SECERN_KEYS
         </h1>
-        <p className="text-white/20 font-black uppercase tracking-[0.3em] text-[10px] italic">
+        <p className="text-white/50 font-black uppercase tracking-[0.3em] text-[10px] italic">
           {orgName ? `${orgName} — ` : ''}Neural API Access Control & Granular RBAC
         </p>
       </header>
@@ -149,14 +149,14 @@ export default function ApiKeysPage() {
       <div className="stat-card neural-bg border-white/5 p-8 space-y-8">
         <div>
           <h3 className="text-lg font-black tracking-tight uppercase italic">Generate Intelligent Token</h3>
-          <p className="text-[10px] font-bold text-white/20 uppercase tracking-widest mt-1">Configure identity boundaries and access layers</p>
+          <p className="text-[10px] font-bold text-white/50 uppercase tracking-widest mt-1">Configure identity boundaries and access layers</p>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {/* Col 1: Label & Role */}
           <div className="space-y-6 lg:border-r lg:border-white/5 lg:pr-8">
             <div className="space-y-2">
-              <label className="text-[10px] font-black uppercase tracking-widest text-white/40">Key Name</label>
+              <label className="text-[10px] font-black uppercase tracking-widest text-white/60">Key Name</label>
               <input
                 type="text"
                 placeholder="Label (e.g. production-gateway-01)"
@@ -183,7 +183,7 @@ export default function ApiKeysPage() {
                     <div className="mt-0.5">{opt.icon}</div>
                     <div>
                       <div className="text-[10px] font-black uppercase tracking-wider text-white">{opt.label}</div>
-                      <div className="text-[8px] text-white/40 font-bold mt-0.5 uppercase tracking-wide leading-tight">{opt.desc}</div>
+                      <div className="text-[8px] text-white/60 font-bold mt-0.5 uppercase tracking-wide leading-tight">{opt.desc}</div>
                     </div>
                   </button>
                 ))}
@@ -219,7 +219,7 @@ export default function ApiKeysPage() {
                       <div className={`text-[10px] font-black uppercase tracking-wider ${isSelected ? 'text-memzent-glow' : 'text-white'}`}>
                         {scope.label}
                       </div>
-                      <div className="text-[8px] font-bold text-white/30 uppercase tracking-widest mt-1 leading-normal">
+                      <div className="text-[8px] font-bold text-white/55 uppercase tracking-widest mt-1 leading-normal">
                         {scope.desc}
                       </div>
                     </div>
@@ -229,7 +229,7 @@ export default function ApiKeysPage() {
             </div>
 
             <div className="pt-6 border-t border-white/5 flex items-center justify-between">
-              <div className="text-[9px] font-black uppercase tracking-wider text-white/30">
+              <div className="text-[9px] font-black uppercase tracking-wider text-white/50">
                 {selectedScopes.length} scopes active for <span className="text-memzent-glow">{selectedRole}</span>
               </div>
               <Button 
@@ -249,7 +249,7 @@ export default function ApiKeysPage() {
       <div className="stat-card neural-bg border-white/5 p-0 overflow-hidden">
         <div className="p-8 border-b border-white/5">
           <h3 className="text-lg font-black tracking-tight uppercase italic">Provisioned Credentials</h3>
-          <p className="text-[10px] font-bold text-white/20 uppercase tracking-widest mt-1">Multi-token cluster authorization table</p>
+          <p className="text-[10px] font-bold text-white/50 uppercase tracking-widest mt-1">Multi-token cluster authorization table</p>
         </div>
 
         <div className="divide-y divide-white/5">
@@ -283,7 +283,7 @@ export default function ApiKeysPage() {
                             {roleLabel}
                           </Badge>
                         </div>
-                        <div className="text-[10px] font-mono text-white/20 uppercase font-black flex items-center gap-3 mt-1.5">
+                        <div className="text-[10px] font-mono text-white/45 uppercase font-black flex items-center gap-3 mt-1.5">
                           <span className="text-white/40">IDENTIFIER:</span> <span className="text-memzent-purple">{k.key_prefix}</span>
                           <span className="w-1 h-1 rounded-full bg-white/10" />
                           <span className="text-white/40">PROVISIONED:</span> {new Date(k.created_at).toLocaleDateString()}
@@ -295,7 +295,7 @@ export default function ApiKeysPage() {
                         onClick={() => handleRevoke(k.id)}
                         variant="ghost"
                         size="icon"
-                        className="text-white/10 hover:text-red-500 hover:bg-red-500/5 transition-all"
+                        className="text-white/35 hover:text-red-500 hover:bg-red-500/5 transition-all"
                       >
                         <Trash2 size={20} />
                       </Button>
@@ -307,7 +307,7 @@ export default function ApiKeysPage() {
                     {scopesList.map((scope: string) => (
                       <span 
                         key={scope} 
-                        className="text-[8px] font-black uppercase tracking-wider px-2 py-1 rounded bg-black/40 border border-white/5 text-white/40 flex items-center gap-1.5"
+                        className="text-[8px] font-black uppercase tracking-wider px-2 py-1 rounded bg-black/40 border border-white/5 text-white/60 flex items-center gap-1.5"
                       >
                         <span className="w-1 h-1 rounded-full bg-white/20" />
                         {scope}
@@ -326,7 +326,7 @@ export default function ApiKeysPage() {
           <ShieldAlert size={120} />
         </div>
         <h3 className="text-xs font-black text-memzent-purple uppercase tracking-[0.3em] mb-4 italic">Security Directive</h3>
-        <p className="text-[10px] text-white/40 leading-relaxed font-black uppercase max-w-2xl tracking-widest">
+        <p className="text-[10px] text-white/65 leading-relaxed font-black uppercase max-w-2xl tracking-widest">
           Granular permission boundaries restrict specific keys from accessing destructive commands. Always assign the minimum required scopes (least privilege principle) when integrating external agents or workflows.
         </p>
       </footer>

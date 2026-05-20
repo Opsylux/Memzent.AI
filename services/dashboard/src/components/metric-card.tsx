@@ -43,12 +43,12 @@ export function MetricCard({
       </div>
 
       <div className="space-y-1">
-        <h3 className="text-sm font-bold text-white/40 uppercase tracking-widest leading-none">{label}</h3>
+        <h3 className="text-sm font-bold text-white/65 uppercase tracking-widest leading-none">{label}</h3>
         <div className="text-4xl font-black tracking-tighter text-white">{value}</div>
       </div>
 
       <div className="mt-6 flex items-center justify-between">
-        <span className="text-[10px] font-mono font-bold text-white/20 uppercase tracking-tighter">{detail}</span>
+        <span className="text-[10px] font-mono font-bold text-white/45 uppercase tracking-tighter">{detail}</span>
         <div className={`w-1 h-1 rounded-full ${color === 'cyan' ? 'bg-memzent-glow shadow-[0_0_10px_#00f3ff]' : 'bg-memzent-purple shadow-[0_0_10px_#9d00ff]'}`} />
       </div>
 

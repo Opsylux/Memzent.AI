@@ -65,9 +65,9 @@ export function RoutingVisualizer({ steps, orgId }: { steps?: any[], orgId?: str
             {isExecuting && (
                 <div className="flex flex-col md:flex-row items-center justify-between gap-6 opacity-60 animate-pulse">
                     <TraceStep icon={<Database size={16} />} label="Secure Ingress" status="active" detail="Evaluating Intent" />
-                    <ArrowRight className="text-slate-700 hidden md:block" size={16} />
+                    <ArrowRight className="text-white/25 hidden md:block" size={16} />
                     <TraceStep icon={<Search size={16} />} label="Semantic Cache" status="pending" detail="Checking Neural Hash" />
-                    <ArrowRight className="text-slate-700 hidden md:block" size={16} />
+                    <ArrowRight className="text-white/25 hidden md:block" size={16} />
                     <TraceStep icon={<Cpu size={16} />} label="Intelligence Hub" status="pending" detail="Synthesis Engine" />
                 </div>
             )}
@@ -76,7 +76,7 @@ export function RoutingVisualizer({ steps, orgId }: { steps?: any[], orgId?: str
                 <div className="space-y-6">
                     <div className="flex flex-col md:flex-row items-center justify-between gap-6">
                         <TraceStep icon={<Database size={16} />} label="Secure Ingress" status="complete" detail="Verified Logic 200" />
-                        <ArrowRight className="text-slate-700 hidden md:block" size={16} />
+                        <ArrowRight className="text-white/25 hidden md:block" size={16} />
 
                         {traceResult.cached ? (
                             <TraceStep icon={<Zap size={16} />} label="Semantic Match" status="active" detail="Context Memory HIT" color="glow-cyan" />
@@ -84,7 +84,7 @@ export function RoutingVisualizer({ steps, orgId }: { steps?: any[], orgId?: str
                             <TraceStep icon={<Cpu size={16} />} label="Memzent Routing" status="complete" detail="Neural Context Mapping" />
                         )}
 
-                        <ArrowRight className="text-slate-700 hidden md:block" size={16} />
+                        <ArrowRight className="text-white/25 hidden md:block" size={16} />
 
                         {traceResult.cached ? (
                             <TraceStep icon={<CheckCircle2 size={16} />} label="Synthesized" status="complete" detail="Sub-1ms Delivery Return" />
@@ -99,9 +99,9 @@ export function RoutingVisualizer({ steps, orgId }: { steps?: any[], orgId?: str
                         )}
                     </div>
 
-                    <div className="mt-8 p-4 bg-slate-950 border border-slate-800 rounded-xl">
-                        <div className="text-[10px] font-black uppercase text-slate-500 mb-2">Final Logic Synthesis:</div>
-                        <p className="text-sm text-slate-300 font-serif leading-relaxed whitespace-pre-wrap">{traceResult.text}</p>
+                    <div className="mt-8 p-4 bg-black/40 border border-white/10 rounded-xl">
+                        <div className="text-[10px] font-black uppercase text-white/50 mb-2">Final Logic Synthesis:</div>
+                        <p className="text-sm text-white/85 font-serif leading-relaxed whitespace-pre-wrap">{traceResult.text}</p>
                     </div>
                 </div>
             )}
@@ -127,13 +127,13 @@ function TraceStep({ icon, label, status, detail, color }: any) {
             <div className={`p-4 rounded-xl border ${color ? color :
                 isComplete ? 'bg-blue-500/10 text-blue-400 border-blue-500/20' :
                     isActive ? 'bg-slate-800 text-white border-slate-700 shadow-lg' :
-                        'bg-slate-950 text-slate-600 border-slate-900'
+                        'bg-black/40 text-white/40 border-white/10'
                 }`}>
                 {icon}
             </div>
             <div className="text-center">
-                <p className={`text-sm font-medium ${isActive ? 'text-white' : 'text-slate-300'}`}>{label}</p>
-                <p className="text-[10px] text-slate-500 font-mono uppercase tracking-tighter">{detail}</p>
+                <p className={`text-sm font-medium ${isActive ? 'text-white' : 'text-white/75'}`}>{label}</p>
+                <p className="text-[10px] text-white/45 font-mono uppercase tracking-tighter">{detail}</p>
             </div>
         </div>
     );
@@ -143,7 +143,7 @@ export function ToolGrid({ tools }: { tools: any[] }) {
     if (!tools || tools.length === 0) {
         return (
             <div className="p-12 text-center bg-slate-900/50 border border-slate-800 border-dashed rounded-2xl">
-                <p className="text-slate-600 text-sm font-mono">No tools discovered yet...</p>
+                <p className="text-white/50 text-sm font-mono">No tools discovered yet...</p>
             </div>
         );
     }
@@ -151,7 +151,7 @@ export function ToolGrid({ tools }: { tools: any[] }) {
     return (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {tools.map((tool: any) => (
-                <div key={tool.id} className="p-6 bg-slate-900 border border-slate-800 rounded-2xl flex flex-col justify-between">
+                <div key={tool.id} className="p-6 bg-white/[0.03] border border-white/10 rounded-2xl flex flex-col justify-between hover:border-white/20 transition-all">
                     <div>
                         <div className="flex justify-between items-start mb-4">
                             <span className="text-[10px] bg-blue-500/10 text-blue-400 px-2 py-1 rounded-md uppercase font-bold border border-blue-500/10">
@@ -159,8 +159,8 @@ export function ToolGrid({ tools }: { tools: any[] }) {
                             </span>
                             <div className="w-1.5 h-1.5 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.5)]" />
                         </div>
-                        <h3 className="font-bold text-lg text-slate-100">{tool.name}</h3>
-                        <p className="text-slate-500 text-[10px] font-mono mt-1 break-all">{tool.id}</p>
+                        <h3 className="font-bold text-lg text-white">{tool.name}</h3>
+                        <p className="text-white/40 text-[10px] font-mono mt-1 break-all">{tool.id}</p>
                     </div>
                 </div>
             ))}

@@ -54,7 +54,7 @@ export function RegisterToolBtn({ orgId }: { orgId?: string }) {
             <header className="p-8 border-b border-white/5 flex items-center justify-between">
               <div>
                 <h2 className="text-2xl font-black tracking-tighter uppercase italic">Register_Tool_v1</h2>
-                <p className="text-[10px] font-bold text-white/20 uppercase tracking-widest mt-1">Provision New Semantic Node</p>
+                <p className="text-[10px] font-bold text-white/50 uppercase tracking-widest mt-1">Provision New Semantic Node</p>
               </div>
               <button onClick={() => setIsOpen(false)} className="p-2 hover:bg-white/5 rounded-xl transition-colors text-white/40 hover:text-white">
                 <X size={20} />
@@ -70,7 +70,7 @@ export function RegisterToolBtn({ orgId }: { orgId?: string }) {
 
               <div className="grid grid-cols-2 gap-6">
                 <div className="space-y-2">
-                  <label className="text-[10px] font-black uppercase text-white/30 tracking-widest ml-1">Unique Identifier</label>
+                  <label className="text-[10px] font-black uppercase text-white/55 tracking-widest ml-1">Unique Identifier</label>
                   <input
                     required
                     placeholder="e.g. stripe_billing"
@@ -80,7 +80,7 @@ export function RegisterToolBtn({ orgId }: { orgId?: string }) {
                   />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-[10px] font-black uppercase text-white/30 tracking-widest ml-1">Display Name</label>
+                  <label className="text-[10px] font-black uppercase text-white/55 tracking-widest ml-1">Display Name</label>
                   <input
                     required
                     placeholder="e.g. Stripe Manager"
@@ -105,7 +105,7 @@ export function RegisterToolBtn({ orgId }: { orgId?: string }) {
 
               <div className="grid grid-cols-2 gap-6">
                 <div className="space-y-2">
-                  <label className="text-[10px] font-black uppercase text-white/30 tracking-widest ml-1">Connector Type</label>
+                  <label className="text-[10px] font-black uppercase text-white/55 tracking-widest ml-1">Connector Type</label>
                   <select
                     className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm font-bold focus:border-memzent-glow outline-none transition-all appearance-none"
                     value={formData.connector_type}
@@ -117,7 +117,7 @@ export function RegisterToolBtn({ orgId }: { orgId?: string }) {
                   </select>
                 </div>
                 <div className="space-y-2">
-                  <label className="text-[10px] font-black uppercase text-white/30 tracking-widest ml-1">Timeout (Seconds)</label>
+                  <label className="text-[10px] font-black uppercase text-white/55 tracking-widest ml-1">Timeout (Seconds)</label>
                   <input
                     type="number"
                     min="1"
@@ -131,7 +131,7 @@ export function RegisterToolBtn({ orgId }: { orgId?: string }) {
               <div className="space-y-2">
                 <label className="text-[10px] font-black uppercase text-white/30 tracking-widest ml-1">Endpoint / Connection String</label>
                 <div className="relative">
-                  <div className="absolute left-4 top-1/2 -translate-y-1/2 text-white/20">
+                  <div className="absolute left-4 top-1/2 -translate-y-1/2 text-white/40">
                     {formData.connector_type === 'mcp' && <Terminal size={16} />}
                     {formData.connector_type === 'rest' && <Globe size={16} />}
                     {formData.connector_type === 'sql' && <Database size={16} />}
@@ -150,7 +150,7 @@ export function RegisterToolBtn({ orgId }: { orgId?: string }) {
                 <button
                   type="button"
                   onClick={() => setIsOpen(false)}
-                  className="px-6 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-white/5 transition-all text-white/30 hover:text-white"
+                  className="px-6 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-white/5 transition-all text-white/55 hover:text-white"
                 >
                   Cancel
                 </button>
