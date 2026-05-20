@@ -46,17 +46,18 @@ func NewRouterClient(ctx context.Context, addr string) (*RouterClient, error) {
 	}, nil
 }
 
-// GetBestTools calls the Rust Router to find relevant tools for a prompt
-// ✅ PRESERVED: Returning tools, compressed prompt, similar hash, and current hash!
-func (rc *RouterClient) GetBestTools(ctx context.Context, prompt string, userID string, allowedToolIDs []string) ([]*Tool, string, string, string, error) {
+// GetBestTools calls the Rust Router to find relevant tools for a prompt.
+// orgID is passed in the OrgId field so the Rust router can scope the
+// prompts_collection cache lookup to this organisation only.
+func (rc *RouterClient) GetBestTools(ctx context.Context, prompt string, orgID string, allowedToolIDs []string) ([]*Tool, string, string, string, error) {
 	req := &ToolRequest{
 		Prompt:                 prompt,
-		UserId:                 userID,
+		UserId:                 orgID, // kept for backward compat with existing Qdrant payloads
+		OrgId:                  orgID, // new field — drives org-isolated cache lookup
 		AllowedToolIds:         allowedToolIDs,
 		ScoreThresholdOverride: 0.65,
 	}
 
-	// Call the gRPC method defined in your .proto file
 	resp, err := rc.client.SelectTools(ctx, req)
 	if err != nil {
 		return nil, "", "", "", fmt.Errorf("gRPC SelectTools failed: %w", err)
@@ -86,11 +87,13 @@ func (rc *RouterClient) RegisterTool(ctx context.Context, id, name, description,
 	return true, nil
 }
 
-// PlanToolChain plans a sequence of sequential tools for complex user intents
-func (rc *RouterClient) PlanToolChain(ctx context.Context, prompt string, userID string, allowedToolIDs []string) ([]*ToolStep, float32, error) {
+// PlanToolChain plans a sequence of sequential tools for complex user intents.
+// orgID is passed through so the Rust router can apply org-scoped RBAC filtering.
+func (rc *RouterClient) PlanToolChain(ctx context.Context, prompt string, orgID string, allowedToolIDs []string) ([]*ToolStep, float32, error) {
 	req := &ToolChainRequest{
 		Prompt:                 prompt,
-		UserId:                 userID,
+		UserId:                 orgID, // kept for backward compat
+		OrgId:                  orgID, // new field — org-scoped tool filtering
 		AllowedToolIds:         allowedToolIDs,
 		ScoreThresholdOverride: 0.65,
 	}

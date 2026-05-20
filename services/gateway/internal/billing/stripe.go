@@ -245,14 +245,23 @@ func (h *StripeHandler) handleSubscriptionChanged(sub *stripe.Subscription) {
 
 	slog.Info("Stripe Subscription Created/Updated", "customer_id", customerID, "product_id", productID, "mapped_tier", tier)
 
-	// TODO: Persist tier change to database using customerID mapping
+	// Persist tier change to organizations table via stripe_customer_id mapping
+	_, err := h.db.Exec(
+		"UPDATE organizations SET subscription_tier = $1 WHERE stripe_customer_id = $2",
+		tier, customerID,
+	)
+	if err != nil {
+		slog.Error("Failed to update subscription tier in database", "customer_id", customerID, "tier", tier, "error", err)
+	} else {
+		slog.Info("Subscription tier updated in database", "customer_id", customerID, "tier", tier)
+	}
 
 	if h.auditLogger != nil {
 		h.auditLogger.Log(context.Background(), metrics.AuditEvent{
 			Timestamp: time.Now(),
-			OrgID:     "system", // customerID mapping needed for better org scoping
+			OrgID:     "system",
 			Type:      "BILLING",
-			Detail:    fmt.Sprintf("Subscription Updated: %s", tier),
+			Detail:    fmt.Sprintf("Subscription Updated: %s (customer: %s)", tier, customerID),
 			Status:    "success",
 		}, map[string]interface{}{"tier": tier, "customer_id": customerID})
 	}

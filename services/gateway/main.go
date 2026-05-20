@@ -266,6 +266,10 @@ func main() {
 		auditLogger,
 	)
 
+	// 8.0a Start rate limiter TTL eviction — prevents unbounded memory growth
+	// in long-running multi-tenant deployments (one entry per orgID:userID pair).
+	memzentEngine.StartRateLimiterEviction(ctx)
+
 	// 8.0 Start Tool Registry Refresh Loop (Phase 2: Dynamic Tool Sync)
 	// Every 30 seconds, check Postgres for drifted tools and push them to Qdrant.
 	if toolRegistry != nil {
@@ -556,20 +560,25 @@ func main() {
 		json.NewEncoder(w).Encode(metadata)
 	})))
 
-	mux.HandleFunc("/generate-token", func(w http.ResponseWriter, r *http.Request) {
-		secret := cfg.JWTSecret
+	// /generate-token is a dev-only convenience endpoint for issuing admin JWTs.
+	// It is disabled in production. Set ENABLE_DEV_TOKEN=true to enable locally.
+	if os.Getenv("ENABLE_DEV_TOKEN") == "true" {
+		mux.HandleFunc("/generate-token", func(w http.ResponseWriter, r *http.Request) {
+			secret := cfg.JWTSecret
 
-		token, err := auth.GenerateJWT("admin-01", "admin", secret, time.Hour*24)
-		if err != nil {
-			slog.Error("Failed to generate JWT", "error", err)
-			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-			return
-		}
+			token, err := auth.GenerateJWT("admin-01", "admin", secret, time.Hour*24)
+			if err != nil {
+				slog.Error("Failed to generate JWT", "error", err)
+				http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+				return
+			}
 
-		resp := map[string]string{"token": token}
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(resp)
-	})
+			resp := map[string]string{"token": token}
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(resp)
+		})
+		slog.Warn("⚠️  /generate-token endpoint is ENABLED — disable in production (unset ENABLE_DEV_TOKEN)")
+	}
 
 	// 8.5. Register SaaS Webhooks (Exclude from JWT Middleware)
 

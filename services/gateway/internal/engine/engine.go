@@ -103,10 +103,10 @@ func NewMemzentEngine(
 	}
 }
 
-// startRateLimiterEviction runs a background goroutine that removes stale rate limiter
+// StartRateLimiterEviction runs a background goroutine that removes stale rate limiter
 // entries from the sync.Map every 10 minutes. Without this the map grows unbounded —
 // one entry per unique orgID:userID pair, never freed.
-func (e *MemzentEngine) startRateLimiterEviction(ctx context.Context) {
+func (e *MemzentEngine) StartRateLimiterEviction(ctx context.Context) {
 	go func() {
 		ticker := time.NewTicker(10 * time.Minute)
 		defer ticker.Stop()
