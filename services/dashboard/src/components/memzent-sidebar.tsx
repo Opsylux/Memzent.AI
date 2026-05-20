@@ -37,12 +37,12 @@ export function MemzentSidebar() {
       </div>
 
       <nav className="flex-1 space-y-2">
-        <div className="text-[10px] font-black text-white/40 uppercase tracking-widest mb-4 px-2">Core Systems</div>
+        <div className="text-[10px] font-black text-white/55 uppercase tracking-widest mb-4 px-2">Core Systems</div>
         {NAV_ITEMS.map((item) => {
           const isActive = pathname === item.href;
           return (
             <Link key={item.href} href={item.href}>
-              <div className={`relative flex items-center gap-3 px-4 py-3 rounded-2xl transition-all group ${isActive ? "bg-white/5 text-memzent-glow" : "text-white/60 hover:text-white hover:bg-white/5"
+              <div className={`relative flex items-center gap-3 px-4 py-3 rounded-2xl transition-all group ${isActive ? "bg-white/5 text-memzent-glow" : "text-white/70 hover:text-white hover:bg-white/5"
                 }`}>
                 {isActive && (
                   <motion.div
@@ -63,13 +63,13 @@ export function MemzentSidebar() {
       <div className="mt-auto pt-6 border-t border-white/5 space-y-4">
         <div className="glass p-4 rounded-2xl border-white/5 flex items-center gap-3">
           <div className="w-2 h-2 rounded-full bg-memzent-accent shadow-[0_0_8px_#00ff8e] animate-pulse" />
-          <div className="text-[10px] font-mono font-bold text-white/60 uppercase">Gateway Node 01 - Online</div>
+          <div className="text-[10px] font-mono font-bold text-white/70 uppercase">Gateway Node 01 - Online</div>
         </div>
         <div className="flex items-center gap-3 px-2">
           <div className="w-8 h-8 rounded-lg bg-white/5 border border-white/10 flex items-center justify-center text-white/40 hover:text-memzent-glow cursor-pointer transition-colors">
             <Globe size={14} />
           </div>
-          <div className="text-[10px] font-bold text-white/50 uppercase tracking-tighter">Region: US-EAST-1</div>
+          <div className="text-[10px] font-bold text-white/60 uppercase tracking-tighter">Region: US-EAST-1</div>
         </div>
       </div>
     </aside>

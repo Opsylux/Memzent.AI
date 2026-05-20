@@ -46,7 +46,7 @@ export function AuditLogFeed({ orgId }: { orgId?: string }) {
   return (
     <div className="stat-card glow-cyan border-white/10 p-8 neural-bg relative overflow-hidden bg-black/40 h-full flex flex-col">
       <div className="flex items-center justify-between mb-8">
-        <h3 className="text-xs font-black tracking-widest text-white/65 uppercase leading-none italic font-roboto-mono flex items-center gap-2">
+        <h3 className="text-xs font-black tracking-widest text-white/75 uppercase leading-none italic font-roboto-mono flex items-center gap-2">
           <Terminal size={14} className="text-memzent-glow" />
           Live Neural Audit
         </h3>

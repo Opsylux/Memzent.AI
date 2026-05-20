@@ -51,7 +51,7 @@
   --secondary: oklch(0.269 0 0);
   --secondary-foreground: oklch(0.985 0 0);
   --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.80 0 0);
+  --muted-foreground: oklch(0.72 0 0);  /* was 0.80 — slightly warmer for labels */
   --accent: oklch(0.269 0 0);
   --accent-foreground: oklch(0.985 0 0);
   --destructive: oklch(0.704 0.191 22.216);
@@ -121,4 +121,29 @@
 @utility neural-bg {
   /* Standard CSS values are fine with spaces, only @apply brackets are strict */
   background: radial-gradient(circle at 50% 50%, #0a0a0a 0%, #050505 100%);
+}
+
+/* ─── Readable Text Utilities ──────────────────────────────────────────────
+   Use these instead of raw white/opacity classes to keep contrast consistent.
+   Minimum contrast target: 4.5:1 on #050505 background.
+   ─────────────────────────────────────────────────────────────────────── */
+
+@utility text-readable-primary {
+  /* Main body / value text — full white */
+  color: rgba(255, 255, 255, 1);
+}
+
+@utility text-readable-secondary {
+  /* Subtitles, descriptions — clearly visible */
+  color: rgba(255, 255, 255, 0.75);
+}
+
+@utility text-readable-label {
+  /* Small caps labels, table headers — legible */
+  color: rgba(255, 255, 255, 0.60);
+}
+
+@utility text-readable-muted {
+  /* Timestamps, IDs, fine print — minimum readable */
+  color: rgba(255, 255, 255, 0.50);
 }
