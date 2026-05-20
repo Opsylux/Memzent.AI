@@ -34,7 +34,8 @@ message ToolRequest {
   string prompt = 1;
   string user_id = 2;
   repeated string allowed_tool_ids = 3; // For RBAC-filtered searches
-  float score_threshold_override = 4; // Override default relevance threshold
+  float score_threshold_override = 4;   // Override default relevance threshold
+  string org_id = 5;                    // Org isolation — required for cache partitioning
 }
 
 message Tool {
@@ -57,6 +58,7 @@ message ToolChainRequest {
   string user_id = 2;
   repeated string allowed_tool_ids = 3;
   float score_threshold_override = 4;
+  string org_id = 5;                    // Org isolation — required for RBAC-scoped chaining
 }
 
 message ToolStep {
