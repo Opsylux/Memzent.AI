@@ -73,9 +73,23 @@ impl SemanticRouter for MyRouter {
         let real_vector = embeddings[0].clone();
         let prompt_hash = calculate_hash(&req.prompt);
 
-        // --- Semantic Cache Lookup ---
+        // --- Semantic Cache Lookup (Org-Isolated) ---
+        // Filter prompts_collection by org_id so cross-org cache hits are impossible.
         let mut similar_prompt_hash = String::new();
+        let mut cache_filter_conditions: Vec<Condition> = Vec::new();
+        if !req.org_id.is_empty() {
+            cache_filter_conditions.push(Condition {
+                condition_one_of: Some(ConditionOneOf::Field(FieldCondition {
+                    key: "org_id".to_string(),
+                    r#match: Some(Match {
+                        match_value: Some(MatchValue::Keyword(req.org_id.clone())),
+                    }),
+                    ..Default::default()
+                })),
+            });
+        }
         let cache_search_request = SearchPointsBuilder::new("prompts_collection", real_vector.clone(), 1)
+            .filter(Filter { should: cache_filter_conditions, ..Default::default() })
             .with_payload(true)
             .build();
 
@@ -98,13 +112,14 @@ impl SemanticRouter for MyRouter {
         }
 
 
-        // If no similar prompt found, store this one for future reference
+        // If no similar prompt found, store this one for future reference (tagged with org_id)
         if similar_prompt_hash.is_empty() {
              println!("💾 Semantic Cache Store: New prompt intent saved");
              
              let mut payload = HashMap::new();
              payload.insert("prompt_hash".to_string(), Value::from(prompt_hash.clone()));
              payload.insert("user_id".to_string(), Value::from(req.user_id.clone()));
+             payload.insert("org_id".to_string(), Value::from(req.org_id.clone()));
 
              let _ = self.q_client.upsert_points(UpsertPointsBuilder::new(
                 "prompts_collection",
@@ -276,11 +291,10 @@ impl SemanticRouter for MyRouter {
             .map_err(|e| Status::internal(format!("Failed to generate chain embeddings: {}", e)))?;
         let real_vector = embeddings[0].clone();
 
-        // 2. Search points in Qdrant tools_collection
-        let mut filter_conditions = Vec::new();
-        // Limit query to allowed tools if provided — use individual should-conditions
-        // mirroring select_tools (MatchValue::Any is not available in qdrant-client 1.10)
-        if !req.allowed_tool_ids.is_empty() {
+        // 2. Build OR filter for allowed tool IDs — mirrors select_tools logic.
+        // Filter::all() would require a point to match ALL conditions (AND), which
+        // returns nothing when multiple tool IDs are listed. Use should (OR) instead.
+        let tool_filter = if !req.allowed_tool_ids.is_empty() {
             let should_conditions: Vec<Condition> = req.allowed_tool_ids.iter().map(|id| {
                 Condition {
                     condition_one_of: Some(ConditionOneOf::Field(FieldCondition {
@@ -292,12 +306,14 @@ impl SemanticRouter for MyRouter {
                     })),
                 }
             }).collect();
-            filter_conditions.extend(should_conditions);
-        }
+            Filter { should: should_conditions, ..Default::default() }
+        } else {
+            Filter::default()
+        };
 
         let search_request = SearchPointsBuilder::new("tools_collection", real_vector, 5)
             .with_payload(true)
-            .filter(Filter::all(filter_conditions))
+            .filter(tool_filter)
             .build();
 
         let mut steps = Vec::new();

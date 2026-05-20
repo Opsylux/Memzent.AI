@@ -42,6 +42,12 @@ type PromptResponse struct {
 	RequestID string `json:"request_id,omitempty"`
 }
 
+// rateLimiterEntry wraps a rate.Limiter with a last-seen timestamp for TTL eviction.
+type rateLimiterEntry struct {
+	limiter  *rate.Limiter
+	lastSeen time.Time
+}
+
 // MemzentEngine orchestrates the flow between Cache, RBAC, Router, MCP, and LLM
 type MemzentEngine struct {
 	cache               *cch.MemzentCache
@@ -56,7 +62,7 @@ type MemzentEngine struct {
 	connectorRegistry   *connectors.ConnectorRegistry // Core/Native connectors
 	toolThreshold       float64
 	cacheTTL            time.Duration
-	rateLimiters        sync.Map
+	rateLimiters        sync.Map // map[string]*rateLimiterEntry — evicted by background goroutine
 	auditLogger         *metrics.PersistentAuditLogger
 
 	TotalRequests atomic.Uint64
@@ -95,6 +101,32 @@ func NewMemzentEngine(
 		cacheTTL:          ttl,
 		auditLogger:       audit,
 	}
+}
+
+// startRateLimiterEviction runs a background goroutine that removes stale rate limiter
+// entries from the sync.Map every 10 minutes. Without this the map grows unbounded —
+// one entry per unique orgID:userID pair, never freed.
+func (e *MemzentEngine) startRateLimiterEviction(ctx context.Context) {
+	go func() {
+		ticker := time.NewTicker(10 * time.Minute)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				cutoff := time.Now().Add(-30 * time.Minute)
+				e.rateLimiters.Range(func(key, value any) bool {
+					if entry, ok := value.(*rateLimiterEntry); ok {
+						if entry.lastSeen.Before(cutoff) {
+							e.rateLimiters.Delete(key)
+						}
+					}
+					return true
+				})
+			}
+		}
+	}()
 }
 
 func (e *MemzentEngine) ActiveProviderNames() []string {
@@ -170,8 +202,14 @@ func (e *MemzentEngine) Process(ctx context.Context, req *PromptRequest) (*Promp
 	}
 
 	limitKey := fmt.Sprintf("rl:%s:%s", orgID, req.UserID)
-	limiter, _ := e.rateLimiters.LoadOrStore(limitKey, rate.NewLimiter(rate.Limit(limit/60), int(limit)))
-	if !limiter.(*rate.Limiter).Allow() {
+	newEntry := &rateLimiterEntry{
+		limiter:  rate.NewLimiter(rate.Limit(limit/60), int(limit)),
+		lastSeen: time.Now(),
+	}
+	actual, _ := e.rateLimiters.LoadOrStore(limitKey, newEntry)
+	entry := actual.(*rateLimiterEntry)
+	entry.lastSeen = time.Now() // refresh timestamp on every access
+	if !entry.limiter.Allow() {
 		return nil, fmt.Errorf("rate limit exceeded for organization %s (tier: %s)", orgID, tier)
 	}
 
