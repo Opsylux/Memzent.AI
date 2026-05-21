@@ -6,11 +6,16 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
+	"sync"
 )
 
 type GeminiProvider struct {
 	APIKey string
 	Model  string
+
+	mu              sync.RWMutex
+	supportedModels []string
 }
 
 func NewGeminiProvider(apiKey, model string) Provider {
@@ -23,11 +28,67 @@ func NewGeminiProvider(apiKey, model string) Provider {
 func (g *GeminiProvider) GetProviderName() string { return "Gemini" }
 
 func (g *GeminiProvider) GetMetadata() ProviderMetadata {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+
+	models := g.supportedModels
+	if len(models) == 0 {
+		models = []string{"gemini-1.5-flash", "gemini-1.5-pro", "gemini-1.0-pro"}
+	}
 	return ProviderMetadata{
 		Name:            "gemini",
-		DefaultModel:    "gemini-1.5-flash",
-		SupportedModels: []string{"gemini-1.5-flash", "gemini-1.5-pro", "gemini-1.0-pro"},
+		DefaultModel:    g.Model,
+		SupportedModels: models,
 	}
+}
+
+func (g *GeminiProvider) DiscoverModels(ctx context.Context) ([]string, error) {
+	if g.APIKey == "" {
+		return []string{"gemini-1.5-flash", "gemini-1.5-pro", "gemini-1.0-pro"}, nil
+	}
+
+	url := fmt.Sprintf("https://generativelanguage.googleapis.com/v1beta/models?key=%s", g.APIKey)
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("gemini models list error: status %d", resp.StatusCode)
+	}
+
+	var res struct {
+		Models []struct {
+			Name string `json:"name"`
+		} `json:"models"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&res); err != nil {
+		return nil, err
+	}
+
+	var models []string
+	for _, m := range res.Models {
+		name := strings.TrimPrefix(m.Name, "models/")
+		if strings.Contains(name, "gemini") {
+			models = append(models, name)
+		}
+	}
+
+	if len(models) == 0 {
+		models = []string{"gemini-1.5-flash", "gemini-1.5-pro", "gemini-1.0-pro"}
+	}
+
+	g.mu.Lock()
+	g.supportedModels = models
+	g.mu.Unlock()
+
+	return models, nil
 }
 
 func (g *GeminiProvider) Generate(ctx context.Context, messages []Message, tools []any, model string) (string, *TokenUsage, error) {

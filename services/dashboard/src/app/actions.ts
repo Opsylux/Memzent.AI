@@ -67,6 +67,21 @@ export async function getMemzentStats(orgId?: string) {
     }
 }
 
+export async function getMemzentProviders() {
+    try {
+        const headers = await gatewayHeaders()
+        const res = await fetch(`${GATEWAY_URL}/v1/providers`, {
+            cache: 'no-store',
+            headers,
+        });
+        if (!res.ok) return [];
+        return res.json();
+    } catch (e) {
+        console.error("Gateway providers fetch failed", e);
+        return [];
+    }
+}
+
 export async function executeMemzentPrompt(messages: {role: string, content: string}[], sessionId?: string, orgId?: string) {
     try {
         const headers = await gatewayHeaders(orgId)

@@ -23,7 +23,7 @@ const (
 	realToken = "memzent_928e2529c9c2208b84e547be187b8c8f4d4c7c9ebcc15faa"
 
 	// Performance Configuration
-	concurrency = 2
+	concurrency = 20
 	totalRuns   = 100
 	rampUpDelay = 200 * time.Millisecond
 )

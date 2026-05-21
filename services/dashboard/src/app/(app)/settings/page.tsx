@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { Badge } from "@/components/ui/badge";
 import { Settings, User, Shield, Bell, Zap, Save, AlertTriangle } from 'lucide-react'
-import { updateOrgProfile, getOrgProfile } from '../../actions'
+import { updateOrgProfile, getOrgProfile, getMemzentProviders } from '../../actions'
 import { supabase } from '@/lib/supabase'
 
 export default function SettingsPage() {
@@ -15,6 +15,9 @@ export default function SettingsPage() {
   const [contactEmail, setContactEmail] = useState('ops@memzent.io')
   const [saved, setSaved] = useState(false)
   const [members, setMembers] = useState<any[]>([])
+  const [defaultProvider, setDefaultProvider] = useState('')
+  const [defaultModel, setDefaultModel] = useState('')
+  const [providers, setProviders] = useState<any[]>([])
 
   useEffect(() => {
     async function load() {
@@ -46,8 +49,18 @@ export default function SettingsPage() {
             if (profile) {
               setOrgName(profile.name || '')
               setContactEmail(profile.contact_email || user.email || '')
+              setDefaultProvider(profile.default_provider || '')
+              setDefaultModel(profile.default_model || '')
             }
           } catch { }
+
+          // Load providers
+          try {
+            const provs = await getMemzentProviders()
+            setProviders(provs || [])
+          } catch (e) {
+            console.error('Failed to load providers:', e)
+          }
         } else {
           setOrgId(user.id)
           setOrgName(user.user_metadata?.full_name || user.email?.split('@')[0] || 'Personal')
@@ -62,7 +75,12 @@ export default function SettingsPage() {
     if (!orgId) return
     setLoading(true)
     try {
-      await updateOrgProfile(orgId, { name: orgName, contact_email: contactEmail })
+      await updateOrgProfile(orgId, {
+        name: orgName,
+        contact_email: contactEmail,
+        default_provider: defaultProvider || null,
+        default_model: defaultModel || null
+      })
       setSaved(true)
       setTimeout(() => setSaved(false), 3000)
     } catch (e) {
@@ -150,6 +168,64 @@ export default function SettingsPage() {
                       value={contactEmail}
                       onChange={(e) => setContactEmail(e.target.value)}
                     />
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-6 mb-8 pb-6 border-b border-white/5 mt-12">
+                  <div className="w-14 h-14 rounded-2xl bg-memzent-glow/10 border border-memzent-glow/20 flex items-center justify-center text-memzent-glow shadow-[0_0_15px_rgba(0,243,255,0.2)]">
+                    <Zap size={28} />
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-black tracking-tight uppercase italic leading-none">Neural Model Routing</h3>
+                    <p className="text-[10px] font-bold text-white/50 uppercase tracking-widest mt-1">Default Fallback Provider & Model Preferences</p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-10">
+                  <div className="space-y-3">
+                    <label className="text-[10px] font-black uppercase tracking-widest text-white/40 italic pl-1">Default Provider</label>
+                    <select
+                      className="w-full bg-black/40 border border-white/10 rounded-2xl px-5 py-4 text-sm font-bold text-white focus:border-memzent-glow outline-none transition-all shadow-inner"
+                      value={defaultProvider}
+                      onChange={(e) => {
+                        setDefaultProvider(e.target.value)
+                        const prov = providers.find(p => p.name === e.target.value)
+                        if (prov) {
+                          setDefaultModel(prov.default_model || prov.supported_models?.[0] || '')
+                        } else {
+                          setDefaultModel('')
+                        }
+                      }}
+                    >
+                      <option value="" className="bg-[#141414] text-white/60">System default (configured by admin)</option>
+                      {providers.map((p) => (
+                        <option key={p.name} value={p.name} className="bg-[#141414] text-white">
+                          {p.name.toUpperCase()}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="space-y-3">
+                    <label className="text-[10px] font-black uppercase tracking-widest text-white/40 italic pl-1">Default Model</label>
+                    <select
+                      className="w-full bg-black/40 border border-white/10 rounded-2xl px-5 py-4 text-sm font-bold text-white focus:border-memzent-glow outline-none transition-all shadow-inner"
+                      value={defaultModel}
+                      onChange={(e) => setDefaultModel(e.target.value)}
+                      disabled={!defaultProvider}
+                    >
+                      {!defaultProvider ? (
+                        <option value="" className="bg-[#141414] text-white/60">Select a provider first</option>
+                      ) : (
+                        <>
+                          <option value="" className="bg-[#141414] text-white/60">Provider default model</option>
+                          {(providers.find(p => p.name === defaultProvider)?.supported_models || []).map((m: string) => (
+                            <option key={m} value={m} className="bg-[#141414] text-white">
+                              {m}
+                            </option>
+                          ))}
+                        </>
+                      )}
+                    </select>
                   </div>
                 </div>
 

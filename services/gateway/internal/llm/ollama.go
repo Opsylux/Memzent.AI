@@ -6,12 +6,16 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"sync"
 )
 
 // OllamaProvider interfaces with a local instance of the open-source Ollama engine
 type OllamaProvider struct {
 	BaseURL string
 	Model   string
+
+	mu              sync.RWMutex
+	supportedModels []string
 }
 
 func NewOllamaProvider(baseURL, model string) Provider {
@@ -27,11 +31,60 @@ func NewOllamaProvider(baseURL, model string) Provider {
 func (o *OllamaProvider) GetProviderName() string { return "Ollama (" + o.Model + ")" }
 
 func (o *OllamaProvider) GetMetadata() ProviderMetadata {
+	o.mu.RLock()
+	defer o.mu.RUnlock()
+
+	models := o.supportedModels
+	if len(models) == 0 {
+		models = []string{o.Model, "llama3", "mistral", "phi3"}
+	}
 	return ProviderMetadata{
 		Name:            "ollama",
 		DefaultModel:    o.Model,
-		SupportedModels: []string{o.Model, "llama3", "mistral", "phi3"},
+		SupportedModels: models,
 	}
+}
+
+func (o *OllamaProvider) DiscoverModels(ctx context.Context) ([]string, error) {
+	url := fmt.Sprintf("%s/api/tags", o.BaseURL)
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("ollama models list error: status %d", resp.StatusCode)
+	}
+
+	var res struct {
+		Models []struct {
+			Name string `json:"name"`
+		} `json:"models"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&res); err != nil {
+		return nil, err
+	}
+
+	var models []string
+	for _, m := range res.Models {
+		models = append(models, m.Name)
+	}
+
+	if len(models) == 0 {
+		models = []string{o.Model, "llama3", "mistral", "phi3"}
+	}
+
+	o.mu.Lock()
+	o.supportedModels = models
+	o.mu.Unlock()
+
+	return models, nil
 }
 
 func (o *OllamaProvider) Generate(ctx context.Context, messages []Message, tools []any, model string) (string, *TokenUsage, error) {
@@ -52,11 +105,15 @@ func (o *OllamaProvider) Generate(ctx context.Context, messages []Message, tools
 		apiMessages = append(apiMessages, map[string]string{"role": m.Role, "content": m.Content})
 	}
 
-	// 2. Prepare Ollama Request Body
 	reqBody := map[string]interface{}{
-		"model": activeModel,
+		"model":    activeModel,
 		"messages": apiMessages,
-		"stream": false, // We want the full block before returning to the Go engine
+		"stream":   false,
+		// Keep the model loaded in VRAM indefinitely between requests.
+		// Without this Ollama defaults to a 5-minute TTL and evicts the model,
+		// causing a 2.5-2.7s cold-load penalty on the next request.
+		// -1 means "never unload until Ollama is restarted".
+		"keep_alive": -1,
 	}
 
 	jsonBody, err := json.Marshal(reqBody)
@@ -64,7 +121,6 @@ func (o *OllamaProvider) Generate(ctx context.Context, messages []Message, tools
 		return "", nil, fmt.Errorf("failed to marshal ollama request: %w", err)
 	}
 
-	// 3. Dispatch the external API call
 	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(jsonBody))
 	if err != nil {
 		return "", nil, err
@@ -81,7 +137,6 @@ func (o *OllamaProvider) Generate(ctx context.Context, messages []Message, tools
 		return "", nil, fmt.Errorf("ollama API error: received status %d", resp.StatusCode)
 	}
 
-	// 4. Decode Response (Ollama format)
 	var result struct {
 		Message struct {
 			Content string `json:"content"`

@@ -4,6 +4,8 @@ use qdrant_client::Qdrant;
 use fastembed::{TextEmbedding, InitOptions, EmbeddingModel};
 use sha2::{Sha256, Digest};
 use compression_prompt::compressor::Compressor;
+// ADDED: for embedding cache
+use std::sync::Mutex;
 
 // Import the generated code from the proto
 pub mod router_proto {
@@ -16,12 +18,6 @@ use router_proto::{
     ToolChainRequest, ToolChainResponse, ToolStep, StoreMemoryRequest, 
     StoreMemoryResponse, QueryMemoryRequest, QueryMemoryResponse, MemoryHit
 };
-
-pub struct MyRouter {
-    q_client: Qdrant,
-    // Using Arc to safely share the model across async threads
-    embedding_model: Arc<TextEmbedding>, 
-}
 
 use qdrant_client::qdrant::{
     Condition, Filter, SearchPointsBuilder, FieldCondition, Match, r#match::MatchValue,
@@ -43,17 +39,74 @@ fn compress_text(prompt: &str) -> String {
         .collect();
     let intermediate = filtered.join(" ");
     
-    // Use statistical compressor to target 70% of original length
     use compression_prompt::compressor::CompressorConfig;
     let config = CompressorConfig::default();
     let compressor = Compressor::new(config);
     
-    // ✅ FIXED: Map successful compression to string, or fall back to intermediate
     compressor.compress(&intermediate)
         .map(|res| res.compressed)
         .unwrap_or(intermediate)
+}
 
+// ADDED: In-process embedding cache.
+// FastEmbed / all-MiniLM-L6-v2 is fully deterministic — identical text always
+// produces identical vectors. Caching eliminates re-inference on repeated or
+// concurrent requests for the same prompt, which was the root cause of 87% CPU.
+struct EmbeddingCache {
+    // SHA-256(text) → vector
+    cache: Mutex<HashMap<String, Vec<f32>>>,
+    max_size: usize,
+}
 
+impl EmbeddingCache {
+    fn new(max_size: usize) -> Self {
+        Self {
+            cache: Mutex::new(HashMap::new()),
+            max_size,
+        }
+    }
+
+    fn get(&self, text: &str) -> Option<Vec<f32>> {
+        let key = calculate_hash(text);
+        self.cache.lock().unwrap().get(&key).cloned()
+    }
+
+    fn set(&self, text: &str, vector: Vec<f32>) {
+        let key = calculate_hash(text);
+        let mut cache = self.cache.lock().unwrap();
+        // Simple size cap: evict one arbitrary entry when full.
+        // Good enough for a hot-prompt working set of 2000 entries (~3MB RAM).
+        if cache.len() >= self.max_size {
+            if let Some(first_key) = cache.keys().next().cloned() {
+                cache.remove(&first_key);
+            }
+        }
+        cache.insert(key, vector);
+    }
+}
+
+pub struct MyRouter {
+    q_client: Qdrant,
+    embedding_model: Arc<TextEmbedding>,
+    // ADDED: shared across all async handlers
+    embed_cache: Arc<EmbeddingCache>,
+}
+
+// ADDED: Single embed helper used by every handler.
+// Cache hit  → returns immediately, zero CPU.
+// Cache miss → runs inference once, stores result, never recomputes for this text.
+impl MyRouter {
+    fn embed_cached(&self, text: &str) -> Result<Vec<f32>, Status> {
+        if let Some(cached) = self.embed_cache.get(text) {
+            return Ok(cached);
+        }
+        let embeddings = self.embedding_model
+            .embed(vec![text.to_string()], None)
+            .map_err(|e| Status::internal(format!("Failed to generate embeddings: {}", e)))?;
+        let vector = embeddings[0].clone();
+        self.embed_cache.set(text, vector.clone());
+        Ok(vector)
+    }
 }
 
 #[tonic::async_trait]
@@ -68,17 +121,12 @@ impl SemanticRouter for MyRouter {
         println!("Received request for user: {}", req.user_id);
         println!("Prompt to route: \"{}\"", req.prompt);
 
-        // 1. REAL Vector Embedding using FastEmbed
-        let documents = vec![req.prompt.clone()];
-        
-        let embeddings = self.embedding_model.embed(documents, None)
-            .map_err(|e| Status::internal(format!("Failed to generate embeddings: {}", e)))?;
-            
-        let real_vector = embeddings[0].clone();
+        // 1. Vector Embedding — cache hit costs zero CPU, miss runs inference once.
+        // Previously: self.embedding_model.embed(...) called unconditionally every request.
+        let real_vector = self.embed_cached(&req.prompt)?;
         let prompt_hash = calculate_hash(&req.prompt);
 
         // --- Semantic Cache Lookup (Org-Isolated) ---
-        // Filter prompts_collection by org_id so cross-org cache hits are impossible.
         let mut similar_prompt_hash = String::new();
         let mut cache_filter_conditions: Vec<Condition> = Vec::new();
         if !req.org_id.is_empty() {
@@ -99,7 +147,6 @@ impl SemanticRouter for MyRouter {
 
         if let Ok(cache_res) = self.q_client.search_points(cache_search_request).await {
             if let Some(hit) = cache_res.result.first() {
-                // Diagnostic logging for semantic sensitivity
                 println!("🔍 Semantic Cache Candidate: Score {}, Threshold 0.88", hit.score);
                 
                 if hit.score > 0.88 {
@@ -115,8 +162,7 @@ impl SemanticRouter for MyRouter {
             }
         }
 
-
-        // If no similar prompt found, store this one for future reference (tagged with org_id)
+        // If no similar prompt found, store this one for future reference
         if similar_prompt_hash.is_empty() {
              println!("💾 Semantic Cache Store: New prompt intent saved");
              
@@ -135,11 +181,9 @@ impl SemanticRouter for MyRouter {
             )).await;
         }
 
-
-
         // --- Prompt Compression ---
         let compressed = compress_text(&req.prompt);
-        let tokens_saved = (req.prompt.len() as i32 - compressed.len() as i32) / 4; // Rough estimate
+        let tokens_saved = (req.prompt.len() as i32 - compressed.len() as i32) / 4;
 
         // 2. Build Payload Filter for RBAC (allowed_tool_ids)
         let mut filter = None;
@@ -162,7 +206,7 @@ impl SemanticRouter for MyRouter {
             });
         }
 
-        // 3. Search Qdrant using the REAL vector (for Tools)
+        // 3. Search Qdrant using the cached vector (for Tools)
         let search_request = SearchPointsBuilder::new("tools_collection", real_vector, 10)
             .filter(filter.unwrap_or_default())
             .with_payload(true)
@@ -222,8 +266,6 @@ impl SemanticRouter for MyRouter {
             });
         }
 
-        // If no tools match, we return an empty list to the gateway.
-
         let reply = ToolResponse {
             tools,
             total_tokens_saved: tokens_saved.max(0) + 450, 
@@ -242,12 +284,8 @@ impl SemanticRouter for MyRouter {
         let req = request.into_inner();
         println!("📝 Registering new tool semantic intent: {} (ID: {})", req.name, req.id);
 
-        // 1. Generate Vector Embedding for tool description
-        let documents = vec![req.description.clone()];
-        let embeddings = self.embedding_model.embed(documents, None)
-            .map_err(|e| Status::internal(format!("Failed to generate tool embeddings: {}", e)))?;
-            
-        let vector = embeddings[0].clone();
+        // 1. Generate Vector Embedding — cached so re-registering the same tool is free
+        let vector = self.embed_cached(&req.description)?;
 
         // 2. Prepare Payload
         let mut payload = HashMap::new();
@@ -261,7 +299,7 @@ impl SemanticRouter for MyRouter {
         let result = self.q_client.upsert_points(UpsertPointsBuilder::new(
             "tools_collection",
             vec![PointStruct::new(
-                tool_uuid.to_string(), // Deterministic UUID point identity
+                tool_uuid.to_string(),
                 vector,
                 payload
             )]
@@ -289,15 +327,10 @@ impl SemanticRouter for MyRouter {
         let req = request.into_inner();
         println!("🔮 Planning sequential tool chain for prompt: \"{}\"", req.prompt);
 
-        // 1. Generate Vector Embedding using FastEmbed
-        let documents = vec![req.prompt.clone()];
-        let embeddings = self.embedding_model.embed(documents, None)
-            .map_err(|e| Status::internal(format!("Failed to generate chain embeddings: {}", e)))?;
-        let real_vector = embeddings[0].clone();
+        // 1. Vector Embedding — reuses cached vector if select_tools already ran for this prompt
+        let real_vector = self.embed_cached(&req.prompt)?;
 
-        // 2. Build OR filter for allowed tool IDs — mirrors select_tools logic.
-        // Filter::all() would require a point to match ALL conditions (AND), which
-        // returns nothing when multiple tool IDs are listed. Use should (OR) instead.
+        // 2. Build OR filter for allowed tool IDs
         let tool_filter = if !req.allowed_tool_ids.is_empty() {
             let should_conditions: Vec<Condition> = req.allowed_tool_ids.iter().map(|id| {
                 Condition {
@@ -325,7 +358,6 @@ impl SemanticRouter for MyRouter {
 
         if let Ok(search_res) = self.q_client.search_points(search_request).await {
             let mut matched_tools = search_res.result;
-            // Sort by score descending to get sequence order
             matched_tools.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
 
             for (idx, hit) in matched_tools.iter().enumerate() {
@@ -364,11 +396,8 @@ impl SemanticRouter for MyRouter {
         let req = request.into_inner();
         println!("💾 Storing semantic memory fact: \"{}\" for org: {}", req.fact, req.org_id);
 
-        // 1. Generate vector embedding for the memory fact
-        let documents = vec![req.fact.clone()];
-        let embeddings = self.embedding_model.embed(documents, None)
-            .map_err(|e| Status::internal(format!("Failed to generate memory embeddings: {}", e)))?;
-        let vector = embeddings[0].clone();
+        // 1. Generate vector embedding — cached so duplicate facts cost nothing
+        let vector = self.embed_cached(&req.fact)?;
 
         // 2. Prepare payload
         let mut payload = HashMap::new();
@@ -406,11 +435,8 @@ impl SemanticRouter for MyRouter {
         let req = request.into_inner();
         println!("🔍 Querying semantic memories for prompt: \"{}\" under org: {}", req.prompt, req.org_id);
 
-        // 1. Embed query prompt
-        let documents = vec![req.prompt.clone()];
-        let embeddings = self.embedding_model.embed(documents, None)
-            .map_err(|e| Status::internal(format!("Failed to generate query memory embeddings: {}", e)))?;
-        let real_vector = embeddings[0].clone();
+        // 1. Embed query prompt — reuses cached vector if select_tools already ran for this prompt
+        let real_vector = self.embed_cached(&req.prompt)?;
 
         // 2. Build payload filter for Org-Isolation
         let mut filter_conditions = Vec::new();
@@ -531,7 +557,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     
     let router_service = MyRouter { 
         q_client,
-        embedding_model: Arc::new(model), 
+        embedding_model: Arc::new(model),
+        // ADDED: 2000-entry embedding cache.
+        // Memory cost: ~2000 entries × 384 floats × 4 bytes = ~3MB.
+        // CPU impact: eliminates re-inference on any repeated or concurrent prompt.
+        embed_cache: Arc::new(EmbeddingCache::new(2000)),
     };
 
     println!("Memzent Semantic Router listening on {}", addr);

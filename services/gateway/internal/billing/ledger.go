@@ -14,6 +14,42 @@ func NewLedger(db *sql.DB) *Ledger {
 	return &Ledger{db: db}
 }
 
+type OrgSettings struct {
+	TokenBalance    float64
+	DefaultProvider string
+	DefaultModel    string
+}
+
+// GetOrgSettings retrieves organization preferences and balance details
+func (l *Ledger) GetOrgSettings(ctx context.Context, orgID string) (*OrgSettings, error) {
+	if orgID == "default" || orgID == "" {
+		return &OrgSettings{TokenBalance: 999999.0}, nil
+	}
+
+	var balance float64
+	var defaultProvider sql.NullString
+	var defaultModel sql.NullString
+
+	query := `
+		SELECT COALESCE(token_balance, 0), default_provider, default_model
+		FROM organizations
+		WHERE id = $1
+	`
+	err := l.db.QueryRowContext(ctx, query, orgID).Scan(&balance, &defaultProvider, &defaultModel)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, fmt.Errorf("organization not found: %s", orgID)
+		}
+		return nil, err
+	}
+
+	return &OrgSettings{
+		TokenBalance:    balance,
+		DefaultProvider: defaultProvider.String,
+		DefaultModel:    defaultModel.String,
+	}, nil
+}
+
 // HasSufficientBalance checks if the org has a token balance > 0
 func (l *Ledger) HasSufficientBalance(ctx context.Context, orgID string) (bool, error) {
 	if orgID == "default" || orgID == "" {

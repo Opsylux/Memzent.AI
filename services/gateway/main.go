@@ -286,6 +286,10 @@ func main() {
 	// in long-running multi-tenant deployments (one entry per orgID:userID pair).
 	memzentEngine.StartRateLimiterEviction(ctx)
 
+	// Start background model discovery for all registered LLM providers
+	memzentEngine.StartModelDiscovery(ctx)
+
+
 	// 8.0 Start Tool Registry Refresh Loop (Phase 2: Dynamic Tool Sync)
 	// Every 30 seconds, check Postgres for drifted tools and push them to Qdrant.
 	if toolRegistry != nil {

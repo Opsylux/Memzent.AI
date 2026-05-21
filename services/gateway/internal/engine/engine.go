@@ -27,13 +27,13 @@ import (
 
 // PromptRequest defines the incoming user payload
 type PromptRequest struct {
-	UserID    string        `json:"user_id"`
-	SessionID string        `json:"session_id,omitempty"`
+	UserID    string       `json:"user_id"`
+	SessionID string       `json:"session_id,omitempty"`
 	Messages  []lp.Message `json:"messages"`
-	Provider  string `json:"provider,omitempty"`  // e.g. "ollama", "openai", "anthropic", "gemini"
-	Model     string `json:"model,omitempty"`     // optional per-request model override
-	SkipCache bool   `json:"skip_cache,omitempty"` // set by X-Skip-Cache header
-	Stream    bool   `json:"stream,omitempty"`
+	Provider  string       `json:"provider,omitempty"`   // e.g. "ollama", "openai", "anthropic", "gemini"
+	Model     string       `json:"model,omitempty"`      // optional per-request model override
+	SkipCache bool         `json:"skip_cache,omitempty"` // set by X-Skip-Cache header
+	Stream    bool         `json:"stream,omitempty"`
 }
 
 // PromptResponse defines the gateway's response to the client
@@ -54,20 +54,20 @@ type rateLimiterEntry struct {
 
 // MemzentEngine orchestrates the flow between Cache, RBAC, Router, MCP, and LLM
 type MemzentEngine struct {
-	cache               *cch.MemzentCache
-	router              *rtr.RouterClient
-	rbac                *auth.RBACClient
-	ledger              *billing.Ledger
-	costCalc            *billing.CostCalculator
-	providers           map[string]lp.Provider // keyed by provider name e.g. "ollama"
-	defaultProvider     string                 // key used when no X-Memzent-Provider header is set
-	mcp                 *mc.MCPClient
-	registry            *toolspkg.Registry             // Registry for user-provisioned tools
-	connectorRegistry   *connectors.ConnectorRegistry // Core/Native connectors
-	toolThreshold       float64
-	cacheTTL            time.Duration
-	rateLimiters        sync.Map // map[string]*rateLimiterEntry — evicted by background goroutine
-	auditLogger         *metrics.PersistentAuditLogger
+	cache             *cch.MemzentCache
+	router            *rtr.RouterClient
+	rbac              *auth.RBACClient
+	ledger            *billing.Ledger
+	costCalc          *billing.CostCalculator
+	providers         map[string]lp.Provider // keyed by provider name e.g. "ollama"
+	defaultProvider   string                 // key used when no X-Memzent-Provider header is set
+	mcp               *mc.MCPClient
+	registry          *toolspkg.Registry            // Registry for user-provisioned tools
+	connectorRegistry *connectors.ConnectorRegistry // Core/Native connectors
+	toolThreshold     float64
+	cacheTTL          time.Duration
+	rateLimiters      sync.Map // map[string]*rateLimiterEntry — evicted by background goroutine
+	auditLogger       *metrics.PersistentAuditLogger
 
 	// Memory & Telemetry extensions
 	sessionMgr *memory.SessionManager
@@ -139,6 +139,39 @@ func (e *MemzentEngine) StartRateLimiterEviction(ctx context.Context) {
 					}
 					return true
 				})
+			}
+		}
+	}()
+}
+
+// StartModelDiscovery kicks off the background model discovery loop for providers that support it.
+func (e *MemzentEngine) StartModelDiscovery(ctx context.Context) {
+	discover := func() {
+		for name, p := range e.providers {
+			if discoverer, ok := p.(lp.ModelDiscoverer); ok {
+				slog.Info("Running model discovery", "provider", name)
+				models, err := discoverer.DiscoverModels(ctx)
+				if err != nil {
+					slog.Warn("Model discovery failed", "provider", name, "error", err)
+				} else {
+					slog.Info("Model discovery succeeded", "provider", name, "models", models)
+				}
+			}
+		}
+	}
+
+	go func() {
+		// Run once on startup asynchronously to prevent blocking server launch
+		discover()
+
+		ticker := time.NewTicker(30 * time.Minute)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				discover()
 			}
 		}
 	}()
@@ -253,6 +286,16 @@ func (e *MemzentEngine) Process(ctx context.Context, req *PromptRequest) (*Promp
 	reqCounter, _ := e.orgRequests.LoadOrStore(orgID, &atomic.Uint64{})
 	reqCounter.(*atomic.Uint64).Add(1)
 
+	// Fetch organization settings and balance details
+	var settings *billing.OrgSettings
+	var settingsErr error
+	if e.ledger != nil {
+		settings, settingsErr = e.ledger.GetOrgSettings(ctx, orgID)
+		if settingsErr != nil {
+			slog.Error("Failed to fetch organization settings", "org_id", orgID, "error", settingsErr)
+		}
+	}
+
 	// Dynamic Rate Limiting Based on Tier
 	limit := 10.0 // Free default
 	if tier == "pro" {
@@ -261,17 +304,9 @@ func (e *MemzentEngine) Process(ctx context.Context, req *PromptRequest) (*Promp
 		limit = 1000.0
 	}
 
-	var hasBalance bool
-	var balanceErr error
-	checkedBalance := false
-
 	// Pay-as-you-go boost: if they have a positive token balance, promote rate limit from free (10) to pro (100)
-	if limit < 100.0 && e.ledger != nil {
-		hasBalance, balanceErr = e.ledger.HasSufficientBalance(ctx, orgID)
-		checkedBalance = true
-		if balanceErr == nil && hasBalance {
-			limit = 100.0
-		}
+	if limit < 100.0 && settings != nil && settings.TokenBalance > 0 {
+		limit = 100.0
 	}
 
 	limitKey := fmt.Sprintf("rl:%s:%s", orgID, req.UserID)
@@ -285,7 +320,7 @@ func (e *MemzentEngine) Process(ctx context.Context, req *PromptRequest) (*Promp
 
 	// Dynamically adjust the limit/burst if it has changed (e.g. tier upgrade or balance top-up)
 	if entry.limiter.Limit() != rate.Limit(limit/60) {
-		entry.limiter.SetLimit(rate.Limit(limit/60))
+		entry.limiter.SetLimit(rate.Limit(limit / 60))
 		entry.limiter.SetBurst(int(limit))
 	}
 
@@ -296,17 +331,10 @@ func (e *MemzentEngine) Process(ctx context.Context, req *PromptRequest) (*Promp
 	// A.1 Billing Pre-Check (Bypass check for internal dashboard sessions / JWT users)
 	authMethod, _ := ctx.Value("auth_method").(string)
 	if e.ledger != nil && authMethod != "jwt" {
-		var sufficient bool
-		var err error
-		if checkedBalance {
-			sufficient = hasBalance
-			err = balanceErr
-		} else {
-			sufficient, err = e.ledger.HasSufficientBalance(ctx, orgID)
-		}
-		if err != nil {
-			slog.Error("Billing ledger check failed", "error", err, "org_id", orgID)
-		} else if !sufficient {
+		if settingsErr != nil {
+			slog.Error("Billing ledger settings fetch failed, blocking transaction", "error", settingsErr, "org_id", orgID)
+			return nil, fmt.Errorf("internal server error: failed to verify organization profile")
+		} else if settings != nil && settings.TokenBalance <= 0 && orgID != "default" && orgID != "" {
 			slog.Warn("Organization out of tokens", "org_id", orgID)
 			return nil, fmt.Errorf("payment required: token balance depleted")
 		}
@@ -315,15 +343,23 @@ func (e *MemzentEngine) Process(ctx context.Context, req *PromptRequest) (*Promp
 	// Resolve selected provider and model for cache key partitioning
 	providerKey := req.Provider
 	if providerKey == "" {
-		providerKey = e.defaultProvider
+		if settings != nil && settings.DefaultProvider != "" {
+			providerKey = settings.DefaultProvider
+		} else {
+			providerKey = e.defaultProvider
+		}
 	}
 	selectedProvider, ok := e.providers[providerKey]
 	if !ok {
 		selectedProvider = e.providers[e.defaultProvider]
 	}
 	resolvedModel := req.Model
-	if resolvedModel == "" && selectedProvider != nil {
-		resolvedModel = selectedProvider.GetMetadata().DefaultModel
+	if resolvedModel == "" {
+		if settings != nil && settings.DefaultModel != "" {
+			resolvedModel = settings.DefaultModel
+		} else if selectedProvider != nil {
+			resolvedModel = selectedProvider.GetMetadata().DefaultModel
+		}
 	}
 	if resolvedModel == "" {
 		resolvedModel = "default"
@@ -360,7 +396,7 @@ func (e *MemzentEngine) Process(ctx context.Context, req *PromptRequest) (*Promp
 				}, map[string]interface{}{"prompt": queryPrompt, "stage": 1})
 			}
 			e.chargeCacheHit(ctx, orgID, req.Provider, req.Model, queryPrompt)
-			
+
 			// Append user message and cached response to chat session history
 			if req.SessionID != "" && e.sessionMgr != nil {
 				_ = e.sessionMgr.AppendMessage(ctx, req.SessionID, "user", queryPrompt)
@@ -490,9 +526,9 @@ func (e *MemzentEngine) Process(ctx context.Context, req *PromptRequest) (*Promp
 	// E. Tool Execution (Multi-Connector: Universal Provisioning & Chaining support)
 	var toolResults []string
 	useChaining := false
-	if len(tools) > 1 && (strings.Contains(strings.ToLower(queryPrompt), "then") || 
-		strings.Contains(strings.ToLower(queryPrompt), "after") || 
-		strings.Contains(strings.ToLower(queryPrompt), "sequence") || 
+	if len(tools) > 1 && (strings.Contains(strings.ToLower(queryPrompt), "then") ||
+		strings.Contains(strings.ToLower(queryPrompt), "after") ||
+		strings.Contains(strings.ToLower(queryPrompt), "sequence") ||
 		strings.Contains(strings.ToLower(queryPrompt), "chain") ||
 		strings.Contains(strings.ToLower(queryPrompt), "first")) {
 		useChaining = true
@@ -502,11 +538,11 @@ func (e *MemzentEngine) Process(ctx context.Context, req *PromptRequest) (*Promp
 		steps, confidence, err := e.router.PlanToolChain(ctx, queryPrompt, orgID, allowedTools)
 		if err == nil && len(steps) > 1 && confidence > 0.5 {
 			slog.Info("⛓️ Sequential tool chaining activated", "steps_count", len(steps), "confidence", confidence)
-			
+
 			var lastOutput string
 			for _, step := range steps {
 				slog.Info("Executing chain step", "order", step.StepOrder, "tool_name", step.ToolName)
-				
+
 				var toolMetadata *toolspkg.Tool
 				allTools, err := e.registry.ListTools(ctx, orgID)
 				if err == nil {
@@ -517,23 +553,23 @@ func (e *MemzentEngine) Process(ctx context.Context, req *PromptRequest) (*Promp
 						}
 					}
 				}
-				
+
 				if toolMetadata == nil {
 					slog.Warn("Chain tool not found in registry", "tool_name", step.ToolName)
 					continue
 				}
-				
+
 				stepPrompt := queryPrompt
 				if lastOutput != "" {
 					stepPrompt = fmt.Sprintf("%s\n\nPrevious step output context: %s", queryPrompt, lastOutput)
 				}
-				
+
 				inputs, err := e.fitToolParameters(ctx, selectedProvider, stepPrompt, toolMetadata)
 				if err != nil {
 					slog.Error("Failed to fit parameters for chain step", "tool_id", toolMetadata.ID, "error", err)
 					inputs = make(map[string]interface{})
 				}
-				
+
 				var connector connectors.Connector
 				switch toolMetadata.ConnectorType {
 				case "rest":
@@ -551,25 +587,25 @@ func (e *MemzentEngine) Process(ctx context.Context, req *PromptRequest) (*Promp
 						}
 					}
 				}
-				
+
 				if connector == nil {
 					slog.Warn("No connector available for chain tool", "tool_id", toolMetadata.ID)
 					continue
 				}
-				
+
 				execReq := &connectors.ExecutionRequest{
 					ToolID:  toolMetadata.ID,
 					UserID:  req.UserID,
 					Inputs:  inputs,
 					Timeout: toolMetadata.TimeoutSeconds,
 				}
-				
+
 				startTime := time.Now()
 				toolCtx, cancel := context.WithTimeout(ctx, time.Duration(toolMetadata.TimeoutSeconds+1)*time.Second)
 				execResp, err := connector.Execute(toolCtx, execReq)
 				cancel()
 				duration := time.Since(startTime)
-				
+
 				status := "success"
 				errMsg := ""
 				if err != nil {
@@ -580,11 +616,11 @@ func (e *MemzentEngine) Process(ctx context.Context, req *PromptRequest) (*Promp
 					status = "failure"
 					errMsg = fmt.Sprintf("%v", execResp.Data)
 				}
-				
+
 				if e.telemetry != nil {
 					e.telemetry.LogToolExecution(ctx, orgID, toolMetadata.ID, req.SessionID, int(duration.Milliseconds()), status, errMsg)
 				}
-				
+
 				if status == "success" && execResp.Data != nil {
 					lastOutput = fmt.Sprintf("%v", execResp.Data)
 					toolResults = append(toolResults, fmt.Sprintf("Step %d (%s): %s", step.StepOrder, toolMetadata.Name, lastOutput))
@@ -768,7 +804,7 @@ func (e *MemzentEngine) chargeCacheHit(ctx context.Context, orgID, provider, mod
 	if e.ledger != nil && e.costCalc != nil {
 		// Rough estimate: 1 token = ~4 chars
 		estimatedTokens := len(prompt) / 4
-		
+
 		providerName := provider
 		if providerName == "" {
 			providerName = e.defaultProvider
@@ -835,7 +871,7 @@ func (e *MemzentEngine) WarmCache(ctx context.Context) {
 	}
 
 	slog.Info("🔥 Pre-warming memory cache from PostgreSQL persistent B-Tree...")
-	
+
 	query := `
 		SELECT cache_key, response, expires_at 
 		FROM persistent_cache 
