@@ -15,6 +15,12 @@ service SemanticRouter {
 
   // Computes a sequence/chain of tools required for complex multi-step prompt execution
   rpc PlanToolChain (ToolChainRequest) returns (ToolChainResponse);
+
+  // Stores a memory fact in the semantic vector database
+  rpc StoreMemory (StoreMemoryRequest) returns (StoreMemoryResponse);
+
+  // Queries semantic memory facts for a prompt
+  rpc QueryMemory (QueryMemoryRequest) returns (QueryMemoryResponse);
 }
 
 message RegisterToolRequest {
@@ -71,5 +77,33 @@ message ToolChainResponse {
   repeated ToolStep steps = 1;
   float confidence_score = 2;
 }
+
+message StoreMemoryRequest {
+  string fact = 1;
+  string org_id = 2;
+  string user_id = 3;
+}
+
+message StoreMemoryResponse {
+  bool success = 1;
+  string error = 2;
+}
+
+message QueryMemoryRequest {
+  string prompt = 1;
+  string org_id = 2;
+  string user_id = 3;
+  float score_threshold_override = 4;
+}
+
+message MemoryHit {
+  string fact = 1;
+  float relevance_score = 2;
+}
+
+message QueryMemoryResponse {
+  repeated MemoryHit memories = 1;
+}
+
 
 

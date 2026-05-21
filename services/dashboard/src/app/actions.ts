@@ -67,7 +67,7 @@ export async function getMemzentStats(orgId?: string) {
     }
 }
 
-export async function executeMemzentPrompt(messages: {role: string, content: string}[], orgId?: string) {
+export async function executeMemzentPrompt(messages: {role: string, content: string}[], sessionId?: string, orgId?: string) {
     try {
         const headers = await gatewayHeaders(orgId)
         headers["X-Request-ID"] = crypto.randomUUID()
@@ -76,6 +76,7 @@ export async function executeMemzentPrompt(messages: {role: string, content: str
             headers,
             body: JSON.stringify({
                 messages: messages,
+                session_id: sessionId,
             }),
             cache: 'no-store'
         });
@@ -336,5 +337,114 @@ export async function createCheckoutSession(orgId: string, payload: { tier?: str
     } catch (e: any) {
         console.error("Gateway checkout failed", e);
         throw new Error(e.message);
+    }
+}
+
+// ─── Sessions API ──────────────────────────────────────────────────────────
+
+export async function getSessions(orgId?: string) {
+    try {
+        const headers = await gatewayHeaders(orgId)
+        const res = await fetch(`${GATEWAY_URL}/v1/sessions`, {
+            method: "GET",
+            headers,
+            cache: 'no-store'
+        });
+
+        if (!res.ok) return [];
+        return res.json();
+    } catch (e) {
+        console.error("Gateway sessions fetch failed", e);
+        return [];
+    }
+}
+
+export async function createSession(orgId: string, title?: string) {
+    try {
+        const headers = await gatewayHeaders(orgId)
+        const res = await fetch(`${GATEWAY_URL}/v1/sessions`, {
+            method: "POST",
+            headers,
+            body: JSON.stringify({ title: title || "New Conversation" }),
+            cache: 'no-store'
+        });
+
+        if (!res.ok) {
+            const err = await res.text();
+            throw new Error(err || "Failed to create session");
+        }
+
+        return res.json();
+    } catch (e: any) {
+        console.error("Gateway session creation failed", e);
+        throw new Error(e.message);
+    }
+}
+
+export async function getSessionMessages(sessionId: string, orgId?: string) {
+    try {
+        const headers = await gatewayHeaders(orgId)
+        const res = await fetch(`${GATEWAY_URL}/v1/sessions/${sessionId}/messages`, {
+            method: "GET",
+            headers,
+            cache: 'no-store'
+        });
+
+        if (!res.ok) return [];
+        return res.json();
+    } catch (e) {
+        console.error("Gateway session messages fetch failed", e);
+        return [];
+    }
+}
+
+export async function deleteSession(sessionId: string, orgId?: string) {
+    try {
+        const headers = await gatewayHeaders(orgId)
+        const res = await fetch(`${GATEWAY_URL}/v1/sessions/${sessionId}`, {
+            method: "DELETE",
+            headers,
+            cache: 'no-store'
+        });
+
+        if (!res.ok) {
+            const err = await res.text();
+            throw new Error(err || "Failed to delete session");
+        }
+
+        return res.json();
+    } catch (e: any) {
+        console.error("Gateway session deletion failed", e);
+        throw new Error(e.message);
+    }
+}
+
+// ─── Context Analytics API ─────────────────────────────────────────────────
+
+export async function getContextAnalytics(orgId?: string) {
+    try {
+        const headers = await gatewayHeaders(orgId)
+        const res = await fetch(`${GATEWAY_URL}/v1/analytics/context`, {
+            method: "GET",
+            headers,
+            cache: 'no-store'
+        });
+
+        if (!res.ok) {
+            return {
+                tool_metrics: [],
+                savings_roi: { cache_hits: 0, estimated_saved: 0, llm_cost: 0, net_roi: 0 },
+                semantic_clusters: []
+            };
+        }
+
+        return res.json();
+    } catch (e) {
+        console.error("Gateway context analytics fetch failed", e);
+        return {
+            tool_metrics: [],
+            savings_roi: { cache_hits: 0, estimated_saved: 0, llm_cost: 0, net_roi: 0 },
+            semantic_clusters: []
+        };
     }
 }

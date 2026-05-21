@@ -17,7 +17,7 @@ export function RoutingVisualizer({ steps, orgId }: { steps?: any[], orgId?: str
         setTraceResult(null);
 
         try {
-            const res = await executeMemzentPrompt(prompt, orgId);
+            const res = await executeMemzentPrompt([{ role: 'user', content: prompt.trim() }], undefined, orgId);
             setTraceResult(res);
         } catch (err: any) {
             console.error(err);

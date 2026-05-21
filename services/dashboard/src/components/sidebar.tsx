@@ -22,6 +22,7 @@ import { supabase } from '@/lib/supabase'
 
 const navItems = [
   { name: 'Overview', href: '/', icon: LayoutDashboard },
+  { name: 'Analytics', href: '/analytics', icon: Activity },
   { name: 'Playground', href: '/playground', icon: FlaskConical },
   { name: 'Memzent Tools', href: '/tools', icon: Database },
   { name: 'Providers', href: '/providers', icon: Cpu },

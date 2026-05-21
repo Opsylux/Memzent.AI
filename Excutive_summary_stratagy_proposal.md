@@ -191,7 +191,7 @@ The improvements below are sequenced by defensibility and impact. Each one eithe
 * *Estimated effort:* 1 week. Qdrant configuration updates + migration script.
 
 #### C. Open-Source Under Apache 2.0
-* Push the gateway core to GitHub as a public repo under the Memzent.AI brand. The repo is currently named `AuraMCP` — rename to `memzent` before publishing.
+* Push the gateway core to GitHub as a public repo under the Memzent.AI brand.
 * **Strategic Boundary:** Open-source the gateway core, Rust router, and MCP server adapter. Keep the billing ledger package, federated cache pooling, and custom ML router as commercial enterprise modules (under a BSL or AGPL licence). Define this split with build tags or separate repos before the push — the billing package currently lives in the same workspace tree.
 * Write a robust README with system architecture diagrams, one-command Docker Compose deployment, and rich API examples.
 * Post to Hacker News (*Show HN*), *r/LocalLLaMA*, *r/MachineLearning*, and Anthropic's *MCP Discord*.

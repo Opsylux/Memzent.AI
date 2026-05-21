@@ -23,6 +23,7 @@ import (
 	"memzent-gateway/internal/engine"
 	"memzent-gateway/internal/llm"
 	"memzent-gateway/internal/mcp"
+	"memzent-gateway/internal/memory"
 	"memzent-gateway/internal/metrics"
 	"memzent-gateway/internal/router"
 	"memzent-gateway/internal/tools"
@@ -249,6 +250,18 @@ func main() {
 		slog.Info("Billing Ledger initialized with Postgres")
 	}
 
+	// 7.8 Initialize memory and telemetry services
+	var sessionMgr *memory.SessionManager
+	var memoryMgr *memory.MemoryManager
+	var telemetry *metrics.TelemetryAggregator
+
+	if rbacClient != nil {
+		sessionMgr = memory.NewSessionManager(rbacClient.GetDB())
+		memoryMgr = memory.NewMemoryManager(rClient, providers, defaultProvider)
+		telemetry = metrics.NewTelemetryAggregator(rbacClient.GetDB())
+		slog.Info("Memory & Context Telemetry Services initialized with Postgres")
+	}
+
 	// 8. Initialize Engine
 	memzentEngine := engine.NewMemzentEngine(
 		vCache,
@@ -264,6 +277,9 @@ func main() {
 		cfg.ToolRelevanceThreshold,
 		cfg.LLMCacheTTL,
 		auditLogger,
+		sessionMgr,
+		memoryMgr,
+		telemetry,
 	)
 
 	// 8.0a Start rate limiter TTL eviction — prevents unbounded memory growth
@@ -552,6 +568,116 @@ func main() {
 	})))
 
 	mux.Handle("/v1/billing/checkout", middleware(http.HandlerFunc(stripeHandler.CreateCheckoutSession)))
+
+	// Sessions API
+	mux.Handle("/v1/sessions", middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		orgID, _ := r.Context().Value("org_id").(string)
+		userID, _ := r.Context().Value("user_id").(string)
+
+		if r.Method == http.MethodPost {
+			var body struct {
+				Title string `json:"title"`
+			}
+			_ = json.NewDecoder(r.Body).Decode(&body)
+
+			sessionID, err := sessionMgr.CreateSession(r.Context(), orgID, userID, body.Title)
+			if err != nil {
+				slog.Error("Failed to create session", "error", err)
+				w.WriteHeader(http.StatusInternalServerError)
+				json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+				return
+			}
+
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]string{"session_id": sessionID})
+			return
+		}
+
+		if r.Method == http.MethodGet {
+			sessions, err := sessionMgr.ListSessions(r.Context(), orgID)
+			if err != nil {
+				slog.Error("Failed to list sessions", "error", err)
+				w.WriteHeader(http.StatusInternalServerError)
+				json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+				return
+			}
+
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(sessions)
+			return
+		}
+
+		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+	})))
+
+	mux.Handle("/v1/sessions/{id}/messages", middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		sessionID := r.PathValue("id")
+		if sessionID == "" {
+			http.Error(w, "Missing session ID", http.StatusBadRequest)
+			return
+		}
+
+		messages, err := sessionMgr.GetSessionMessages(r.Context(), sessionID, 50)
+		if err != nil {
+			slog.Error("Failed to fetch session messages", "session_id", sessionID, "error", err)
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(messages)
+	})))
+
+	mux.Handle("/v1/sessions/{id}", middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodDelete {
+			http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		sessionID := r.PathValue("id")
+		if sessionID == "" {
+			http.Error(w, "Missing session ID", http.StatusBadRequest)
+			return
+		}
+
+		err := sessionMgr.DeleteSession(r.Context(), sessionID)
+		if err != nil {
+			slog.Error("Failed to delete session", "session_id", sessionID, "error", err)
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"status": "deleted"})
+	})))
+
+	// Context Analytics API
+	mux.Handle("/v1/analytics/context", middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		orgID, _ := r.Context().Value("org_id").(string)
+
+		analyticsRes, err := telemetry.GetContextAnalytics(r.Context(), orgID)
+		if err != nil {
+			slog.Error("Failed to aggregate context analytics", "org_id", orgID, "error", err)
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(analyticsRes)
+	})))
 
 	// Providers API (Model Discovery)
 	mux.Handle("/v1/providers", middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
