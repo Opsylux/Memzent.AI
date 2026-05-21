@@ -6,12 +6,16 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"sync"
 )
 
 // OllamaProvider interfaces with a local instance of the open-source Ollama engine
 type OllamaProvider struct {
 	BaseURL string
 	Model   string
+
+	mu              sync.RWMutex
+	supportedModels []string
 }
 
 func NewOllamaProvider(baseURL, model string) Provider {
@@ -27,11 +31,60 @@ func NewOllamaProvider(baseURL, model string) Provider {
 func (o *OllamaProvider) GetProviderName() string { return "Ollama (" + o.Model + ")" }
 
 func (o *OllamaProvider) GetMetadata() ProviderMetadata {
+	o.mu.RLock()
+	defer o.mu.RUnlock()
+
+	models := o.supportedModels
+	if len(models) == 0 {
+		models = []string{o.Model, "llama3", "mistral", "phi3"}
+	}
 	return ProviderMetadata{
 		Name:            "ollama",
 		DefaultModel:    o.Model,
-		SupportedModels: []string{o.Model, "llama3", "mistral", "phi3"},
+		SupportedModels: models,
 	}
+}
+
+func (o *OllamaProvider) DiscoverModels(ctx context.Context) ([]string, error) {
+	url := fmt.Sprintf("%s/api/tags", o.BaseURL)
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("ollama models list error: status %d", resp.StatusCode)
+	}
+
+	var res struct {
+		Models []struct {
+			Name string `json:"name"`
+		} `json:"models"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&res); err != nil {
+		return nil, err
+	}
+
+	var models []string
+	for _, m := range res.Models {
+		models = append(models, m.Name)
+	}
+
+	if len(models) == 0 {
+		models = []string{o.Model, "llama3", "mistral", "phi3"}
+	}
+
+	o.mu.Lock()
+	o.supportedModels = models
+	o.mu.Unlock()
+
+	return models, nil
 }
 
 func (o *OllamaProvider) Generate(ctx context.Context, messages []Message, tools []any, model string) (string, *TokenUsage, error) {

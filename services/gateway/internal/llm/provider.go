@@ -20,6 +20,10 @@ type Provider interface {
 	GetMetadata() ProviderMetadata
 }
 
+type ModelDiscoverer interface {
+	DiscoverModels(ctx context.Context) ([]string, error)
+}
+
 type ProviderMetadata struct {
 	Name          string   `json:"name"`
 	DefaultModel  string   `json:"default_model"`

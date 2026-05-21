@@ -6,6 +6,7 @@ services:
     ports:
       - "6379:6379"
     command: [ "valkey-server", "--io-threads", "4" ]
+    #command: ["redis-server", "--maxmemory", "512mb", "--maxmemory-policy", "allkeys-lru"]
 
   # Memzent MCP Server (Go)
   mcp-server:

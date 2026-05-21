@@ -6,11 +6,16 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
+	"sync"
 )
 
 type OpenAIProvider struct {
 	APIKey string
 	Model  string
+
+	mu              sync.RWMutex
+	supportedModels []string
 }
 
 func NewOpenAIProvider(apiKey, model string) Provider {
@@ -23,11 +28,63 @@ func NewOpenAIProvider(apiKey, model string) Provider {
 func (o *OpenAIProvider) GetProviderName() string { return "OpenAI (" + o.Model + ")" }
 
 func (o *OpenAIProvider) GetMetadata() ProviderMetadata {
+	o.mu.RLock()
+	defer o.mu.RUnlock()
+
+	models := o.supportedModels
+	if len(models) == 0 {
+		models = []string{o.Model, "gpt-4", "gpt-4-turbo", "gpt-3.5-turbo"}
+	}
 	return ProviderMetadata{
 		Name:            "openai",
 		DefaultModel:    o.Model,
-		SupportedModels: []string{o.Model, "gpt-4", "gpt-4-turbo", "gpt-3.5-turbo"},
+		SupportedModels: models,
 	}
+}
+
+func (o *OpenAIProvider) DiscoverModels(ctx context.Context) ([]string, error) {
+	url := "https://api.openai.com/v1/models"
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+o.APIKey)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("openai models list error: status %d", resp.StatusCode)
+	}
+
+	var res struct {
+		Data []struct {
+			ID string `json:"id"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&res); err != nil {
+		return nil, err
+	}
+
+	var models []string
+	for _, m := range res.Data {
+		if strings.HasPrefix(m.ID, "gpt-") || strings.HasPrefix(m.ID, "o1-") || strings.HasPrefix(m.ID, "o3-") {
+			models = append(models, m.ID)
+		}
+	}
+
+	if len(models) == 0 {
+		models = []string{o.Model, "gpt-4", "gpt-4-turbo", "gpt-3.5-turbo"}
+	}
+
+	o.mu.Lock()
+	o.supportedModels = models
+	o.mu.Unlock()
+
+	return models, nil
 }
 
 func (o *OpenAIProvider) Generate(ctx context.Context, messages []Message, tools []any, model string) (string, *TokenUsage, error) {

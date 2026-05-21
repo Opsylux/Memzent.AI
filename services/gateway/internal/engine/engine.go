@@ -144,6 +144,39 @@ func (e *MemzentEngine) StartRateLimiterEviction(ctx context.Context) {
 	}()
 }
 
+// StartModelDiscovery kicks off the background model discovery loop for providers that support it.
+func (e *MemzentEngine) StartModelDiscovery(ctx context.Context) {
+	discover := func() {
+		for name, p := range e.providers {
+			if discoverer, ok := p.(lp.ModelDiscoverer); ok {
+				slog.Info("Running model discovery", "provider", name)
+				models, err := discoverer.DiscoverModels(ctx)
+				if err != nil {
+					slog.Warn("Model discovery failed", "provider", name, "error", err)
+				} else {
+					slog.Info("Model discovery succeeded", "provider", name, "models", models)
+				}
+			}
+		}
+	}
+
+	go func() {
+		// Run once on startup asynchronously to prevent blocking server launch
+		discover()
+
+		ticker := time.NewTicker(30 * time.Minute)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				discover()
+			}
+		}
+	}()
+}
+
 func (e *MemzentEngine) ActiveProviderNames() []string {
 	providers := make([]string, 0, len(e.providers))
 	for _, provider := range e.providers {
@@ -253,6 +286,16 @@ func (e *MemzentEngine) Process(ctx context.Context, req *PromptRequest) (*Promp
 	reqCounter, _ := e.orgRequests.LoadOrStore(orgID, &atomic.Uint64{})
 	reqCounter.(*atomic.Uint64).Add(1)
 
+	// Fetch organization settings and balance details
+	var settings *billing.OrgSettings
+	var settingsErr error
+	if e.ledger != nil {
+		settings, settingsErr = e.ledger.GetOrgSettings(ctx, orgID)
+		if settingsErr != nil {
+			slog.Error("Failed to fetch organization settings", "org_id", orgID, "error", settingsErr)
+		}
+	}
+
 	// Dynamic Rate Limiting Based on Tier
 	limit := 10.0 // Free default
 	if tier == "pro" {
@@ -261,17 +304,9 @@ func (e *MemzentEngine) Process(ctx context.Context, req *PromptRequest) (*Promp
 		limit = 1000.0
 	}
 
-	var hasBalance bool
-	var balanceErr error
-	checkedBalance := false
-
 	// Pay-as-you-go boost: if they have a positive token balance, promote rate limit from free (10) to pro (100)
-	if limit < 100.0 && e.ledger != nil {
-		hasBalance, balanceErr = e.ledger.HasSufficientBalance(ctx, orgID)
-		checkedBalance = true
-		if balanceErr == nil && hasBalance {
-			limit = 100.0
-		}
+	if limit < 100.0 && settings != nil && settings.TokenBalance > 0 {
+		limit = 100.0
 	}
 
 	limitKey := fmt.Sprintf("rl:%s:%s", orgID, req.UserID)
@@ -296,17 +331,10 @@ func (e *MemzentEngine) Process(ctx context.Context, req *PromptRequest) (*Promp
 	// A.1 Billing Pre-Check (Bypass check for internal dashboard sessions / JWT users)
 	authMethod, _ := ctx.Value("auth_method").(string)
 	if e.ledger != nil && authMethod != "jwt" {
-		var sufficient bool
-		var err error
-		if checkedBalance {
-			sufficient = hasBalance
-			err = balanceErr
-		} else {
-			sufficient, err = e.ledger.HasSufficientBalance(ctx, orgID)
-		}
-		if err != nil {
-			slog.Error("Billing ledger check failed", "error", err, "org_id", orgID)
-		} else if !sufficient {
+		if settingsErr != nil {
+			slog.Error("Billing ledger settings fetch failed, blocking transaction", "error", settingsErr, "org_id", orgID)
+			return nil, fmt.Errorf("internal server error: failed to verify organization profile")
+		} else if settings != nil && settings.TokenBalance <= 0 && orgID != "default" && orgID != "" {
 			slog.Warn("Organization out of tokens", "org_id", orgID)
 			return nil, fmt.Errorf("payment required: token balance depleted")
 		}
@@ -315,15 +343,23 @@ func (e *MemzentEngine) Process(ctx context.Context, req *PromptRequest) (*Promp
 	// Resolve selected provider and model for cache key partitioning
 	providerKey := req.Provider
 	if providerKey == "" {
-		providerKey = e.defaultProvider
+		if settings != nil && settings.DefaultProvider != "" {
+			providerKey = settings.DefaultProvider
+		} else {
+			providerKey = e.defaultProvider
+		}
 	}
 	selectedProvider, ok := e.providers[providerKey]
 	if !ok {
 		selectedProvider = e.providers[e.defaultProvider]
 	}
 	resolvedModel := req.Model
-	if resolvedModel == "" && selectedProvider != nil {
-		resolvedModel = selectedProvider.GetMetadata().DefaultModel
+	if resolvedModel == "" {
+		if settings != nil && settings.DefaultModel != "" {
+			resolvedModel = settings.DefaultModel
+		} else if selectedProvider != nil {
+			resolvedModel = selectedProvider.GetMetadata().DefaultModel
+		}
 	}
 	if resolvedModel == "" {
 		resolvedModel = "default"
