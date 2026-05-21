@@ -106,6 +106,39 @@ func (rc *RouterClient) PlanToolChain(ctx context.Context, prompt string, orgID 
 	return resp.Steps, resp.ConfidenceScore, nil
 }
 
+// StoreMemory sends a new semantic memory fact to the Rust Router for vector DB insertion
+func (rc *RouterClient) StoreMemory(ctx context.Context, fact, orgID, userID string) (bool, error) {
+	req := &StoreMemoryRequest{
+		Fact:   fact,
+		OrgId:  orgID,
+		UserId: userID,
+	}
+
+	resp, err := rc.client.StoreMemory(ctx, req)
+	if err != nil {
+		return false, fmt.Errorf("gRPC StoreMemory failed: %w", err)
+	}
+
+	return resp.Success, nil
+}
+
+// QueryMemory queries Qdrant via the Rust Router for relevant user/org memory facts
+func (rc *RouterClient) QueryMemory(ctx context.Context, prompt, orgID, userID string, threshold float32) ([]*MemoryHit, error) {
+	req := &QueryMemoryRequest{
+		Prompt:                 prompt,
+		OrgId:                  orgID,
+		UserId:                 userID,
+		ScoreThresholdOverride: threshold,
+	}
+
+	resp, err := rc.client.QueryMemory(ctx, req)
+	if err != nil {
+		return nil, fmt.Errorf("gRPC QueryMemory failed: %w", err)
+	}
+
+	return resp.Memories, nil
+}
+
 
 // Close cleans up the gRPC connection
 func (rc *RouterClient) Close() {

@@ -11,7 +11,11 @@ pub mod router_proto {
 }
 
 use router_proto::semantic_router_server::{SemanticRouter, SemanticRouterServer};
-use router_proto::{ToolRequest, ToolResponse, Tool, RegisterToolRequest, RegisterToolResponse, ToolChainRequest, ToolChainResponse, ToolStep};
+use router_proto::{
+    ToolRequest, ToolResponse, Tool, RegisterToolRequest, RegisterToolResponse, 
+    ToolChainRequest, ToolChainResponse, ToolStep, StoreMemoryRequest, 
+    StoreMemoryResponse, QueryMemoryRequest, QueryMemoryResponse, MemoryHit
+};
 
 pub struct MyRouter {
     q_client: Qdrant,
@@ -352,6 +356,118 @@ impl SemanticRouter for MyRouter {
             confidence_score,
         }))
     }
+
+    async fn store_memory(
+        &self,
+        request: Request<StoreMemoryRequest>,
+    ) -> Result<Response<StoreMemoryResponse>, Status> {
+        let req = request.into_inner();
+        println!("💾 Storing semantic memory fact: \"{}\" for org: {}", req.fact, req.org_id);
+
+        // 1. Generate vector embedding for the memory fact
+        let documents = vec![req.fact.clone()];
+        let embeddings = self.embedding_model.embed(documents, None)
+            .map_err(|e| Status::internal(format!("Failed to generate memory embeddings: {}", e)))?;
+        let vector = embeddings[0].clone();
+
+        // 2. Prepare payload
+        let mut payload = HashMap::new();
+        payload.insert("fact".to_string(), Value::from(req.fact.clone()));
+        payload.insert("org_id".to_string(), Value::from(req.org_id.clone()));
+        payload.insert("user_id".to_string(), Value::from(req.user_id.clone()));
+        payload.insert("created_at".to_string(), Value::from(chrono::Utc::now().to_rfc3339()));
+
+        // 3. Upsert point into memories_collection
+        let result = self.q_client.upsert_points(UpsertPointsBuilder::new(
+            "memories_collection",
+            vec![PointStruct::new(
+                uuid::Uuid::new_v4().to_string(),
+                vector,
+                payload
+            )]
+        )).await;
+
+        match result {
+            Ok(_) => {
+                println!("✅ Memory fact vectorized and stored in Qdrant successfully!");
+                Ok(Response::new(StoreMemoryResponse { success: true, error: String::new() }))
+            },
+            Err(e) => {
+                eprintln!("❌ Qdrant memory upsert failed: {}", e);
+                Ok(Response::new(StoreMemoryResponse { success: false, error: format!("Qdrant memory failure: {}", e) }))
+            }
+        }
+    }
+
+    async fn query_memory(
+        &self,
+        request: Request<QueryMemoryRequest>,
+    ) -> Result<Response<QueryMemoryResponse>, Status> {
+        let req = request.into_inner();
+        println!("🔍 Querying semantic memories for prompt: \"{}\" under org: {}", req.prompt, req.org_id);
+
+        // 1. Embed query prompt
+        let documents = vec![req.prompt.clone()];
+        let embeddings = self.embedding_model.embed(documents, None)
+            .map_err(|e| Status::internal(format!("Failed to generate query memory embeddings: {}", e)))?;
+        let real_vector = embeddings[0].clone();
+
+        // 2. Build payload filter for Org-Isolation
+        let mut filter_conditions = Vec::new();
+        if !req.org_id.is_empty() {
+            filter_conditions.push(Condition {
+                condition_one_of: Some(ConditionOneOf::Field(FieldCondition {
+                    key: "org_id".to_string(),
+                    r#match: Some(Match {
+                        match_value: Some(MatchValue::Keyword(req.org_id.clone())),
+                    }),
+                    ..Default::default()
+                })),
+            });
+        }
+
+        // 3. Search memories_collection
+        let search_request = SearchPointsBuilder::new("memories_collection", real_vector, 5)
+            .filter(Filter { should: filter_conditions, ..Default::default() })
+            .with_payload(true)
+            .build();
+
+        let search_result = match self.q_client.search_points(search_request).await {
+            Ok(res) => res,
+            Err(e) => {
+                eprintln!("Qdrant memory search failed (likely empty collection): {}", e);
+                qdrant_client::qdrant::SearchResponse { result: vec![], time: 0.0, ..Default::default() }
+            }
+        };
+
+        // 4. Map to MemoryHit structures
+        let mut memories = Vec::new();
+        let threshold = if req.score_threshold_override > 0.0 { req.score_threshold_override } else { 0.65 };
+
+        for scored_point in search_result.result {
+            if scored_point.score < threshold {
+                continue;
+            }
+
+            let payload = scored_point.payload;
+            let fact = payload.get("fact")
+                .and_then(|v| v.kind.as_ref())
+                .map(|k| match k {
+                    qdrant_client::qdrant::value::Kind::StringValue(s) => s.clone(),
+                    _ => String::new(),
+                })
+                .unwrap_or_default();
+
+            if !fact.is_empty() {
+                memories.push(MemoryHit {
+                    fact,
+                    relevance_score: scored_point.score,
+                });
+            }
+        }
+
+        Ok(Response::new(QueryMemoryResponse { memories }))
+    }
 }
 
 #[tokio::main]
@@ -385,6 +501,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let _ = q_client
             .create_collection(
                 qdrant_client::qdrant::CreateCollectionBuilder::new(cache_collection)
+                    .vectors_config(qdrant_client::qdrant::VectorParamsBuilder::new(
+                        384, 
+                        qdrant_client::qdrant::Distance::Cosine
+                    ))
+            )
+            .await;
+    }
+
+    let memories_collection = "memories_collection";
+    let memories_exists = collections_response.collections.iter().any(|c| c.name == memories_collection);
+    
+    if !memories_exists {
+        let _ = q_client
+            .create_collection(
+                qdrant_client::qdrant::CreateCollectionBuilder::new(memories_collection)
                     .vectors_config(qdrant_client::qdrant::VectorParamsBuilder::new(
                         384, 
                         qdrant_client::qdrant::Distance::Cosine

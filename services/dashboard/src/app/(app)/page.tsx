@@ -35,7 +35,6 @@ export default async function Page() {
   const providerCount = stats.provider_count || 0;
   const defaultProvider = stats.default_provider || "Ollama";
   const activeProviders = Array.isArray(stats.active_providers) ? stats.active_providers : [];
-  const tokenBalance = (stats.token_balance || 0).toFixed(2);
 
   return (
     <div className="space-y-12 pb-20">
@@ -77,7 +76,7 @@ export default async function Page() {
         />
         <MetricCard
           label="Token Balance"
-          value={`$${(stats.token_balance || 0).toFixed(2)}`}
+          value={`$${(stats.token_balance || 0).toFixed(4)}`}
           trend="PAYG"
           trendDirection={(stats.token_balance || 0) > 5 ? "up" : "down"}
           icon={<Database size={24} />}

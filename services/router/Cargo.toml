@@ -25,6 +25,7 @@ compression-prompt = "0.1.2"
 stop-words = "0.8.0"
 sha2 = "0.10"
 uuid = { version = "1.0", features = ["v4", "v5"] }
+chrono = "0.4"
 
 
 

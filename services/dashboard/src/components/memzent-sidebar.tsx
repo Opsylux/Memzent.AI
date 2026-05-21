@@ -15,6 +15,7 @@ import { motion } from "framer-motion";
 
 const NAV_ITEMS = [
   { icon: LayoutDashboard, label: "Intelligence Hub", href: "/" },
+  { icon: Activity, label: "Context Analytics", href: "/analytics" },
   { icon: Database, label: "Tool Registry", href: "/tools" },
   { icon: ShieldCheck, label: "Security Guardrails", href: "/security" },
   { icon: Activity, label: "System Health", href: "/health" },

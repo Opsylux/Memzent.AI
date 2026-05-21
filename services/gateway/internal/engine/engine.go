@@ -3,8 +3,10 @@ package engine
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"log/slog"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -15,10 +17,10 @@ import (
 	"memzent-gateway/internal/connectors"
 	lp "memzent-gateway/internal/llm"
 	mc "memzent-gateway/internal/mcp"
-	rtr "memzent-gateway/internal/router"
+	"memzent-gateway/internal/memory"
 	"memzent-gateway/internal/metrics"
-	"memzent-gateway/internal/tools"
-	"memzent-gateway/internal/llm"
+	rtr "memzent-gateway/internal/router"
+	toolspkg "memzent-gateway/internal/tools"
 
 	"golang.org/x/time/rate"
 )
@@ -26,7 +28,8 @@ import (
 // PromptRequest defines the incoming user payload
 type PromptRequest struct {
 	UserID    string        `json:"user_id"`
-	Messages  []llm.Message `json:"messages"`
+	SessionID string        `json:"session_id,omitempty"`
+	Messages  []lp.Message `json:"messages"`
 	Provider  string `json:"provider,omitempty"`  // e.g. "ollama", "openai", "anthropic", "gemini"
 	Model     string `json:"model,omitempty"`     // optional per-request model override
 	SkipCache bool   `json:"skip_cache,omitempty"` // set by X-Skip-Cache header
@@ -40,6 +43,7 @@ type PromptResponse struct {
 	Provider  string `json:"provider,omitempty"`
 	Tools     []any  `json:"tools,omitempty"`
 	RequestID string `json:"request_id,omitempty"`
+	SessionID string `json:"session_id,omitempty"`
 }
 
 // rateLimiterEntry wraps a rate.Limiter with a last-seen timestamp for TTL eviction.
@@ -58,12 +62,17 @@ type MemzentEngine struct {
 	providers           map[string]lp.Provider // keyed by provider name e.g. "ollama"
 	defaultProvider     string                 // key used when no X-Memzent-Provider header is set
 	mcp                 *mc.MCPClient
-	registry            *tools.Registry               // Registry for user-provisioned tools
+	registry            *toolspkg.Registry             // Registry for user-provisioned tools
 	connectorRegistry   *connectors.ConnectorRegistry // Core/Native connectors
 	toolThreshold       float64
 	cacheTTL            time.Duration
 	rateLimiters        sync.Map // map[string]*rateLimiterEntry — evicted by background goroutine
 	auditLogger         *metrics.PersistentAuditLogger
+
+	// Memory & Telemetry extensions
+	sessionMgr *memory.SessionManager
+	memoryMgr  *memory.MemoryManager
+	telemetry  *metrics.TelemetryAggregator
 
 	TotalRequests atomic.Uint64
 	CacheHits     atomic.Uint64
@@ -78,13 +87,16 @@ func NewMemzentEngine(
 	ledger *billing.Ledger,
 	costCalc *billing.CostCalculator,
 	mcp *mc.MCPClient,
-	reg *tools.Registry,
+	reg *toolspkg.Registry,
 	connReg *connectors.ConnectorRegistry,
 	providers map[string]lp.Provider,
 	defaultProvider string,
 	threshold float64,
 	ttl time.Duration,
 	audit *metrics.PersistentAuditLogger,
+	sessionMgr *memory.SessionManager,
+	memoryMgr *memory.MemoryManager,
+	telemetry *metrics.TelemetryAggregator,
 ) *MemzentEngine {
 	return &MemzentEngine{
 		cache:             cache,
@@ -100,6 +112,9 @@ func NewMemzentEngine(
 		toolThreshold:     threshold,
 		cacheTTL:          ttl,
 		auditLogger:       audit,
+		sessionMgr:        sessionMgr,
+		memoryMgr:         memoryMgr,
+		telemetry:         telemetry,
 	}
 }
 
@@ -167,6 +182,51 @@ func (e *MemzentEngine) ProviderCount() int {
 	return len(e.providers)
 }
 
+func (e *MemzentEngine) fitToolParameters(ctx context.Context, provider lp.Provider, queryPrompt string, tool *toolspkg.Tool) (map[string]interface{}, error) {
+	if tool.InputSchema == nil || len(tool.InputSchema) == 0 {
+		return make(map[string]interface{}), nil
+	}
+
+	schemaBytes, err := json.Marshal(tool.InputSchema)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal input schema: %w", err)
+	}
+
+	extractionPrompt := fmt.Sprintf(`Analyze the user prompt and extract parameters that match the following JSON Schema for the tool "%s" (%s).
+JSON Schema:
+%s
+
+User Prompt:
+"%s"
+
+Extract the parameters and output a JSON object containing ONLY the keys and values defined in the schema. Output raw JSON ONLY. No markdown block wrappers, no other explanation.`, tool.Name, tool.Description, string(schemaBytes), queryPrompt)
+
+	messages := []lp.Message{
+		{Role: "user", Content: extractionPrompt},
+	}
+
+	response, _, err := provider.Generate(ctx, messages, nil, "")
+	if err != nil {
+		return nil, fmt.Errorf("lightweight parameter fitting failed: %w", err)
+	}
+
+	// Locate JSON boundaries in response to handle LLM wraps
+	startIdx := strings.Index(response, "{")
+	endIdx := strings.LastIndex(response, "}")
+	if startIdx == -1 || endIdx == -1 || startIdx >= endIdx {
+		return make(map[string]interface{}), nil
+	}
+
+	cleanJSON := response[startIdx : endIdx+1]
+	var parsedParams map[string]interface{}
+	if err := json.Unmarshal([]byte(cleanJSON), &parsedParams); err != nil {
+		slog.Warn("Failed to unmarshal parsed parameters", "error", err, "raw", cleanJSON)
+		return make(map[string]interface{}), nil
+	}
+
+	return parsedParams, nil
+}
+
 func (e *MemzentEngine) Process(ctx context.Context, req *PromptRequest) (*PromptResponse, error) {
 	e.TotalRequests.Add(1)
 
@@ -201,6 +261,19 @@ func (e *MemzentEngine) Process(ctx context.Context, req *PromptRequest) (*Promp
 		limit = 1000.0
 	}
 
+	var hasBalance bool
+	var balanceErr error
+	checkedBalance := false
+
+	// Pay-as-you-go boost: if they have a positive token balance, promote rate limit from free (10) to pro (100)
+	if limit < 100.0 && e.ledger != nil {
+		hasBalance, balanceErr = e.ledger.HasSufficientBalance(ctx, orgID)
+		checkedBalance = true
+		if balanceErr == nil && hasBalance {
+			limit = 100.0
+		}
+	}
+
 	limitKey := fmt.Sprintf("rl:%s:%s", orgID, req.UserID)
 	newEntry := &rateLimiterEntry{
 		limiter:  rate.NewLimiter(rate.Limit(limit/60), int(limit)),
@@ -209,6 +282,13 @@ func (e *MemzentEngine) Process(ctx context.Context, req *PromptRequest) (*Promp
 	actual, _ := e.rateLimiters.LoadOrStore(limitKey, newEntry)
 	entry := actual.(*rateLimiterEntry)
 	entry.lastSeen = time.Now() // refresh timestamp on every access
+
+	// Dynamically adjust the limit/burst if it has changed (e.g. tier upgrade or balance top-up)
+	if entry.limiter.Limit() != rate.Limit(limit/60) {
+		entry.limiter.SetLimit(rate.Limit(limit/60))
+		entry.limiter.SetBurst(int(limit))
+	}
+
 	if !entry.limiter.Allow() {
 		return nil, fmt.Errorf("rate limit exceeded for organization %s (tier: %s)", orgID, tier)
 	}
@@ -216,10 +296,17 @@ func (e *MemzentEngine) Process(ctx context.Context, req *PromptRequest) (*Promp
 	// A.1 Billing Pre-Check (Bypass check for internal dashboard sessions / JWT users)
 	authMethod, _ := ctx.Value("auth_method").(string)
 	if e.ledger != nil && authMethod != "jwt" {
-		hasBalance, err := e.ledger.HasSufficientBalance(ctx, orgID)
+		var sufficient bool
+		var err error
+		if checkedBalance {
+			sufficient = hasBalance
+			err = balanceErr
+		} else {
+			sufficient, err = e.ledger.HasSufficientBalance(ctx, orgID)
+		}
 		if err != nil {
 			slog.Error("Billing ledger check failed", "error", err, "org_id", orgID)
-		} else if !hasBalance {
+		} else if !sufficient {
 			slog.Warn("Organization out of tokens", "org_id", orgID)
 			return nil, fmt.Errorf("payment required: token balance depleted")
 		}
@@ -273,7 +360,13 @@ func (e *MemzentEngine) Process(ctx context.Context, req *PromptRequest) (*Promp
 				}, map[string]interface{}{"prompt": queryPrompt, "stage": 1})
 			}
 			e.chargeCacheHit(ctx, orgID, req.Provider, req.Model, queryPrompt)
-			return &PromptResponse{Text: cachedResp, Cached: true}, nil
+			
+			// Append user message and cached response to chat session history
+			if req.SessionID != "" && e.sessionMgr != nil {
+				_ = e.sessionMgr.AppendMessage(ctx, req.SessionID, "user", queryPrompt)
+				_ = e.sessionMgr.AppendMessage(ctx, req.SessionID, "assistant", cachedResp)
+			}
+			return &PromptResponse{Text: cachedResp, Cached: true, SessionID: req.SessionID}, nil
 		}
 
 		// Stage 1.5: Canonical Match (Normalized, Org-Isolated & Model-Scoped)
@@ -299,10 +392,48 @@ func (e *MemzentEngine) Process(ctx context.Context, req *PromptRequest) (*Promp
 			slog.Info("🎯 Stage 1.5 Cache HIT (Org-Isolated)", "org_id", orgID, "canonical", cHash)
 			_ = e.cache.SetResult(ctx, cacheKey, cachedCanon, e.cacheTTL)
 			e.chargeCacheHit(ctx, orgID, req.Provider, req.Model, queryPrompt)
-			return &PromptResponse{Text: cachedCanon, Cached: true}, nil
+
+			// Append user message and cached response to chat session history
+			if req.SessionID != "" && e.sessionMgr != nil {
+				_ = e.sessionMgr.AppendMessage(ctx, req.SessionID, "user", queryPrompt)
+				_ = e.sessionMgr.AppendMessage(ctx, req.SessionID, "assistant", cachedCanon)
+			}
+			return &PromptResponse{Text: cachedCanon, Cached: true, SessionID: req.SessionID}, nil
 		}
 	}
 
+	// 1. Short-term Memory: Load previous messages if SessionID is provided
+	var historyMessages []lp.Message
+	if req.SessionID != "" && e.sessionMgr != nil {
+		// Save new user message to session in DB
+		err := e.sessionMgr.AppendMessage(ctx, req.SessionID, "user", queryPrompt)
+		if err != nil {
+			slog.Error("Failed to append user message to session history", "session_id", req.SessionID, "error", err)
+		}
+
+		historyMessages, err = e.sessionMgr.GetSessionMessages(ctx, req.SessionID, 20)
+		if err != nil {
+			slog.Error("Failed to fetch session history messages", "session_id", req.SessionID, "error", err)
+		}
+	}
+
+	var messagesToLLM []lp.Message
+	if len(historyMessages) > 0 {
+		messagesToLLM = historyMessages
+	} else {
+		messagesToLLM = make([]lp.Message, len(req.Messages))
+		copy(messagesToLLM, req.Messages)
+	}
+
+	// 2. Long-term Memory: Retrieve related facts from Qdrant via memories_collection
+	var memoryContext string
+	if e.memoryMgr != nil {
+		var err error
+		memoryContext, err = e.memoryMgr.RetrieveSemanticContext(ctx, queryPrompt, orgID, req.UserID, 0.65)
+		if err != nil {
+			slog.Error("Failed to retrieve semantic guidelines", "error", err)
+		}
+	}
 
 	// C. RBAC Check (Organization Scoped)
 	var allowedTools []string
@@ -348,18 +479,126 @@ func (e *MemzentEngine) Process(ctx context.Context, req *PromptRequest) (*Promp
 			hitCounter.(*atomic.Uint64).Add(1)
 			slog.Info("🎯 Stage 2 Cache HIT (Org-Isolated)", "org_id", orgID, "similar_hash", similarPromptHash)
 			e.chargeCacheHit(ctx, orgID, req.Provider, req.Model, queryPrompt)
-			return &PromptResponse{Text: cachedResp, Cached: true}, nil
+
+			if req.SessionID != "" && e.sessionMgr != nil {
+				_ = e.sessionMgr.AppendMessage(ctx, req.SessionID, "assistant", cachedResp)
+			}
+			return &PromptResponse{Text: cachedResp, Cached: true, SessionID: req.SessionID}, nil
 		}
 	}
 
-	// E. Tool Execution (Multi-Connector: Universal Provisioning)
+	// E. Tool Execution (Multi-Connector: Universal Provisioning & Chaining support)
 	var toolResults []string
-	if len(tools) > 0 {
+	useChaining := false
+	if len(tools) > 1 && (strings.Contains(strings.ToLower(queryPrompt), "then") || 
+		strings.Contains(strings.ToLower(queryPrompt), "after") || 
+		strings.Contains(strings.ToLower(queryPrompt), "sequence") || 
+		strings.Contains(strings.ToLower(queryPrompt), "chain") ||
+		strings.Contains(strings.ToLower(queryPrompt), "first")) {
+		useChaining = true
+	}
+
+	if useChaining && e.router != nil {
+		steps, confidence, err := e.router.PlanToolChain(ctx, queryPrompt, orgID, allowedTools)
+		if err == nil && len(steps) > 1 && confidence > 0.5 {
+			slog.Info("⛓️ Sequential tool chaining activated", "steps_count", len(steps), "confidence", confidence)
+			
+			var lastOutput string
+			for _, step := range steps {
+				slog.Info("Executing chain step", "order", step.StepOrder, "tool_name", step.ToolName)
+				
+				var toolMetadata *toolspkg.Tool
+				allTools, err := e.registry.ListTools(ctx, orgID)
+				if err == nil {
+					for _, item := range allTools {
+						if item.Name == step.ToolName || item.ID == step.ToolName {
+							toolMetadata = item
+							break
+						}
+					}
+				}
+				
+				if toolMetadata == nil {
+					slog.Warn("Chain tool not found in registry", "tool_name", step.ToolName)
+					continue
+				}
+				
+				stepPrompt := queryPrompt
+				if lastOutput != "" {
+					stepPrompt = fmt.Sprintf("%s\n\nPrevious step output context: %s", queryPrompt, lastOutput)
+				}
+				
+				inputs, err := e.fitToolParameters(ctx, selectedProvider, stepPrompt, toolMetadata)
+				if err != nil {
+					slog.Error("Failed to fit parameters for chain step", "tool_id", toolMetadata.ID, "error", err)
+					inputs = make(map[string]interface{})
+				}
+				
+				var connector connectors.Connector
+				switch toolMetadata.ConnectorType {
+				case "rest":
+					connector = connectors.NewRESTConnector(toolMetadata.Endpoint)
+				case "sql":
+					connector = connectors.NewSQLConnector(toolMetadata.Endpoint)
+				case "mcp":
+					if reg, ok := e.connectorRegistry.Get(connectors.TypeMCP); ok {
+						connector = reg
+					}
+				default:
+					if reg, ok := e.connectorRegistry.Get(connectors.TypeCore); ok {
+						if cc, ok := reg.(*connectors.CoreConnector); ok && cc.HasTool(toolMetadata.ID) {
+							connector = reg
+						}
+					}
+				}
+				
+				if connector == nil {
+					slog.Warn("No connector available for chain tool", "tool_id", toolMetadata.ID)
+					continue
+				}
+				
+				execReq := &connectors.ExecutionRequest{
+					ToolID:  toolMetadata.ID,
+					UserID:  req.UserID,
+					Inputs:  inputs,
+					Timeout: toolMetadata.TimeoutSeconds,
+				}
+				
+				startTime := time.Now()
+				toolCtx, cancel := context.WithTimeout(ctx, time.Duration(toolMetadata.TimeoutSeconds+1)*time.Second)
+				execResp, err := connector.Execute(toolCtx, execReq)
+				cancel()
+				duration := time.Since(startTime)
+				
+				status := "success"
+				errMsg := ""
+				if err != nil {
+					status = "failure"
+					errMsg = err.Error()
+					slog.Error("Chain step execution failed", "tool_id", toolMetadata.ID, "error", err)
+				} else if execResp.Status == "failure" {
+					status = "failure"
+					errMsg = fmt.Sprintf("%v", execResp.Data)
+				}
+				
+				if e.telemetry != nil {
+					e.telemetry.LogToolExecution(ctx, orgID, toolMetadata.ID, req.SessionID, int(duration.Milliseconds()), status, errMsg)
+				}
+				
+				if status == "success" && execResp.Data != nil {
+					lastOutput = fmt.Sprintf("%v", execResp.Data)
+					toolResults = append(toolResults, fmt.Sprintf("Step %d (%s): %s", step.StepOrder, toolMetadata.Name, lastOutput))
+				}
+			}
+			useChaining = len(toolResults) > 0
+		}
+	}
+
+	if !useChaining && len(tools) > 0 {
 		for _, t := range tools {
 			if t.RelevanceScore > float32(e.toolThreshold) {
 				slog.Info("Resolving tool for execution", "tool_id", t.Id, "score", t.RelevanceScore)
 
-				// 1. Fetch full metadata from Registry (to get OrgID and Config)
 				toolMetadata, err := e.registry.GetTool(ctx, t.Id)
 				if err != nil {
 					slog.Error("Failed to fetch tool metadata", "tool_id", t.Id, "error", err)
@@ -371,9 +610,13 @@ func (e *MemzentEngine) Process(ctx context.Context, req *PromptRequest) (*Promp
 					continue
 				}
 
+				inputs, err := e.fitToolParameters(ctx, selectedProvider, queryPrompt, toolMetadata)
+				if err != nil {
+					slog.Error("Failed to dynamically fit parameters", "tool_id", t.Id, "error", err)
+					inputs = make(map[string]interface{})
+				}
+
 				var connector connectors.Connector
-				
-				// 2. Connector Selection & Factory
 				switch toolMetadata.ConnectorType {
 				case "rest":
 					connector = connectors.NewRESTConnector(toolMetadata.Endpoint)
@@ -384,7 +627,6 @@ func (e *MemzentEngine) Process(ctx context.Context, req *PromptRequest) (*Promp
 						connector = reg
 					}
 				default:
-					// Try Core Registry
 					if reg, ok := e.connectorRegistry.Get(connectors.TypeCore); ok {
 						if cc, ok := reg.(*connectors.CoreConnector); ok && cc.HasTool(t.Id) {
 							connector = reg
@@ -397,51 +639,65 @@ func (e *MemzentEngine) Process(ctx context.Context, req *PromptRequest) (*Promp
 					continue
 				}
 
-				// 3. Execution Phase
 				execReq := &connectors.ExecutionRequest{
 					ToolID:  t.Id,
 					UserID:  req.UserID,
-					Inputs:  make(map[string]interface{}), // Future: LLM intent injection
+					Inputs:  inputs,
 					Timeout: toolMetadata.TimeoutSeconds,
 				}
 
+				startTime := time.Now()
 				toolCtx, cancel := context.WithTimeout(ctx, time.Duration(toolMetadata.TimeoutSeconds+1)*time.Second)
 				execResp, err := connector.Execute(toolCtx, execReq)
 				cancel()
+				duration := time.Since(startTime)
 
+				status := "success"
+				errMsg := ""
 				if err != nil {
+					status = "failure"
+					errMsg = err.Error()
 					slog.Error("Tool execution failed", "tool_id", t.Id, "error", err)
-					continue
+				} else if execResp.Status == "failure" {
+					status = "failure"
+					errMsg = fmt.Sprintf("%v", execResp.Data)
 				}
 
-				if execResp.Status == "success" && execResp.Data != nil {
+				if e.telemetry != nil {
+					e.telemetry.LogToolExecution(ctx, orgID, t.Id, req.SessionID, int(duration.Milliseconds()), status, errMsg)
+				}
+
+				if status == "success" && execResp.Data != nil {
 					toolResults = append(toolResults, fmt.Sprintf("%v", execResp.Data))
 				}
 			}
 		}
 	}
 
-
-	// F. Build LLM context from compressed prompt + tool results
-	if compressedPrompt != "" {
-		req.Messages[len(req.Messages)-1].Content = compressedPrompt
+	// F. Build LLM context from compressed prompt + memory context + tool results
+	lastMsgIdx := len(messagesToLLM) - 1
+	if lastMsgIdx >= 0 {
+		currentContent := messagesToLLM[lastMsgIdx].Content
+		if compressedPrompt != "" {
+			currentContent = compressedPrompt
+		}
+		if memoryContext != "" {
+			currentContent = fmt.Sprintf("%s\n\n%s", currentContent, memoryContext)
+		}
+		if len(toolResults) > 0 {
+			currentContent = fmt.Sprintf("%s\n\n### SUPPLEMENTARY TOOL CONTEXT\n%v\n--- END TOOL CONTEXT ---", currentContent, toolResults)
+		}
+		messagesToLLM[lastMsgIdx].Content = currentContent
 	}
-	if len(toolResults) > 0 {
-		req.Messages[len(req.Messages)-1].Content = fmt.Sprintf("%s\n\n### SUPPLEMENTARY TOOL CONTEXT\n%v\n--- END TOOL CONTEXT ---", req.Messages[len(req.Messages)-1].Content, toolResults)
-	}
 
-	// Mapping *router.Tool to any slice for the prompt response payload
 	var llmTools []any
 	for _, t := range tools {
 		llmTools = append(llmTools, t)
 	}
 
-	// G. Provider Selection (already resolved at start of Process)
-
-
 	slog.Info("🤖 LLM Provider selected", "provider", selectedProvider.GetProviderName(), "model_override", req.Model, "skip_cache", req.SkipCache)
 
-	aiResp, tokenUsage, err := selectedProvider.Generate(ctx, req.Messages, llmTools, req.Model)
+	aiResp, tokenUsage, err := selectedProvider.Generate(ctx, messagesToLLM, llmTools, req.Model)
 	if err != nil {
 		slog.Error("LLM generation failed", "error", err, "provider", selectedProvider.GetProviderName())
 		return nil, err
@@ -458,22 +714,32 @@ func (e *MemzentEngine) Process(ctx context.Context, req *PromptRequest) (*Promp
 
 	// G. Populate Cache for future requests (Org-Isolated, Model-Scoped & Force Refresh)
 	if e.cache != nil {
-		// Layer 1: Literal Match
 		cacheKey := e.buildCacheKey(orgID, "p", resolvedModel, queryPrompt)
 		_ = e.cache.SetResult(ctx, cacheKey, aiResp, e.cacheTTL)
 		e.setPersistentCache(ctx, orgID, cacheKey, aiResp, e.cacheTTL)
 
-		// Layer 2: Canonical Match
 		_, cHash := NormalizePrompt(queryPrompt)
 		canonKey := e.buildCacheKey(orgID, "c", resolvedModel, cHash)
 		_ = e.cache.SetResult(ctx, canonKey, aiResp, e.cacheTTL)
 		e.setPersistentCache(ctx, orgID, canonKey, aiResp, e.cacheTTL)
 
-		// Layer 3: Semantic Match
 		if currentPromptHash != "" {
 			simKey := e.buildCacheKey(orgID, "s", resolvedModel, currentPromptHash)
 			_ = e.cache.SetResult(ctx, simKey, aiResp, e.cacheTTL)
 			e.setPersistentCache(ctx, orgID, simKey, aiResp, e.cacheTTL)
+		}
+	}
+
+	// Post-Generation: Out-of-band facts extraction
+	if e.memoryMgr != nil {
+		e.memoryMgr.ExtractAndStoreFacts(ctx, orgID, req.UserID, queryPrompt, aiResp)
+	}
+
+	// Post-Generation: Save assistant response to session history
+	if req.SessionID != "" && e.sessionMgr != nil {
+		err := e.sessionMgr.AppendMessage(ctx, req.SessionID, "assistant", aiResp)
+		if err != nil {
+			slog.Error("Failed to append assistant response message to session history", "session_id", req.SessionID, "error", err)
 		}
 	}
 
@@ -490,10 +756,11 @@ func (e *MemzentEngine) Process(ctx context.Context, req *PromptRequest) (*Promp
 	}
 
 	return &PromptResponse{
-		Text:     aiResp,
-		Cached:   false,
-		Provider: selectedProvider.GetProviderName(),
-		Tools:    llmTools,
+		Text:      aiResp,
+		Cached:    false,
+		Provider:  selectedProvider.GetProviderName(),
+		Tools:     llmTools,
+		SessionID: req.SessionID,
 	}, nil
 }
 
