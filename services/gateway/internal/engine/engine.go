@@ -261,6 +261,19 @@ func (e *MemzentEngine) Process(ctx context.Context, req *PromptRequest) (*Promp
 		limit = 1000.0
 	}
 
+	var hasBalance bool
+	var balanceErr error
+	checkedBalance := false
+
+	// Pay-as-you-go boost: if they have a positive token balance, promote rate limit from free (10) to pro (100)
+	if limit < 100.0 && e.ledger != nil {
+		hasBalance, balanceErr = e.ledger.HasSufficientBalance(ctx, orgID)
+		checkedBalance = true
+		if balanceErr == nil && hasBalance {
+			limit = 100.0
+		}
+	}
+
 	limitKey := fmt.Sprintf("rl:%s:%s", orgID, req.UserID)
 	newEntry := &rateLimiterEntry{
 		limiter:  rate.NewLimiter(rate.Limit(limit/60), int(limit)),
@@ -269,6 +282,13 @@ func (e *MemzentEngine) Process(ctx context.Context, req *PromptRequest) (*Promp
 	actual, _ := e.rateLimiters.LoadOrStore(limitKey, newEntry)
 	entry := actual.(*rateLimiterEntry)
 	entry.lastSeen = time.Now() // refresh timestamp on every access
+
+	// Dynamically adjust the limit/burst if it has changed (e.g. tier upgrade or balance top-up)
+	if entry.limiter.Limit() != rate.Limit(limit/60) {
+		entry.limiter.SetLimit(rate.Limit(limit/60))
+		entry.limiter.SetBurst(int(limit))
+	}
+
 	if !entry.limiter.Allow() {
 		return nil, fmt.Errorf("rate limit exceeded for organization %s (tier: %s)", orgID, tier)
 	}
@@ -276,10 +296,17 @@ func (e *MemzentEngine) Process(ctx context.Context, req *PromptRequest) (*Promp
 	// A.1 Billing Pre-Check (Bypass check for internal dashboard sessions / JWT users)
 	authMethod, _ := ctx.Value("auth_method").(string)
 	if e.ledger != nil && authMethod != "jwt" {
-		hasBalance, err := e.ledger.HasSufficientBalance(ctx, orgID)
+		var sufficient bool
+		var err error
+		if checkedBalance {
+			sufficient = hasBalance
+			err = balanceErr
+		} else {
+			sufficient, err = e.ledger.HasSufficientBalance(ctx, orgID)
+		}
 		if err != nil {
 			slog.Error("Billing ledger check failed", "error", err, "org_id", orgID)
-		} else if !hasBalance {
+		} else if !sufficient {
 			slog.Warn("Organization out of tokens", "org_id", orgID)
 			return nil, fmt.Errorf("payment required: token balance depleted")
 		}

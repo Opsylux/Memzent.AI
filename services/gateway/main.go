@@ -401,6 +401,11 @@ func main() {
 			w.Header().Set("Content-Type", "application/json")
 			errMsg := err.Error()
 
+			if strings.Contains(errMsg, "rate limit exceeded") {
+				w.WriteHeader(http.StatusTooManyRequests)
+				_ = json.NewEncoder(w).Encode(map[string]string{"error": errMsg})
+				return
+			}
 			if strings.Contains(errMsg, "payment required") {
 				w.WriteHeader(http.StatusPaymentRequired)
 				_ = json.NewEncoder(w).Encode(map[string]string{"error": errMsg})

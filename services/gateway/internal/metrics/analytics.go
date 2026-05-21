@@ -108,7 +108,7 @@ func (ta *TelemetryAggregator) GetContextAnalytics(ctx context.Context, orgID st
 	cacheHitsQuery := `
 		SELECT COUNT(*) 
 		FROM audit_logs 
-		WHERE org_id = $1::uuid AND type = 'CACHE'
+		WHERE org_id = $1::uuid AND action LIKE 'CACHE:%'
 	`
 	err = ta.db.QueryRowContext(ctx, cacheHitsQuery, orgID).Scan(&cacheHits)
 	if err != nil {
@@ -119,9 +119,9 @@ func (ta *TelemetryAggregator) GetContextAnalytics(ctx context.Context, orgID st
 	// Total LLM expenditure
 	var llmCost float64
 	llmCostQuery := `
-		SELECT COALESCE(SUM(amount), 0.0) 
+		SELECT COALESCE(SUM(-amount), 0.0) 
 		FROM billing_ledger 
-		WHERE org_id = $1::uuid AND type = 'llm_usage'
+		WHERE org_id = $1::uuid AND transaction_type = 'llm_usage'
 	`
 	err = ta.db.QueryRowContext(ctx, llmCostQuery, orgID).Scan(&llmCost)
 	if err != nil {
@@ -152,7 +152,7 @@ func (ta *TelemetryAggregator) GetContextAnalytics(ctx context.Context, orgID st
 	intentQuery := `
 		SELECT COALESCE(metadata->>'prompt', 'System Intent'), COUNT(*) as frequency
 		FROM audit_logs
-		WHERE org_id = $1::uuid AND type = 'CACHE' AND metadata->>'prompt' IS NOT NULL
+		WHERE org_id = $1::uuid AND action LIKE 'CACHE:%' AND metadata->>'prompt' IS NOT NULL
 		GROUP BY metadata->>'prompt'
 		ORDER BY frequency DESC
 		LIMIT 5

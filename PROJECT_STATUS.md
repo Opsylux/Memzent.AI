@@ -15,10 +15,18 @@ This document tracks the current completion state of Memzent features and provid
 | **Provider Discovery** | Gateway | ✅ 100% | `/v1/providers` API for dynamic model/provider listing. |
 | **Marketing Website** | Website | ✅ 100% | Hybrid PAYG billing explainer, sleek dark look, logo bug fixed. |
 | **Advanced Orchestration (Phase 4)** | All | ✅ 100% | Model-scoped caching, PlanToolChain Go/Rust bindings, and typewriter SSE streaming. |
+| **Agent Memory (Phase 5/6)** | Gateway/Rust | ✅ 100% | PostgreSQL session threads and semantic memory Qdrant extraction. |
+| **Context Analytics (Phase 5/6)** | Dashboard/Gateway | ✅ 100% | Premium ROI tracking, latency tool telemetry, and intent theme clusters. |
 
 ---
 
 ## 2. Completed Milestones
+
+### [Phase 5 & 6] Memory, Tool Chaining & Context Analytics ✅ COMPLETE
+*   **Semantic Agent Memory**: Added PostgreSQL persistence for conversation sessions (`sessions`, `session_messages`) and vectorized conversation facts out-of-band to Qdrant memory collection.
+*   **Sequential Tool Chaining**: Integrated Go Gateway engine dynamic parameter schema fitting (`fitToolParameters`) and sequential execution chains (`PlanToolChain`).
+*   **Context Analytics**: Developed SQL metrics aggregations computing savings ROI, tool latency, and failure rates, and clustering user intent themes.
+*   **Next.js Dashboard**: Added high-end telemetry cards, tool failure dashboards, switchable playground sessions, and environment-decoupled build fallbacks.
 
 ### [Phase 2] Dynamic Tool Registry ✅ COMPLETE
 *   `Registry.StartRefreshLoop()` — background goroutine polls Postgres every 30s for tools where `last_synced_at IS NULL OR last_synced_at < updated_at`.

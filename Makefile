@@ -18,4 +18,8 @@ down:
 logs:
 	docker-compose logs -f gateway router
 
-.PHONY: gen-proto up down
+# Run the end-to-end neural integration test client
+test-flow:
+	cd services/gateway && go run scripts/test_flow.go
+
+.PHONY: gen-proto up down test-flow
