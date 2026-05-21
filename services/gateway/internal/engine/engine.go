@@ -27,13 +27,13 @@ import (
 
 // PromptRequest defines the incoming user payload
 type PromptRequest struct {
-	UserID    string        `json:"user_id"`
-	SessionID string        `json:"session_id,omitempty"`
+	UserID    string       `json:"user_id"`
+	SessionID string       `json:"session_id,omitempty"`
 	Messages  []lp.Message `json:"messages"`
-	Provider  string `json:"provider,omitempty"`  // e.g. "ollama", "openai", "anthropic", "gemini"
-	Model     string `json:"model,omitempty"`     // optional per-request model override
-	SkipCache bool   `json:"skip_cache,omitempty"` // set by X-Skip-Cache header
-	Stream    bool   `json:"stream,omitempty"`
+	Provider  string       `json:"provider,omitempty"`   // e.g. "ollama", "openai", "anthropic", "gemini"
+	Model     string       `json:"model,omitempty"`      // optional per-request model override
+	SkipCache bool         `json:"skip_cache,omitempty"` // set by X-Skip-Cache header
+	Stream    bool         `json:"stream,omitempty"`
 }
 
 // PromptResponse defines the gateway's response to the client
@@ -54,20 +54,20 @@ type rateLimiterEntry struct {
 
 // MemzentEngine orchestrates the flow between Cache, RBAC, Router, MCP, and LLM
 type MemzentEngine struct {
-	cache               *cch.MemzentCache
-	router              *rtr.RouterClient
-	rbac                *auth.RBACClient
-	ledger              *billing.Ledger
-	costCalc            *billing.CostCalculator
-	providers           map[string]lp.Provider // keyed by provider name e.g. "ollama"
-	defaultProvider     string                 // key used when no X-Memzent-Provider header is set
-	mcp                 *mc.MCPClient
-	registry            *toolspkg.Registry             // Registry for user-provisioned tools
-	connectorRegistry   *connectors.ConnectorRegistry // Core/Native connectors
-	toolThreshold       float64
-	cacheTTL            time.Duration
-	rateLimiters        sync.Map // map[string]*rateLimiterEntry — evicted by background goroutine
-	auditLogger         *metrics.PersistentAuditLogger
+	cache             *cch.MemzentCache
+	router            *rtr.RouterClient
+	rbac              *auth.RBACClient
+	ledger            *billing.Ledger
+	costCalc          *billing.CostCalculator
+	providers         map[string]lp.Provider // keyed by provider name e.g. "ollama"
+	defaultProvider   string                 // key used when no X-Memzent-Provider header is set
+	mcp               *mc.MCPClient
+	registry          *toolspkg.Registry            // Registry for user-provisioned tools
+	connectorRegistry *connectors.ConnectorRegistry // Core/Native connectors
+	toolThreshold     float64
+	cacheTTL          time.Duration
+	rateLimiters      sync.Map // map[string]*rateLimiterEntry — evicted by background goroutine
+	auditLogger       *metrics.PersistentAuditLogger
 
 	// Memory & Telemetry extensions
 	sessionMgr *memory.SessionManager
@@ -320,7 +320,7 @@ func (e *MemzentEngine) Process(ctx context.Context, req *PromptRequest) (*Promp
 
 	// Dynamically adjust the limit/burst if it has changed (e.g. tier upgrade or balance top-up)
 	if entry.limiter.Limit() != rate.Limit(limit/60) {
-		entry.limiter.SetLimit(rate.Limit(limit/60))
+		entry.limiter.SetLimit(rate.Limit(limit / 60))
 		entry.limiter.SetBurst(int(limit))
 	}
 
@@ -396,7 +396,7 @@ func (e *MemzentEngine) Process(ctx context.Context, req *PromptRequest) (*Promp
 				}, map[string]interface{}{"prompt": queryPrompt, "stage": 1})
 			}
 			e.chargeCacheHit(ctx, orgID, req.Provider, req.Model, queryPrompt)
-			
+
 			// Append user message and cached response to chat session history
 			if req.SessionID != "" && e.sessionMgr != nil {
 				_ = e.sessionMgr.AppendMessage(ctx, req.SessionID, "user", queryPrompt)
@@ -526,9 +526,9 @@ func (e *MemzentEngine) Process(ctx context.Context, req *PromptRequest) (*Promp
 	// E. Tool Execution (Multi-Connector: Universal Provisioning & Chaining support)
 	var toolResults []string
 	useChaining := false
-	if len(tools) > 1 && (strings.Contains(strings.ToLower(queryPrompt), "then") || 
-		strings.Contains(strings.ToLower(queryPrompt), "after") || 
-		strings.Contains(strings.ToLower(queryPrompt), "sequence") || 
+	if len(tools) > 1 && (strings.Contains(strings.ToLower(queryPrompt), "then") ||
+		strings.Contains(strings.ToLower(queryPrompt), "after") ||
+		strings.Contains(strings.ToLower(queryPrompt), "sequence") ||
 		strings.Contains(strings.ToLower(queryPrompt), "chain") ||
 		strings.Contains(strings.ToLower(queryPrompt), "first")) {
 		useChaining = true
@@ -538,11 +538,11 @@ func (e *MemzentEngine) Process(ctx context.Context, req *PromptRequest) (*Promp
 		steps, confidence, err := e.router.PlanToolChain(ctx, queryPrompt, orgID, allowedTools)
 		if err == nil && len(steps) > 1 && confidence > 0.5 {
 			slog.Info("⛓️ Sequential tool chaining activated", "steps_count", len(steps), "confidence", confidence)
-			
+
 			var lastOutput string
 			for _, step := range steps {
 				slog.Info("Executing chain step", "order", step.StepOrder, "tool_name", step.ToolName)
-				
+
 				var toolMetadata *toolspkg.Tool
 				allTools, err := e.registry.ListTools(ctx, orgID)
 				if err == nil {
@@ -553,23 +553,23 @@ func (e *MemzentEngine) Process(ctx context.Context, req *PromptRequest) (*Promp
 						}
 					}
 				}
-				
+
 				if toolMetadata == nil {
 					slog.Warn("Chain tool not found in registry", "tool_name", step.ToolName)
 					continue
 				}
-				
+
 				stepPrompt := queryPrompt
 				if lastOutput != "" {
 					stepPrompt = fmt.Sprintf("%s\n\nPrevious step output context: %s", queryPrompt, lastOutput)
 				}
-				
+
 				inputs, err := e.fitToolParameters(ctx, selectedProvider, stepPrompt, toolMetadata)
 				if err != nil {
 					slog.Error("Failed to fit parameters for chain step", "tool_id", toolMetadata.ID, "error", err)
 					inputs = make(map[string]interface{})
 				}
-				
+
 				var connector connectors.Connector
 				switch toolMetadata.ConnectorType {
 				case "rest":
@@ -587,25 +587,25 @@ func (e *MemzentEngine) Process(ctx context.Context, req *PromptRequest) (*Promp
 						}
 					}
 				}
-				
+
 				if connector == nil {
 					slog.Warn("No connector available for chain tool", "tool_id", toolMetadata.ID)
 					continue
 				}
-				
+
 				execReq := &connectors.ExecutionRequest{
 					ToolID:  toolMetadata.ID,
 					UserID:  req.UserID,
 					Inputs:  inputs,
 					Timeout: toolMetadata.TimeoutSeconds,
 				}
-				
+
 				startTime := time.Now()
 				toolCtx, cancel := context.WithTimeout(ctx, time.Duration(toolMetadata.TimeoutSeconds+1)*time.Second)
 				execResp, err := connector.Execute(toolCtx, execReq)
 				cancel()
 				duration := time.Since(startTime)
-				
+
 				status := "success"
 				errMsg := ""
 				if err != nil {
@@ -616,11 +616,11 @@ func (e *MemzentEngine) Process(ctx context.Context, req *PromptRequest) (*Promp
 					status = "failure"
 					errMsg = fmt.Sprintf("%v", execResp.Data)
 				}
-				
+
 				if e.telemetry != nil {
 					e.telemetry.LogToolExecution(ctx, orgID, toolMetadata.ID, req.SessionID, int(duration.Milliseconds()), status, errMsg)
 				}
-				
+
 				if status == "success" && execResp.Data != nil {
 					lastOutput = fmt.Sprintf("%v", execResp.Data)
 					toolResults = append(toolResults, fmt.Sprintf("Step %d (%s): %s", step.StepOrder, toolMetadata.Name, lastOutput))
@@ -804,7 +804,7 @@ func (e *MemzentEngine) chargeCacheHit(ctx context.Context, orgID, provider, mod
 	if e.ledger != nil && e.costCalc != nil {
 		// Rough estimate: 1 token = ~4 chars
 		estimatedTokens := len(prompt) / 4
-		
+
 		providerName := provider
 		if providerName == "" {
 			providerName = e.defaultProvider
@@ -871,7 +871,7 @@ func (e *MemzentEngine) WarmCache(ctx context.Context) {
 	}
 
 	slog.Info("🔥 Pre-warming memory cache from PostgreSQL persistent B-Tree...")
-	
+
 	query := `
 		SELECT cache_key, response, expires_at 
 		FROM persistent_cache 

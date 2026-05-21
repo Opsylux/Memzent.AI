@@ -105,11 +105,15 @@ func (o *OllamaProvider) Generate(ctx context.Context, messages []Message, tools
 		apiMessages = append(apiMessages, map[string]string{"role": m.Role, "content": m.Content})
 	}
 
-	// 2. Prepare Ollama Request Body
 	reqBody := map[string]interface{}{
-		"model": activeModel,
+		"model":    activeModel,
 		"messages": apiMessages,
-		"stream": false, // We want the full block before returning to the Go engine
+		"stream":   false,
+		// Keep the model loaded in VRAM indefinitely between requests.
+		// Without this Ollama defaults to a 5-minute TTL and evicts the model,
+		// causing a 2.5-2.7s cold-load penalty on the next request.
+		// -1 means "never unload until Ollama is restarted".
+		"keep_alive": -1,
 	}
 
 	jsonBody, err := json.Marshal(reqBody)
@@ -117,7 +121,6 @@ func (o *OllamaProvider) Generate(ctx context.Context, messages []Message, tools
 		return "", nil, fmt.Errorf("failed to marshal ollama request: %w", err)
 	}
 
-	// 3. Dispatch the external API call
 	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(jsonBody))
 	if err != nil {
 		return "", nil, err
@@ -134,7 +137,6 @@ func (o *OllamaProvider) Generate(ctx context.Context, messages []Message, tools
 		return "", nil, fmt.Errorf("ollama API error: received status %d", resp.StatusCode)
 	}
 
-	// 4. Decode Response (Ollama format)
 	var result struct {
 		Message struct {
 			Content string `json:"content"`
