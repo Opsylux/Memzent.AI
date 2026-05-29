@@ -1,6 +1,7 @@
 "use server"
 
 import { createClient } from '@/lib/supabase-server'
+import { redirect } from 'next/navigation'
 import { plans } from '@/app/plans'
 import bcrypt from 'bcryptjs'
 import crypto from 'crypto'
@@ -243,7 +244,13 @@ export async function getOrgTools(orgId: string) {
     return data;
 }
 
-export async function updateOrgProfile(orgId: string, updates: { name?: string; contact_email?: string }) {
+export async function signOutAction() {
+    const supabase = await createClient()
+    await supabase.auth.signOut()
+    redirect('/login')
+}
+
+export async function updateOrgProfile(orgId: string, updates: { name?: string; contact_email?: string; default_provider?: string | null; default_model?: string | null }) {
     const supabase = await createClient();
     const { error } = await supabase
         .from('organizations')

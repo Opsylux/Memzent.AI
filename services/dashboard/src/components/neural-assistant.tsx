@@ -41,7 +41,7 @@ export function NeuralAssistant({ orgId }: { orgId?: string }) {
       const recentMessages = messages.slice(-6).map(m => ({ role: m.role, content: m.content }))
       recentMessages.push({ role: 'user', content: userMsg })
 
-      const res = await executeMemzentPrompt(recentMessages, orgId)
+      const res = await executeMemzentPrompt(recentMessages, undefined, orgId)
       console.log("Chat response:", res)
       setMessages(prev => [...prev, { 
         role: 'assistant', 

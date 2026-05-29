@@ -33,7 +33,7 @@ export default function LoginPage() {
     }
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (session) {
+      if (session && (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED')) {
         router.push('/')
         router.refresh()
       }

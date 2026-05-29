@@ -13,7 +13,7 @@ export default async function AppLayout({
 }) {
   const org = await getCurrentOrg();
 
-  // We redirect to /login if no session exists to avoid 404s
+  // Middleware handles the primary auth redirect; this is a safety fallback
   if (!org) {
     redirect("/login");
   }

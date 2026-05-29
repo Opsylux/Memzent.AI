@@ -17,8 +17,7 @@ import {
   Cpu,
   FlaskConical
 } from 'lucide-react'
-import { useRouter } from 'next/navigation'
-import { supabase } from '@/lib/supabase'
+import { signOutAction } from '@/app/actions'
 
 const navItems = [
   { name: 'Overview', href: '/', icon: LayoutDashboard },
@@ -47,11 +46,9 @@ interface SidebarProps {
 
 export function Sidebar({ orgName, tier, initials, role }: SidebarProps) {
   const pathname = usePathname()
-  const router = useRouter()
 
   const handleSignOut = async () => {
-    await supabase.auth.signOut()
-    router.push('/login')
+    await signOutAction()
   }
 
   const tierColors: Record<string, string> = {
