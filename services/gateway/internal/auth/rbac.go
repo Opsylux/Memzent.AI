@@ -5,11 +5,13 @@ import (
 	"database/sql"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/lib/pq"
 	_ "github.com/lib/pq"
 	"golang.org/x/crypto/bcrypt"
 )
+
 
 type RBACClient struct {
 	db *sql.DB
@@ -91,18 +93,34 @@ func (c *RBACClient) GetDB() *sql.DB {
 	return c.db
 }
 
+// rotationGracePeriod is the window during which both the old and new key hash
+// are accepted after a rotation event, allowing agents to swap keys without downtime.
+const rotationGracePeriod = 15 * time.Minute
+
 // VerifyAPIKey checks if an API key is valid and returns the associated OrgID, UserID, Scopes, and Role.
-// It uses the first 8 characters (prefix) for lookup and bcrypt for verification.
+// It enforces:
+//   - Expiry TTL (expires_at)
+//   - Dual-hash acceptance during rotation grace window (prev_key_hash)
+//   - last_used_at update on every successful auth
+//   - Automatic clearing of prev_key_hash once the grace window has passed
 func (c *RBACClient) VerifyAPIKey(ctx context.Context, rawKey string) (string, string, []string, string, error) {
 	if len(rawKey) < 16 {
 		return "", "", nil, "", fmt.Errorf("invalid API key format")
 	}
 	prefix := rawKey[:16]
 
-	var orgID, userID, storedHash, role string
+	var orgID, userID, keyID, storedHash, role string
 	var scopes []string
-	// Lookup key by prefix - now including user_id, scopes and role from migration 014
-	err := c.db.QueryRowContext(ctx, "SELECT org_id, user_id, key_hash, scopes, role FROM api_keys WHERE key_prefix = $1", prefix).Scan(&orgID, &userID, &storedHash, pq.Array(&scopes), &role)
+	var expiresAt sql.NullTime
+	var prevKeyHash sql.NullString
+	var rotatedAt sql.NullTime
+
+	err := c.db.QueryRowContext(ctx,
+		`SELECT id, org_id, user_id, key_hash, scopes, role, expires_at, prev_key_hash, rotated_at
+		 FROM api_keys WHERE key_prefix = $1`,
+		prefix,
+	).Scan(&keyID, &orgID, &userID, &storedHash, pq.Array(&scopes), &role,
+		&expiresAt, &prevKeyHash, &rotatedAt)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return "", "", nil, "", fmt.Errorf("invalid API key")
@@ -110,14 +128,52 @@ func (c *RBACClient) VerifyAPIKey(ctx context.Context, rawKey string) (string, s
 		return "", "", nil, "", fmt.Errorf("failed to verify API key: %w", err)
 	}
 
-	// Compare bcrypt hash. 
-	// Note: We use the full rawKey for the check.
-	err = bcrypt.CompareHashAndPassword([]byte(storedHash), []byte(rawKey))
-	if err != nil {
-		return "", "", nil, "", fmt.Errorf("invalid API key")
+	// 1. Enforce expiry TTL
+	if expiresAt.Valid && time.Now().UTC().After(expiresAt.Time) {
+		return "", "", nil, "", fmt.Errorf("API key has expired")
 	}
 
+	// 2. Verify bcrypt hash — try primary hash first, then prev_key_hash (rotation grace)
+	primaryErr := bcrypt.CompareHashAndPassword([]byte(storedHash), []byte(rawKey))
+	if primaryErr != nil {
+		// Try the previous hash if we're within the rotation grace window
+		if prevKeyHash.Valid && rotatedAt.Valid &&
+			time.Since(rotatedAt.Time) < rotationGracePeriod {
+			prevErr := bcrypt.CompareHashAndPassword([]byte(prevKeyHash.String), []byte(rawKey))
+			if prevErr != nil {
+				return "", "", nil, "", fmt.Errorf("invalid API key")
+			}
+			// Accepted on old hash — don't clear yet, grace window still active
+		} else {
+			// Either no prev hash or grace window expired
+			return "", "", nil, "", fmt.Errorf("invalid API key")
+		}
+	} else if prevKeyHash.Valid && rotatedAt.Valid &&
+		time.Since(rotatedAt.Time) >= rotationGracePeriod {
+		// New hash accepted and grace window has passed — clear prev_key_hash async
+		go c.clearPrevKeyHash(keyID)
+	}
+
+	// 3. Update last_used_at asynchronously — don't block the auth path
+	go c.updateLastUsed(keyID)
+
 	return orgID, userID, scopes, role, nil
+}
+
+// updateLastUsed stamps the key's last_used_at without blocking the auth hot path.
+func (c *RBACClient) updateLastUsed(keyID string) {
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	_, _ = c.db.ExecContext(ctx,
+		"UPDATE api_keys SET last_used_at = now() WHERE id = $1", keyID)
+}
+
+// clearPrevKeyHash removes the rotation overlap hash once the grace window has elapsed.
+func (c *RBACClient) clearPrevKeyHash(keyID string) {
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	_, _ = c.db.ExecContext(ctx,
+		"UPDATE api_keys SET prev_key_hash = NULL WHERE id = $1", keyID)
 }
 
 

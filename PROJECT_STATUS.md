@@ -17,6 +17,7 @@ This document tracks the current completion state of Memzent features and provid
 | **Advanced Orchestration (Phase 4)** | All | ✅ 100% | Model-scoped caching, PlanToolChain Go/Rust bindings, and typewriter SSE streaming. |
 | **Agent Memory (Phase 5/6)** | Gateway/Rust | ✅ 100% | PostgreSQL session threads and semantic memory Qdrant extraction. |
 | **Context Analytics (Phase 5/6)** | Dashboard/Gateway | ✅ 100% | Premium ROI tracking, latency tool telemetry, and intent theme clusters. |
+| **API Key Security Hardening** | Gateway/Dashboard | ✅ Code Complete | Expiry TTL picker, last_used_at tracking, in-place rotation with 15-min grace window, stale key audit. ⬜ Migration 020 needs applying to Supabase. |
 
 ---
 
@@ -49,8 +50,21 @@ This document tracks the current completion state of Memzent features and provid
 
 ## 3. Pending Tasks & Directives
 
-### [Phase 5] High Availability & Production Scaling (Priority: High)
-**Goal**: Deploy and scale Memzent to Kubernetes clusters.
+### [Phase 6] API Key Security Hardening (Priority: High — In Progress)
+**Goal**: Harden agent credential lifecycle with expiry, activity tracking, and zero-downtime rotation.
+
+*   **Task 6.1** ✅ Migration `020_api_key_rotation.sql` — adds `expires_at`, `prev_key_hash`, `rotated_at`, `last_used_at` columns with performance indexes.
+*   **Task 6.2** ✅ `rbac.go` `VerifyAPIKey` — enforces expiry TTL, dual-hash acceptance during 15-min rotation grace window, async `last_used_at` updates, auto-clearing of `prev_key_hash`.
+*   **Task 6.3** ✅ `actions.ts` `rotateApiKey` — server action for in-place key rotation (generates new key, preserves old hash in `prev_key_hash`).
+*   **Task 6.4** ✅ `keys/page.tsx` — Rotate button (purple, with spin animation), grace window notice banner, `last_used_at` / `rotated_at` / `expires_at` displayed in key row.
+*   **Task 6.5** ⬜ Apply migration `020` to Supabase production:
+    ```
+    -- Option A: Supabase CLI
+    supabase db push
+    -- Option B: Paste migrations/020_api_key_rotation.sql into Supabase SQL Editor
+    ```
+*   **Task 6.6** ✅ TTL picker in key creation form — 4-option grid (Never / 24h / 7d / 30d). Passes `expires_at` ISO timestamp to `createApiKey`.
+*   **Task 6.7** ✅ Stale key audit — amber count banner in registry header; per-row `Stale` / `Expired` badges when `last_used_at` is NULL or >30 days old.
 
 *   **Task 5.1**: Define Envoy Load Balancing profiles for gRPC streams.
 *   **Task 5.2**: Implement custom retry policies with exponential backoff on native tools.

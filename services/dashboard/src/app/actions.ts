@@ -156,7 +156,7 @@ export async function getOrgAuditStats(orgId: string) {
     return { count24h: count || 0 };
 }
 
-export async function createApiKey(orgId: string, name: string, scopes: string[] = [], role: string = 'agent') {
+export async function createApiKey(orgId: string, name: string, scopes: string[] = [], role: string = 'agent', expiresAt: string | null = null) {
     const supabase = await createClient();
 
     // Generate a high-entropy 32-char raw key
@@ -171,17 +171,24 @@ export async function createApiKey(orgId: string, name: string, scopes: string[]
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) throw new Error("Unauthorized: No user session found");
 
+    const insertPayload: Record<string, any> = {
+        org_id: orgId,
+        user_id: user.id,
+        name: name,
+        key_prefix: prefix,
+        key_hash: hash,
+        scopes: scopes,
+        role: role,
+    };
+
+    // Only set expires_at if a TTL was selected
+    if (expiresAt) {
+        insertPayload.expires_at = expiresAt;
+    }
+
     const { data, error } = await supabase
         .from('api_keys')
-        .insert({
-            org_id: orgId,
-            user_id: user.id,
-            name: name,
-            key_prefix: prefix,
-            key_hash: hash,
-            scopes: scopes,
-            role: role
-        })
+        .insert(insertPayload)
         .select();
 
     if (error) {
@@ -202,6 +209,53 @@ export async function revokeApiKey(id: string) {
         .eq('id', id);
 
     if (error) throw error;
+}
+
+/**
+ * Rotates an API key in place.
+ * - Generates a new high-entropy key.
+ * - Moves the current key_hash → prev_key_hash (gateway accepts both for 15 min grace).
+ * - Stores the new key_hash and stamps rotated_at.
+ * - Returns the new raw key — this is the ONLY time it will be shown.
+ */
+export async function rotateApiKey(id: string) {
+    const supabase = await createClient();
+
+    // Verify the key belongs to the authenticated user's org before rotating
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) throw new Error("Unauthorized");
+
+    const { data: existing, error: fetchErr } = await supabase
+        .from('api_keys')
+        .select('key_hash, org_id')
+        .eq('id', id)
+        .maybeSingle();
+
+    if (fetchErr || !existing) throw new Error("Key not found or unauthorized");
+
+    // Generate a new key
+    const newRawKey = `memzent_${crypto.randomBytes(24).toString('hex')}`;
+    const newPrefix  = newRawKey.substring(0, 16);
+    const salt       = await bcrypt.genSalt(10);
+    const newHash    = await bcrypt.hash(newRawKey, salt);
+
+    const { error: updateErr } = await supabase
+        .from('api_keys')
+        .update({
+            key_prefix:    newPrefix,
+            key_hash:      newHash,
+            prev_key_hash: existing.key_hash,  // grace window — gateway accepts old key for 15 min
+            rotated_at:    new Date().toISOString(),
+        })
+        .eq('id', id);
+
+    if (updateErr) {
+        console.error("rotateApiKey update error:", updateErr);
+        throw updateErr;
+    }
+
+    // Return the new raw key — ONLY time it will be visible
+    return { key: newRawKey };
 }
 
 export async function createMemzentTool(orgId: string, tool: any) {
