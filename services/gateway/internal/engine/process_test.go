@@ -41,7 +41,10 @@ func TestMemzentEngine_Process_BillingFailure(t *testing.T) {
 	db, mock, _ := sqlmock.New()
 	mock.ExpectQuery("SELECT COALESCE").
 		WithArgs("org2").
-		WillReturnRows(sqlmock.NewRows([]string{"token_balance"}).AddRow(0)) // 0 balance
+		WillReturnRows(sqlmock.NewRows([]string{"token_balance", "default_provider", "default_model"}).AddRow(0, "", "")) // 0 balance
+	mock.ExpectQuery("SELECT id, amount").
+		WithArgs("org2", 5).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "amount", "transaction_type", "description", "created_at"}))
 	e.ledger = billing.NewLedger(db)
 
 	ctx := context.Background()

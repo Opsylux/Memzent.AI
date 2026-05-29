@@ -94,10 +94,10 @@ func (c *RBACClient) GetDB() *sql.DB {
 // VerifyAPIKey checks if an API key is valid and returns the associated OrgID, UserID, Scopes, and Role.
 // It uses the first 8 characters (prefix) for lookup and bcrypt for verification.
 func (c *RBACClient) VerifyAPIKey(ctx context.Context, rawKey string) (string, string, []string, string, error) {
-	if len(rawKey) < 8 {
+	if len(rawKey) < 16 {
 		return "", "", nil, "", fmt.Errorf("invalid API key format")
 	}
-	prefix := rawKey[:8]
+	prefix := rawKey[:16]
 
 	var orgID, userID, storedHash, role string
 	var scopes []string

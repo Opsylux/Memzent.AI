@@ -1,6 +1,7 @@
 "use server"
 
 import { createClient } from '@/lib/supabase-server'
+import { cache } from 'react'
 
 export interface OrgContext {
   userId: string
@@ -21,7 +22,7 @@ export interface OrgContext {
  * 3. Join with `organizations` to get org details
  * 4. Fall back to a "Personal" org seeded from user.id if no membership found
  */
-export async function getCurrentOrg(): Promise<OrgContext | null> {
+export const getCurrentOrg = cache(async (): Promise<OrgContext | null> => {
   try {
     const supabase = await createClient()
     const { data: { user }, error: userErr } = await supabase.auth.getUser()
@@ -74,4 +75,4 @@ export async function getCurrentOrg(): Promise<OrgContext | null> {
     console.error('Failed to resolve org context:', e)
     return null
   }
-}
+})

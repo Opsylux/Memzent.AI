@@ -161,7 +161,7 @@ export async function createApiKey(orgId: string, name: string, scopes: string[]
 
     // Generate a high-entropy 32-char raw key
     const rawKey = `memzent_${crypto.randomBytes(24).toString('hex')}`;
-    const prefix = rawKey.substring(0, 8);
+    const prefix = rawKey.substring(0, 16);
 
     // Hash the key for secure storage
     const salt = await bcrypt.genSalt(10);

@@ -154,7 +154,7 @@ func TestRBACClient_VerifyAPIKey(t *testing.T) {
 
 	// Valid key
 	mock.ExpectQuery("SELECT org_id, user_id, key_hash, scopes, role FROM api_keys").
-		WithArgs("12345678").
+		WithArgs("12345678-real-ke").
 		WillReturnRows(sqlmock.NewRows([]string{"org_id", "user_id", "key_hash", "scopes", "role"}).
 			AddRow("org1", "user1", string(hashedKey), "{read,write}", "admin"))
 
@@ -168,7 +168,7 @@ func TestRBACClient_VerifyAPIKey(t *testing.T) {
 
 	// Invalid hash
 	mock.ExpectQuery("SELECT org_id, user_id, key_hash, scopes, role FROM api_keys").
-		WithArgs("12345678").
+		WithArgs("12345678-real-ke").
 		WillReturnRows(sqlmock.NewRows([]string{"org_id", "user_id", "key_hash", "scopes", "role"}).
 			AddRow("org1", "user1", "invalid_hash", "{read,write}", "admin"))
 
@@ -179,7 +179,7 @@ func TestRBACClient_VerifyAPIKey(t *testing.T) {
 
 	// ErrNoRows
 	mock.ExpectQuery("SELECT org_id, user_id, key_hash, scopes, role FROM api_keys").
-		WithArgs("12345678").
+		WithArgs("12345678-real-ke").
 		WillReturnError(sql.ErrNoRows)
 
 	_, _, _, _, err = client.VerifyAPIKey(ctx, rawKey)

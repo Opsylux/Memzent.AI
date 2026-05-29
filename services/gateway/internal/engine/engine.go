@@ -286,13 +286,20 @@ func (e *MemzentEngine) Process(ctx context.Context, req *PromptRequest) (*Promp
 	reqCounter, _ := e.orgRequests.LoadOrStore(orgID, &atomic.Uint64{})
 	reqCounter.(*atomic.Uint64).Add(1)
 
-	// Fetch organization settings and balance details
+	// Fetch organization settings, balance, and transaction history details
 	var settings *billing.OrgSettings
 	var settingsErr error
+	var recentTxs []billing.Transaction
 	if e.ledger != nil {
 		settings, settingsErr = e.ledger.GetOrgSettings(ctx, orgID)
 		if settingsErr != nil {
 			slog.Error("Failed to fetch organization settings", "org_id", orgID, "error", settingsErr)
+		} else if orgID != "default" && orgID != "" {
+			var txErr error
+			recentTxs, txErr = e.ledger.GetRecentTransactions(ctx, orgID, 5)
+			if txErr != nil {
+				slog.Error("Failed to fetch recent transactions", "org_id", orgID, "error", txErr)
+			}
 		}
 	}
 
@@ -722,6 +729,24 @@ func (e *MemzentEngine) Process(ctx context.Context, req *PromptRequest) (*Promp
 		}
 		if len(toolResults) > 0 {
 			currentContent = fmt.Sprintf("%s\n\n### SUPPLEMENTARY TOOL CONTEXT\n%v\n--- END TOOL CONTEXT ---", currentContent, toolResults)
+		}
+		if settings != nil {
+			balanceVal := settings.TokenBalance
+			if orgID == "default" || orgID == "" {
+				balanceVal = 999999.0
+			}
+			billingContext := fmt.Sprintf("### ACTUAL ORGANIZATIONAL BILLING CONTEXT\n- Current Token Balance: $%.4f\n", balanceVal)
+			if len(recentTxs) > 0 {
+				billingContext += "- Recent Ledger Transactions:\n"
+				for _, tx := range recentTxs {
+					billingContext += fmt.Sprintf("  * Timestamp: %s, Action: %s, Amount: $%.4f, Description: %s\n",
+						tx.CreatedAt.Format(time.RFC3339), tx.TransactionType, tx.Amount, tx.Description)
+				}
+			} else {
+				billingContext += "- Recent Ledger Transactions: None\n"
+			}
+			billingContext += "--- END BILLING CONTEXT ---"
+			currentContent = fmt.Sprintf("%s\n\n%s", currentContent, billingContext)
 		}
 		messagesToLLM[lastMsgIdx].Content = currentContent
 	}

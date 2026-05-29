@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"time"
 )
 
 type Ledger struct {
@@ -18,6 +19,43 @@ type OrgSettings struct {
 	TokenBalance    float64
 	DefaultProvider string
 	DefaultModel    string
+}
+
+type Transaction struct {
+	ID              string    `json:"id"`
+	Amount          float64   `json:"amount"`
+	TransactionType string    `json:"transaction_type"`
+	Description     string    `json:"description"`
+	CreatedAt       time.Time `json:"created_at"`
+}
+
+// GetRecentTransactions retrieves the latest billing ledger logs for an organization
+func (l *Ledger) GetRecentTransactions(ctx context.Context, orgID string, limit int) ([]Transaction, error) {
+	if orgID == "default" || orgID == "" {
+		return nil, nil
+	}
+	rows, err := l.db.QueryContext(ctx, `
+		SELECT id, amount, transaction_type, COALESCE(description, ''), created_at
+		FROM billing_ledger
+		WHERE org_id = $1
+		ORDER BY created_at DESC
+		LIMIT $2
+	`, orgID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var txs []Transaction
+	for rows.Next() {
+		var tx Transaction
+		err := rows.Scan(&tx.ID, &tx.Amount, &tx.TransactionType, &tx.Description, &tx.CreatedAt)
+		if err != nil {
+			return nil, err
+		}
+		txs = append(txs, tx)
+	}
+	return txs, nil
 }
 
 // GetOrgSettings retrieves organization preferences and balance details
