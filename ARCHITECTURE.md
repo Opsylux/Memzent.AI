@@ -157,11 +157,11 @@ Memzent is architected as a **Universal AI Gateway** with pluggable tool connect
 - [ ] Implement rate limit based on tier
 - [ ] Implement throttle based on tier
 
-### Phase 1.b: Qdrant Optimization ( Not started, need to start for go live)
+### Phase 1.b: Qdrant Optimization (✅ IN PROGRESS)
 **Goal**: Enable Qdrant optimization
-- [ ] Enable Scalar Quantization to save 75% on RAM costs.
-- [ ] Set memmap_threshold to allow Qdrant to offload cold data to disk automatically.
-- [ ] Index your org_id and user_id fields in the payload.
+- [x] Enable Scalar Quantization to save 75% on RAM costs.
+- [x] Set memmap_threshold to allow Qdrant to offload cold data to disk automatically.
+- [x] Index your org_id and user_id fields in the payload.
 - [ ] Enable Snapshots: Schedule automatic snapshots to an S3 bucket for disaster recovery.
 
 ### Phase 2: Dynamic Tool Registry (🚀 IN PROGRESS)

@@ -22,6 +22,8 @@ use router_proto::{
 use qdrant_client::qdrant::{
     Condition, Filter, SearchPointsBuilder, FieldCondition, Match, r#match::MatchValue,
     condition::ConditionOneOf, PointStruct, UpsertPointsBuilder, Value, 
+    CreateCollectionBuilder, Distance, ScalarQuantizationBuilder, VectorParamsBuilder,
+    OptimizersConfigDiff, CreateFieldIndexCollectionBuilder, FieldType,
 };
 use std::collections::HashMap;
 
@@ -496,6 +498,43 @@ impl SemanticRouter for MyRouter {
     }
 }
 
+async fn init_optimized_collection(
+    q_client: &Qdrant,
+    collection_name: &str,
+    exists: bool,
+) -> Result<(), Box<dyn std::error::Error>> {
+    if !exists {
+        println!("🚀 Creating optimized collection: {}", collection_name);
+        
+        q_client
+            .create_collection(
+                CreateCollectionBuilder::new(collection_name)
+                    .vectors_config(VectorParamsBuilder::new(384, Distance::Cosine))
+                    // 1. Enable Scalar Quantization (reduces RAM usage by 75%)
+                    .quantization_config(ScalarQuantizationBuilder::default())
+                    // 2. Keep payloads on disk to protect system memory
+                    .on_disk_payload(true)
+                    // 3. Move vector data to disk (memmap) once collection grows beyond 20,000
+                    .optimizers_config(OptimizersConfigDiff {
+                        memmap_threshold: Some(20000),
+                        ..Default::default()
+                    })
+            )
+            .await?;
+
+        // 4. Index payload fields (org_id and user_id) for instant filters
+        println!("🔑 Creating payload indexes for {}", collection_name);
+        let _ = q_client.create_field_index(
+            CreateFieldIndexCollectionBuilder::new(collection_name, "org_id", FieldType::Keyword)
+        ).await;
+
+        let _ = q_client.create_field_index(
+            CreateFieldIndexCollectionBuilder::new(collection_name, "user_id", FieldType::Keyword)
+        ).await;
+    }
+    Ok(())
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let addr = "[::]:50051".parse()?;
@@ -503,52 +542,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     
     let q_client = Qdrant::from_url(&qdrant_url).build()?;
     
-    // Initialize the collections
-    let collection_name = "tools_collection";
+    // Initialize the collections with SQ, Memmap, On-Disk storage, and payload indexing
     let collections_response = q_client.list_collections().await?;
-    let collection_exists = collections_response.collections.iter().any(|c| c.name == collection_name);
     
-    if !collection_exists {
-        let _ = q_client
-            .create_collection(
-                qdrant_client::qdrant::CreateCollectionBuilder::new(collection_name)
-                    .vectors_config(qdrant_client::qdrant::VectorParamsBuilder::new(
-                        384, 
-                        qdrant_client::qdrant::Distance::Cosine
-                    ))
-            )
-            .await;
-    }
+    let tools_exists = collections_response.collections.iter().any(|c| c.name == "tools_collection");
+    init_optimized_collection(&q_client, "tools_collection", tools_exists).await?;
     
-    let cache_collection = "prompts_collection";
-    let cache_exists = collections_response.collections.iter().any(|c| c.name == cache_collection);
-    
-    if !cache_exists {
-        let _ = q_client
-            .create_collection(
-                qdrant_client::qdrant::CreateCollectionBuilder::new(cache_collection)
-                    .vectors_config(qdrant_client::qdrant::VectorParamsBuilder::new(
-                        384, 
-                        qdrant_client::qdrant::Distance::Cosine
-                    ))
-            )
-            .await;
-    }
+    let cache_exists = collections_response.collections.iter().any(|c| c.name == "prompts_collection");
+    init_optimized_collection(&q_client, "prompts_collection", cache_exists).await?;
 
-    let memories_collection = "memories_collection";
-    let memories_exists = collections_response.collections.iter().any(|c| c.name == memories_collection);
-    
-    if !memories_exists {
-        let _ = q_client
-            .create_collection(
-                qdrant_client::qdrant::CreateCollectionBuilder::new(memories_collection)
-                    .vectors_config(qdrant_client::qdrant::VectorParamsBuilder::new(
-                        384, 
-                        qdrant_client::qdrant::Distance::Cosine
-                    ))
-            )
-            .await;
-    }
+    let memories_exists = collections_response.collections.iter().any(|c| c.name == "memories_collection");
+    init_optimized_collection(&q_client, "memories_collection", memories_exists).await?;
 
     println!("Loading FastEmbed model (all-MiniLM-L6-v2)...");
     let model = TextEmbedding::try_new(
