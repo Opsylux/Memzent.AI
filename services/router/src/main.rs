@@ -143,7 +143,7 @@ impl SemanticRouter for MyRouter {
             });
         }
         let cache_search_request = SearchPointsBuilder::new("prompts_collection", real_vector.clone(), 1)
-            .filter(Filter { should: cache_filter_conditions, ..Default::default() })
+            .filter(Filter { must: cache_filter_conditions, ..Default::default() })
             .with_payload(true)
             .build();
 
@@ -456,7 +456,7 @@ impl SemanticRouter for MyRouter {
 
         // 3. Search memories_collection
         let search_request = SearchPointsBuilder::new("memories_collection", real_vector, 5)
-            .filter(Filter { should: filter_conditions, ..Default::default() })
+            .filter(Filter { must: filter_conditions, ..Default::default() })
             .with_payload(true)
             .build();
 

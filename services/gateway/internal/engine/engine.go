@@ -294,7 +294,7 @@ func (e *MemzentEngine) Process(ctx context.Context, req *PromptRequest) (*Promp
 		settings, settingsErr = e.ledger.GetOrgSettings(ctx, orgID)
 		if settingsErr != nil {
 			slog.Error("Failed to fetch organization settings", "org_id", orgID, "error", settingsErr)
-		} else if orgID != "default" && orgID != "" {
+		} else if orgID != "default" && orgID != "" && isBillingQuery(queryPrompt) {
 			var txErr error
 			recentTxs, txErr = e.ledger.GetRecentTransactions(ctx, orgID, 5)
 			if txErr != nil {
@@ -730,12 +730,14 @@ func (e *MemzentEngine) Process(ctx context.Context, req *PromptRequest) (*Promp
 		if len(toolResults) > 0 {
 			currentContent = fmt.Sprintf("%s\n\n### SUPPLEMENTARY TOOL CONTEXT\n%v\n--- END TOOL CONTEXT ---", currentContent, toolResults)
 		}
-		if settings != nil {
+		if settings != nil && isBillingQuery(queryPrompt) {
 			balanceVal := settings.TokenBalance
 			if orgID == "default" || orgID == "" {
 				balanceVal = 999999.0
 			}
-			billingContext := fmt.Sprintf("### ACTUAL ORGANIZATIONAL BILLING CONTEXT\n- Current Token Balance: $%.4f\n", balanceVal)
+			billingContext := fmt.Sprintf("### ACTUAL ORGANIZATIONAL BILLING CONTEXT\n"+
+				"Instructions for LLM: Use this billing context ONLY if the user is explicitly asking about their billing, token balance, transactions, or charges. If the prompt is about something else, ignore this context completely.\n"+
+				"- Current Token Balance: $%.4f\n", balanceVal)
 			if len(recentTxs) > 0 {
 				billingContext += "- Recent Ledger Transactions:\n"
 				for _, tx := range recentTxs {
@@ -930,4 +932,20 @@ func (e *MemzentEngine) WarmCache(ctx context.Context) {
 	}
 
 	slog.Info("🔥 Memory cache pre-warming completed successfully!", "records_warmed", warmedCount)
+}
+
+func isBillingQuery(prompt string) bool {
+	p := strings.ToLower(prompt)
+	keywords := []string{
+		"balance", "billing", "token", "transaction", "ledger", "charge",
+		"payment", "cost", "invoice", "spend", "spent", "audit", "money",
+		"usd", "account status", "pricing", "usage", "cache hit", "cache discount",
+		"rate limit", "tier", "credit", "budget", "fee", "fees",
+	}
+	for _, kw := range keywords {
+		if strings.Contains(p, kw) {
+			return true
+		}
+	}
+	return false
 }
