@@ -21,7 +21,7 @@ export default function DocsLayout({
           <nav className="hidden md:flex items-center gap-6">
             <Link href="https://memzent.ai" className="text-xs font-bold text-white/40 uppercase tracking-widest hover:text-white transition-colors">Home</Link>
             <Link href="/docs" className="text-xs font-bold text-white uppercase tracking-widest hover:text-memzent-glow transition-colors">Documentation</Link>
-            <Link href="https://github.com/Opsylux/MemzentMCP" target="_blank" className="text-xs font-bold text-white/40 uppercase tracking-widest hover:text-white transition-colors">GitHub</Link>
+            <Link href="https://github.com/Opsylux/memzent" target="_blank" className="text-xs font-bold text-white/40 uppercase tracking-widest hover:text-white transition-colors">GitHub</Link>
           </nav>
         </div>
         <div className="flex items-center gap-4">

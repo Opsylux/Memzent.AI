@@ -9,9 +9,10 @@ Memzent supports pluggable LLM providers in the Gateway.
 
 ### Checklist:
 1.  **Define Provider**: Create a new file in `/services/gateway/internal/llm/` (e.g., `mistral.go`).
-2.  **Implement Interface**: Ensure the struct satisfies the `llm.Provider` interface:
-    - `Generate(ctx, prompt, modelOverride) (string, error)`
-    - `Name() string`
+2.  **Implement Interface**: Ensure the struct satisfies the `llm.Provider` interface (`internal/llm/provider.go`):
+    - `Generate(ctx context.Context, messages []Message, tools []any, model string) (string, *TokenUsage, error)`
+    - `GetProviderName() string`
+    - `GetMetadata() ProviderMetadata`
 3.  **Register Provider**: In `services/gateway/main.go`, instantiate the provider and add it to the `providers` map.
 4.  **Config**: Update `config.go` to include API keys for the new provider.
 
@@ -25,13 +26,14 @@ Memzent supports pluggable LLM providers in the Gateway.
 Connectors allow the Gateway to execute non-MCP tools (SQL, REST, GraphQL).
 
 ### Checklist:
-1.  **Engine Definition**: Confirm the `ConnectorType` is defined in `internal/tools/registry.go`.
+1.  **Engine Definition**: Confirm the `ConnectorType` is defined in `internal/connectors/connector.go` (consts `TypeCore`, `TypeMCP`, `TypeREST`, `TypeSQL`, `TypeGraphQL`, `TypeGRPC`, `TypeWebhook`).
 2.  **Connector Logic**: In `internal/connectors/`, implement the `Connector` interface:
-    - `Execute(ctx, req) (*ExecutionResponse, error)`
-    - `Validate(req) error`
+    - `Execute(ctx context.Context, req *ExecutionRequest) (*ExecutionResponse, error)`
+    - `Validate(req *ExecutionRequest) error`
+    - `HealthCheck(ctx context.Context) error`
     - `Type() ConnectorType`
 3.  **Registry Integration**: Ensure the tool's `connector_type` in the database matches your implementation.
-4.  **Dispatcher**: Verify `internal/connectors/registry.go` correctly routes incoming requests to your new connector.
+4.  **Dispatcher**: Verify the `ConnectorRegistry` in `internal/connectors/connector.go` correctly routes incoming requests to your new connector.
 
 > [!IMPORTANT]
 > **Pop Question**: Does every execution of a tool need to be logged in the Audit Log?
