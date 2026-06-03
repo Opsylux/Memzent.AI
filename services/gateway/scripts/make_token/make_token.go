@@ -1,4 +1,4 @@
-package make_token
+package main
 
 import (
 	"fmt"
@@ -7,7 +7,7 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
-func MakeToken() {
+func main() {
 	secret := "memzent-enterprise-secret-2026"
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{

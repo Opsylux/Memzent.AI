@@ -153,10 +153,10 @@ func TestRBACClient_VerifyAPIKey(t *testing.T) {
 	hashedKey, _ := bcrypt.GenerateFromPassword([]byte(rawKey), bcrypt.MinCost)
 
 	// Valid key
-	mock.ExpectQuery("SELECT org_id, user_id, key_hash, scopes, role FROM api_keys").
+	mock.ExpectQuery("SELECT id, org_id, user_id, key_hash, scopes, role, expires_at, prev_key_hash, rotated_at FROM api_keys").
 		WithArgs("12345678-real-ke").
-		WillReturnRows(sqlmock.NewRows([]string{"org_id", "user_id", "key_hash", "scopes", "role"}).
-			AddRow("org1", "user1", string(hashedKey), "{read,write}", "admin"))
+		WillReturnRows(sqlmock.NewRows([]string{"id", "org_id", "user_id", "key_hash", "scopes", "role", "expires_at", "prev_key_hash", "rotated_at"}).
+			AddRow("key1", "org1", "user1", string(hashedKey), "{read,write}", "admin", nil, nil, nil))
 
 	orgID, userID, scopes, role, err := client.VerifyAPIKey(ctx, rawKey)
 	if err != nil {
@@ -167,10 +167,10 @@ func TestRBACClient_VerifyAPIKey(t *testing.T) {
 	}
 
 	// Invalid hash
-	mock.ExpectQuery("SELECT org_id, user_id, key_hash, scopes, role FROM api_keys").
+	mock.ExpectQuery("SELECT id, org_id, user_id, key_hash, scopes, role, expires_at, prev_key_hash, rotated_at FROM api_keys").
 		WithArgs("12345678-real-ke").
-		WillReturnRows(sqlmock.NewRows([]string{"org_id", "user_id", "key_hash", "scopes", "role"}).
-			AddRow("org1", "user1", "invalid_hash", "{read,write}", "admin"))
+		WillReturnRows(sqlmock.NewRows([]string{"id", "org_id", "user_id", "key_hash", "scopes", "role", "expires_at", "prev_key_hash", "rotated_at"}).
+			AddRow("key1", "org1", "user1", "invalid_hash", "{read,write}", "admin", nil, nil, nil))
 
 	_, _, _, _, err = client.VerifyAPIKey(ctx, rawKey)
 	if err == nil {
@@ -178,7 +178,7 @@ func TestRBACClient_VerifyAPIKey(t *testing.T) {
 	}
 
 	// ErrNoRows
-	mock.ExpectQuery("SELECT org_id, user_id, key_hash, scopes, role FROM api_keys").
+	mock.ExpectQuery("SELECT id, org_id, user_id, key_hash, scopes, role, expires_at, prev_key_hash, rotated_at FROM api_keys").
 		WithArgs("12345678-real-ke").
 		WillReturnError(sql.ErrNoRows)
 

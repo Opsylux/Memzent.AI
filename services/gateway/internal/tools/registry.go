@@ -285,14 +285,17 @@ func (r *Registry) ListByConnectorType(ctx context.Context, connectorType ToolCo
 	var tools []*Tool
 	for rows.Next() {
 		tool := &Tool{}
+		var inputData, outputData []byte
 		err := rows.Scan(
 			&tool.ID, &tool.Name, &tool.Description, &tool.ConnectorType, &tool.Endpoint,
-			&tool.InputSchema, &tool.OutputSchema, &tool.TimeoutSeconds,
+			&inputData, &outputData, &tool.TimeoutSeconds,
 			&tool.Enabled, &tool.RequiresAuth, &tool.CreatedAt, &tool.UpdatedAt,
 		)
 		if err != nil {
 			return nil, err
 		}
+		json.Unmarshal(inputData, &tool.InputSchema)
+		json.Unmarshal(outputData, &tool.OutputSchema)
 		tools = append(tools, tool)
 	}
 
