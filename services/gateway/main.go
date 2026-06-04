@@ -205,6 +205,47 @@ func main() {
 		return "Semantic Search Results: No direct matches found in local index. Proceeding with neural expansion.", nil
 	})
 
+	// Register: store_memory (Native Implementation)
+	coreConnector.RegisterTool("store_memory", func(ctx context.Context, userID string, inputs map[string]interface{}) (string, error) {
+		slog.Info("Executing CORE tool: store_memory", "user_id", userID)
+		fact, ok := inputs["fact"].(string)
+		if !ok || fact == "" {
+			return "", fmt.Errorf("missing required parameter: fact")
+		}
+		orgID, _ := ctx.Value("org_id").(string)
+		success, err := rClient.StoreMemory(ctx, fact, orgID, userID)
+		if err != nil {
+			return "", fmt.Errorf("failed to store memory: %w", err)
+		}
+		if !success {
+			return "", fmt.Errorf("failed to store memory (router rejected)")
+		}
+		return fmt.Sprintf("Memory stored successfully: \"%s\"", fact), nil
+	})
+
+	// Register: recall_memory (Native Implementation)
+	coreConnector.RegisterTool("recall_memory", func(ctx context.Context, userID string, inputs map[string]interface{}) (string, error) {
+		slog.Info("Executing CORE tool: recall_memory", "user_id", userID)
+		query, ok := inputs["query"].(string)
+		if !ok || query == "" {
+			return "", fmt.Errorf("missing required parameter: query")
+		}
+		orgID, _ := ctx.Value("org_id").(string)
+		hits, err := rClient.QueryMemory(ctx, query, orgID, userID, 0.65)
+		if err != nil {
+			return "", fmt.Errorf("failed to query memory: %w", err)
+		}
+		if len(hits) == 0 {
+			return "No relevant memories found in long-term storage.", nil
+		}
+		var sb strings.Builder
+		sb.WriteString("Retrieved memories:\n")
+		for _, hit := range hits {
+			sb.WriteString(fmt.Sprintf("- %s (relevance: %.2f)\n", hit.Fact, hit.RelevanceScore))
+		}
+		return sb.String(), nil
+	})
+
 	connRegistry.Register(connectors.TypeCore, coreConnector)
 	slog.Info("Connector registered: CORE (Native)")
 
