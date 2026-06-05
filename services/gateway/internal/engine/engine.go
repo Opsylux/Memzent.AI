@@ -75,10 +75,23 @@ type MemzentEngine struct {
 	memoryMgr  *memory.MemoryManager
 	telemetry  *metrics.TelemetryAggregator
 
+	// Webhook event emitter (Phase 7)
+	eventEmitter EventEmitter
+
 	TotalRequests atomic.Uint64
 	CacheHits     atomic.Uint64
 	orgRequests   sync.Map // Tracks requests per org (map[string]*atomic.Uint64)
 	orgHits       sync.Map // Tracks cache hits per org (map[string]*atomic.Uint64)
+}
+
+// EventEmitter abstracts webhook event dispatch so engine doesn't import notifications directly
+type EventEmitter interface {
+	Emit(ctx context.Context, orgID string, eventType string, data any)
+}
+
+// SetEventEmitter attaches a webhook dispatcher to the engine
+func (e *MemzentEngine) SetEventEmitter(emitter EventEmitter) {
+	e.eventEmitter = emitter
 }
 
 func NewMemzentEngine(
@@ -276,6 +289,8 @@ func (e *MemzentEngine) Process(ctx context.Context, req *PromptRequest) (*Promp
 		return nil, fmt.Errorf("no messages provided")
 	}
 
+	processStart := time.Now()
+
 	// A. Rate Limiting (Based on Tier extracted from JWT)
 	tier, _ := ctx.Value("tier").(string)
 	orgID, _ := ctx.Value("org_id").(string)
@@ -337,6 +352,7 @@ func (e *MemzentEngine) Process(ctx context.Context, req *PromptRequest) (*Promp
 		if rlErr != nil {
 			slog.Warn("Distributed org rate limit check failed, falling back to allow", "error", rlErr)
 		} else if !allowed {
+			e.emitEvent(ctx, orgID, "rate_limit", map[string]any{"user_id": req.UserID, "limit": orgLimit, "window": "1m", "scope": "org"})
 			return nil, fmt.Errorf("rate limit exceeded for organization %s (tier: %s)", orgID, tier)
 		}
 	}
@@ -348,6 +364,7 @@ func (e *MemzentEngine) Process(ctx context.Context, req *PromptRequest) (*Promp
 		if rlErr != nil {
 			slog.Warn("Distributed user rate limit check failed, falling back to allow", "error", rlErr)
 		} else if !allowed {
+			e.emitEvent(ctx, orgID, "rate_limit", map[string]any{"user_id": req.UserID, "limit": userLimit, "window": "1m", "scope": "user"})
 			return nil, fmt.Errorf("rate limit exceeded for user %s (role: %s, limit: %d RPM)", req.UserID, userRole, userLimit)
 		}
 	}
@@ -414,6 +431,7 @@ func (e *MemzentEngine) Process(ctx context.Context, req *PromptRequest) (*Promp
 			e.CacheHits.Add(1)
 			hitCounter, _ := e.orgHits.LoadOrStore(orgID, &atomic.Uint64{})
 			hitCounter.(*atomic.Uint64).Add(1)
+			e.emitEvent(ctx, orgID, "cache_hit", map[string]any{"query": queryPrompt, "score": 1.0, "latency_ms": time.Since(processStart).Milliseconds(), "model": resolvedModel})
 			if e.auditLogger != nil {
 				e.auditLogger.Log(ctx, metrics.AuditEvent{
 					Timestamp: time.Now(),
@@ -970,4 +988,11 @@ func isBillingQuery(prompt string) bool {
 		}
 	}
 	return false
+}
+
+// emitEvent fires a webhook notification if an emitter is configured (non-blocking)
+func (e *MemzentEngine) emitEvent(ctx context.Context, orgID, eventType string, data any) {
+	if e.eventEmitter != nil {
+		go e.eventEmitter.Emit(ctx, orgID, eventType, data)
+	}
 }

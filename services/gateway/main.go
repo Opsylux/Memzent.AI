@@ -25,6 +25,7 @@ import (
 	"memzent-gateway/internal/mcp"
 	"memzent-gateway/internal/memory"
 	"memzent-gateway/internal/metrics"
+	"memzent-gateway/internal/notifications"
 	"memzent-gateway/internal/router"
 	"memzent-gateway/internal/tools"
 
@@ -319,6 +320,15 @@ func main() {
 		slog.Info("Memory & Context Telemetry Services initialized with Postgres")
 	}
 
+	// 7b. Initialize Webhook Notification Dispatcher
+	var webhookRegistry *notifications.Registry
+	var webhookDispatcher *notifications.Dispatcher
+	if rbacClient != nil {
+		webhookRegistry = notifications.NewRegistry(rbacClient.GetDB())
+		webhookDispatcher = notifications.NewDispatcher(webhookRegistry, 4)
+		slog.Info("Webhook Notification Pipeline initialized")
+	}
+
 	// 8. Initialize Engine
 	memzentEngine := engine.NewMemzentEngine(
 		vCache,
@@ -342,6 +352,11 @@ func main() {
 	// 8.0a Start rate limiter TTL eviction — prevents unbounded memory growth
 	// in long-running multi-tenant deployments (one entry per orgID:userID pair).
 	memzentEngine.StartRateLimiterEviction(ctx)
+
+	// Attach webhook event emitter to engine
+	if webhookDispatcher != nil {
+		memzentEngine.SetEventEmitter(webhookDispatcher)
+	}
 
 	// Start background model discovery for all registered LLM providers
 	memzentEngine.StartModelDiscovery(ctx)
@@ -628,6 +643,13 @@ func main() {
 		json.NewEncoder(w).Encode(events)
 	})))
 
+	// Webhooks API (Phase 7: Notification Pipeline)
+	if webhookRegistry != nil {
+		mux.Handle("/v1/webhooks", middleware(requireScope("tools:write", notifications.HandleWebhooks(webhookRegistry))))
+		mux.Handle("/v1/webhooks/", middleware(requireScope("tools:write", notifications.HandleWebhookByID(webhookRegistry))))
+		mux.Handle("/v1/webhooks/event-types", middleware(requireScope("tools:read", notifications.HandleEventTypes())))
+	}
+
 	// Stats API
 	startupTime := time.Now()
 	mux.Handle("/v1/stats", middleware(requireScope("audit:read", func(w http.ResponseWriter, r *http.Request) {
@@ -898,6 +920,11 @@ func main() {
 	// 10. Graceful Shutdown
 	<-ctx.Done()
 	slog.Info("Shutting down Memzent Gateway...")
+
+	// Stop webhook dispatcher (drain queue)
+	if webhookDispatcher != nil {
+		webhookDispatcher.Stop()
+	}
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
