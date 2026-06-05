@@ -212,7 +212,7 @@ export default function PlaygroundPage() {
       <div className="flex items-center gap-4 mb-4">
         <div className="w-2 h-8 rounded-full bg-gradient-to-b from-memzent-glow to-memzent-purple" />
         <div>
-          <h1 className="text-3xl font-black tracking-tighter uppercase">Neural Playground</h1>
+          <h1 className="text-3xl font-black tracking-tighter uppercase">Playground</h1>
           <p className="text-[10px] font-black text-white/20 uppercase tracking-[0.3em] italic">
             Live Prompt Routing · Conversation Sessions & Semantic Context
           </p>
@@ -296,7 +296,7 @@ export default function PlaygroundPage() {
             ) : messages.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-full text-center">
                 <Bot size={40} className="text-white/5 mb-4 animate-pulse" />
-                <h3 className="text-xs font-black uppercase tracking-widest text-white/40 mb-1">Awaiting Neural Link</h3>
+                <h3 className="text-xs font-black uppercase tracking-widest text-white/40 mb-1">Start a Conversation</h3>
                 <p className="text-[9px] text-white/20 max-w-xs font-bold leading-normal">
                   Select a session on the left or send a prompt below to launch an execution chain.
                 </p>

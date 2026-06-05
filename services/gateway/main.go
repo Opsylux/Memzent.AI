@@ -655,7 +655,7 @@ func main() {
 			}
 
 			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(map[string]string{"session_id": sessionID})
+			json.NewEncoder(w).Encode(map[string]string{"id": sessionID, "session_id": sessionID})
 			return
 		}
 
