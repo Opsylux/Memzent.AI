@@ -9,11 +9,25 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 )
 
+// SemanticRouterInterface defines the contract for the semantic router.
+// Implement this interface to mock the router in tests.
+type SemanticRouterInterface interface {
+	GetBestTools(ctx context.Context, prompt string, orgID string, allowedToolIDs []string) ([]*Tool, string, string, string, error)
+	RegisterTool(ctx context.Context, id, name, description, orgID string) (bool, error)
+	PlanToolChain(ctx context.Context, prompt string, orgID string, allowedToolIDs []string) ([]*ToolStep, float32, error)
+	StoreMemory(ctx context.Context, fact, orgID, userID string) (bool, error)
+	QueryMemory(ctx context.Context, prompt, orgID, userID string, threshold float32) ([]*MemoryHit, error)
+	Close()
+}
+
 // RouterClient wraps the gRPC connection to the Rust Semantic Router
 type RouterClient struct {
 	client SemanticRouterClient
 	conn   *grpc.ClientConn
 }
+
+// Compile-time assertion: *RouterClient satisfies SemanticRouterInterface.
+var _ SemanticRouterInterface = (*RouterClient)(nil)
 
 // NewRouterClient initializes a gRPC connection to the Rust service
 func NewRouterClient(ctx context.Context, addr string) (*RouterClient, error) {

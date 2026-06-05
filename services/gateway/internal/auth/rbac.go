@@ -14,11 +14,12 @@ import (
 
 
 type RBACClient struct {
-	db *sql.DB
+	db             *sql.DB
+	devAdminBypass bool
 }
 
 // NewRBACClient connects to the Postgres database
-func NewRBACClient(connStr string) (*RBACClient, error) {
+func NewRBACClient(connStr string, devAdminBypass bool) (*RBACClient, error) {
 	// Auto-append binary_parameters=yes to support PgBouncer transaction pooling (e.g. Supabase poolers)
 	if strings.HasPrefix(connStr, "postgres://") || strings.HasPrefix(connStr, "postgresql://") {
 		if strings.Contains(connStr, "?") {
@@ -39,13 +40,13 @@ func NewRBACClient(connStr string) (*RBACClient, error) {
 		return nil, fmt.Errorf("failed to ping postgres: %w", err)
 	}
 
-	return &RBACClient{db: db}, nil
+	return &RBACClient{db: db, devAdminBypass: devAdminBypass}, nil
 }
 
 // CheckPermission verifies if an organization has access to a specific tool
 func (c *RBACClient) CheckPermission(ctx context.Context, orgID string, toolID string) (bool, error) {
-	// 1. Static Bypasses for Development & Emergency Access
-	if orgID == "admin-01" {
+	// Dev-only bypass: only active when MEMZENT_DEV_ADMIN_BYPASS=true
+	if c.devAdminBypass && orgID == "admin-01" {
 		return true, nil
 	}
 

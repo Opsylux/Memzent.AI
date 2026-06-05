@@ -57,18 +57,32 @@ func (rw *statusResponseWriter) WriteHeader(code int) {
 	rw.ResponseWriter.WriteHeader(code)
 }
 
-func commonMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Memzent-Provider, X-Memzent-Model, X-Skip-Cache, X-Org-ID")
+func corsMiddleware(allowedOrigins []string) func(http.Handler) http.Handler {
+	allowAll := len(allowedOrigins) == 1 && allowedOrigins[0] == "*"
+	originSet := make(map[string]struct{}, len(allowedOrigins))
+	for _, o := range allowedOrigins {
+		originSet[o] = struct{}{}
+	}
 
-		if r.Method == "OPTIONS" {
-			w.WriteHeader(http.StatusOK)
-			return
-		}
-		next.ServeHTTP(w, r)
-	})
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			origin := r.Header.Get("Origin")
+			if allowAll {
+				w.Header().Set("Access-Control-Allow-Origin", "*")
+			} else if _, ok := originSet[origin]; ok {
+				w.Header().Set("Access-Control-Allow-Origin", origin)
+				w.Header().Set("Vary", "Origin")
+			}
+			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Memzent-Provider, X-Memzent-Model, X-Skip-Cache, X-Org-ID")
+
+			if r.Method == "OPTIONS" {
+				w.WriteHeader(http.StatusOK)
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
 }
 
 func main() {
@@ -108,7 +122,7 @@ func main() {
 	slog.Info("Connected to Rust Router")
 
 	// 5. Initialize RBAC Client
-	rbacClient, err := auth.NewRBACClient(cfg.PostgresURL)
+	rbacClient, err := auth.NewRBACClient(cfg.PostgresURL, cfg.DevAdminBypass)
 	if err != nil {
 		slog.Warn("Postgres RBAC unavailable, starting with limited permissions", "error", err)
 	} else {
@@ -764,7 +778,7 @@ func main() {
 
 	// Checkout session handler is already registered on 'mux' above
 
-	publicMux.Handle("/", auth.UnifiedAuthMiddleware(cfg.JWTSecret, jwksProvider, rbacClient)(metricsMiddleware(commonMiddleware(mux))))
+	publicMux.Handle("/", auth.UnifiedAuthMiddleware(cfg.JWTSecret, jwksProvider, rbacClient)(metricsMiddleware(corsMiddleware(cfg.AllowedOrigins)(mux))))
 
 	srv := &http.Server{
 		Addr:    cfg.Port,

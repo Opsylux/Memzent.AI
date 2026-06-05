@@ -46,7 +46,8 @@ type PromptResponse struct {
 	SessionID string `json:"session_id,omitempty"`
 }
 
-// rateLimiterEntry wraps a rate.Limiter with a last-seen timestamp for TTL eviction.
+// rateLimiterEntry is retained for backward compatibility but the primary
+// rate limiting is now distributed via Valkey (see cache.RateLimit).
 type rateLimiterEntry struct {
 	limiter  *rate.Limiter
 	lastSeen time.Time
@@ -55,7 +56,7 @@ type rateLimiterEntry struct {
 // MemzentEngine orchestrates the flow between Cache, RBAC, Router, MCP, and LLM
 type MemzentEngine struct {
 	cache             *cch.MemzentCache
-	router            *rtr.RouterClient
+	router            rtr.SemanticRouterInterface
 	rbac              *auth.RBACClient
 	ledger            *billing.Ledger
 	costCalc          *billing.CostCalculator
@@ -66,7 +67,7 @@ type MemzentEngine struct {
 	connectorRegistry *connectors.ConnectorRegistry // Core/Native connectors
 	toolThreshold     float64
 	cacheTTL          time.Duration
-	rateLimiters      sync.Map // map[string]*rateLimiterEntry — evicted by background goroutine
+	rateLimiters      sync.Map // Deprecated: retained for graceful fallback; primary rate limiting is via Valkey
 	auditLogger       *metrics.PersistentAuditLogger
 
 	// Memory & Telemetry extensions
@@ -82,7 +83,7 @@ type MemzentEngine struct {
 
 func NewMemzentEngine(
 	cache *cch.MemzentCache,
-	rtrClient *rtr.RouterClient,
+	rtrClient rtr.SemanticRouterInterface,
 	rbacClient *auth.RBACClient,
 	ledger *billing.Ledger,
 	costCalc *billing.CostCalculator,
@@ -303,36 +304,27 @@ func (e *MemzentEngine) Process(ctx context.Context, req *PromptRequest) (*Promp
 		}
 	}
 
-	// Dynamic Rate Limiting Based on Tier
-	limit := 10.0 // Free default
+	// Dynamic Rate Limiting Based on Tier (Distributed via Valkey)
+	limit := int64(10) // Free default
 	if tier == "pro" {
-		limit = 100.0
+		limit = 100
 	} else if tier == "business" {
-		limit = 1000.0
+		limit = 1000
 	}
 
 	// Pay-as-you-go boost: if they have a positive token balance, promote rate limit from free (10) to pro (100)
-	if limit < 100.0 && settings != nil && settings.TokenBalance > 0 {
-		limit = 100.0
+	if limit < 100 && settings != nil && settings.TokenBalance > 0 {
+		limit = 100
 	}
 
 	limitKey := fmt.Sprintf("rl:%s:%s", orgID, req.UserID)
-	newEntry := &rateLimiterEntry{
-		limiter:  rate.NewLimiter(rate.Limit(limit/60), int(limit)),
-		lastSeen: time.Now(),
-	}
-	actual, _ := e.rateLimiters.LoadOrStore(limitKey, newEntry)
-	entry := actual.(*rateLimiterEntry)
-	entry.lastSeen = time.Now() // refresh timestamp on every access
-
-	// Dynamically adjust the limit/burst if it has changed (e.g. tier upgrade or balance top-up)
-	if entry.limiter.Limit() != rate.Limit(limit/60) {
-		entry.limiter.SetLimit(rate.Limit(limit / 60))
-		entry.limiter.SetBurst(int(limit))
-	}
-
-	if !entry.limiter.Allow() {
-		return nil, fmt.Errorf("rate limit exceeded for organization %s (tier: %s)", orgID, tier)
+	if e.cache != nil {
+		allowed, rlErr := e.cache.RateLimit(ctx, limitKey, limit)
+		if rlErr != nil {
+			slog.Warn("Distributed rate limit check failed, falling back to allow", "error", rlErr)
+		} else if !allowed {
+			return nil, fmt.Errorf("rate limit exceeded for organization %s (tier: %s)", orgID, tier)
+		}
 	}
 
 	// A.1 Billing Pre-Check (Bypass check for internal dashboard sessions / JWT users)

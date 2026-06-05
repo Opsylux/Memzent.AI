@@ -11,6 +11,11 @@ services:
       - "6379:6379"
     command: [ "valkey-server", "--io-threads", "4" ]
     restart: always
+    healthcheck:
+      test: ["CMD", "valkey-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
 
   # Intelligence Layer (Vector Store)
   qdrant:
@@ -21,6 +26,11 @@ services:
     volumes:
       - qdrant_data:/qdrant/storage
     restart: always
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:6333/healthz || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
 
   # Memzent Semantic Router (Rust - Production Multi-Stage)
   router:
@@ -31,7 +41,8 @@ services:
     environment:
       QDRANT_URL: "http://qdrant:6334"
     depends_on:
-      - qdrant
+      qdrant:
+        condition: service_healthy
     restart: always
 
   # Memzent Gateway (Go - Production Multi-Stage)
@@ -55,8 +66,10 @@ services:
       - STRIPE_BIZ_PRICE_ID=${STRIPE_BIZ_PRICE_ID}
       - POSTGRES_URL=${POSTGRES_URL}
     depends_on:
-      - router
-      - valkey
+      router:
+        condition: service_started
+      valkey:
+        condition: service_healthy
     restart: always
 
   # Next.js Dashboard (Bun/React - Production Multi-Stage)

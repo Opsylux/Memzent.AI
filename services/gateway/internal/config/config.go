@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -26,6 +27,8 @@ type Config struct {
 	LLMCacheTTL            time.Duration
 	ToolRelevanceThreshold float64
 	Environment            string
+	AllowedOrigins         []string
+	DevAdminBypass         bool
 }
 
 func LoadConfig() *Config {
@@ -49,6 +52,8 @@ func LoadConfig() *Config {
 		LLMCacheTTL:            getEnvDuration("LLM_CACHE_TTL", 1*time.Hour),
 		ToolRelevanceThreshold: getEnvFloat("TOOL_RELEVANCE_THRESHOLD", 0.7),
 		Environment:            getEnv("ENVIRONMENT", "development"),
+		AllowedOrigins:         getEnvList("ALLOWED_ORIGINS", "*"),
+		DevAdminBypass:         getEnv("MEMZENT_DEV_ADMIN_BYPASS", "false") == "true",
 	}
 }
 
@@ -75,4 +80,16 @@ func getEnvFloat(key string, fallback float64) float64 {
 		}
 	}
 	return fallback
+}
+
+func getEnvList(key string, fallback string) []string {
+	value := getEnv(key, fallback)
+	parts := strings.Split(value, ",")
+	result := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if trimmed := strings.TrimSpace(p); trimmed != "" {
+			result = append(result, trimmed)
+		}
+	}
+	return result
 }

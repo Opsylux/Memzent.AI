@@ -1,0 +1,104 @@
+# Integration test workflow: spins up full stack and runs smoke tests
+name: Integration Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  gateway-unit:
+    name: Gateway Unit Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+          cache-dependency-path: services/gateway/go.sum
+
+      - name: Run Gateway Tests
+        working-directory: services/gateway
+        run: go test -race -count=1 ./...
+
+  integration:
+    name: Integration Smoke Test
+    runs-on: ubuntu-latest
+    needs: gateway-unit
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build and Start Services
+        run: |
+          docker compose -f docker-compose.yml up -d valkey qdrant router
+          echo "Waiting for services to be healthy..."
+          docker compose -f docker-compose.yml ps
+
+      - name: Wait for Qdrant health
+        run: |
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:6333/healthz > /dev/null 2>&1; then
+              echo "Qdrant is healthy"
+              break
+            fi
+            echo "Waiting for Qdrant... ($i/30)"
+            sleep 2
+          done
+
+      - name: Wait for Valkey health
+        run: |
+          for i in $(seq 1 15); do
+            if docker exec valkey valkey-cli ping | grep -q PONG; then
+              echo "Valkey is healthy"
+              break
+            fi
+            echo "Waiting for Valkey... ($i/15)"
+            sleep 2
+          done
+
+      - name: Wait for Rust Router
+        run: |
+          for i in $(seq 1 60); do
+            if docker exec memzent-router sh -c "echo > /dev/tcp/localhost/50051" 2>/dev/null; then
+              echo "Router is accepting connections"
+              break
+            fi
+            echo "Waiting for Router... ($i/60)"
+            sleep 5
+          done
+
+      - name: Install grpcurl
+        run: |
+          curl -sSL https://github.com/fullstorydev/grpcurl/releases/download/v1.9.1/grpcurl_1.9.1_linux_x86_64.tar.gz | tar xz
+          sudo mv grpcurl /usr/local/bin/
+
+      - name: Smoke Test - gRPC SelectTools
+        run: |
+          grpcurl -plaintext \
+            -import-path proto \
+            -proto router.proto \
+            -d '{"prompt": "search the database for recent orders", "user_id": "test-user", "org_id": "test-org"}' \
+            localhost:50051 router.SemanticRouter/SelectTools
+
+      - name: Smoke Test - gRPC RegisterTool
+        run: |
+          grpcurl -plaintext \
+            -import-path proto \
+            -proto router.proto \
+            -d '{"id": "tool-ci-test", "name": "CI Test Tool", "description": "A tool for integration testing", "org_id": "test-org"}' \
+            localhost:50051 router.SemanticRouter/RegisterTool
+
+      - name: Smoke Test - gRPC StoreMemory
+        run: |
+          grpcurl -plaintext \
+            -import-path proto \
+            -proto router.proto \
+            -d '{"fact": "The user prefers dark mode", "org_id": "test-org", "user_id": "test-user"}' \
+            localhost:50051 router.SemanticRouter/StoreMemory
+
+      - name: Teardown
+        if: always()
+        run: docker compose -f docker-compose.yml down -v
