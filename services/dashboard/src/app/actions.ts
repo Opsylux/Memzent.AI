@@ -327,6 +327,38 @@ export async function getOrgProfile(orgId: string) {
     return data;
 }
 
+// ─── Similarity Threshold ──────────────────────────────────────────────────
+
+export async function getSimilarityThreshold(orgId: string): Promise<number> {
+    try {
+        const headers = await gatewayHeaders(orgId)
+        const res = await fetch(`${GATEWAY_URL}/v1/settings/threshold`, {
+            cache: 'no-store',
+            headers,
+        });
+        if (!res.ok) return 0.88;
+        const data = await res.json();
+        return data.similarity_threshold ?? 0.88;
+    } catch {
+        return 0.88;
+    }
+}
+
+export async function updateSimilarityThreshold(orgId: string, threshold: number) {
+    const headers = await gatewayHeaders(orgId)
+    const res = await fetch(`${GATEWAY_URL}/v1/settings/threshold`, {
+        method: 'PUT',
+        headers,
+        body: JSON.stringify({ similarity_threshold: threshold }),
+        cache: 'no-store',
+    });
+    if (!res.ok) {
+        const err = await res.text();
+        throw new Error(err || 'Failed to update threshold');
+    }
+    return res.json();
+}
+
 export async function registerMemzentTool(orgId: string, tool: any) {
     try {
         const headers = await gatewayHeaders(orgId)

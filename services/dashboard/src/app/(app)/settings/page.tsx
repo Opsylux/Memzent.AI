@@ -3,8 +3,8 @@
 import { useState, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { Badge } from "@/components/ui/badge";
-import { Settings, User, Shield, Bell, Zap, Save, AlertTriangle } from 'lucide-react'
-import { updateOrgProfile, getOrgProfile, getMemzentProviders } from '../../actions'
+import { Settings, User, Shield, Bell, Zap, Save, AlertTriangle, Activity } from 'lucide-react'
+import { updateOrgProfile, getOrgProfile, getMemzentProviders, getSimilarityThreshold, updateSimilarityThreshold } from '../../actions'
 import { supabase } from '@/lib/supabase'
 
 export default function SettingsPage() {
@@ -18,6 +18,9 @@ export default function SettingsPage() {
   const [defaultProvider, setDefaultProvider] = useState('')
   const [defaultModel, setDefaultModel] = useState('')
   const [providers, setProviders] = useState<any[]>([])
+  const [similarityThreshold, setSimilarityThreshold] = useState(0.88)
+  const [thresholdSaving, setThresholdSaving] = useState(false)
+  const [thresholdSaved, setThresholdSaved] = useState(false)
 
   useEffect(() => {
     async function load() {
@@ -61,6 +64,12 @@ export default function SettingsPage() {
           } catch (e) {
             console.error('Failed to load providers:', e)
           }
+
+          // Load similarity threshold
+          try {
+            const threshold = await getSimilarityThreshold(org.id)
+            setSimilarityThreshold(threshold)
+          } catch { }
         } else {
           setOrgId(user.id)
           setOrgName(user.user_metadata?.full_name || user.email?.split('@')[0] || 'Personal')
@@ -310,14 +319,98 @@ export default function SettingsPage() {
             </div>
           )}
 
-          {(activeTab === 'api' || activeTab === 'alerts') && (
+          {activeTab === 'api' && (
+            <div className="stat-card glow-cyan p-8 neural-bg border-white/5 overflow-hidden relative">
+              <div className="flex items-center gap-6 mb-8 pb-6 border-b border-white/5">
+                <div className="w-14 h-14 rounded-2xl bg-memzent-glow/10 border border-memzent-glow/20 flex items-center justify-center text-memzent-glow shadow-[0_0_15px_rgba(0,243,255,0.2)]">
+                  <Activity size={28} />
+                </div>
+                <div>
+                  <h3 className="text-xl font-black tracking-tight uppercase italic leading-none">Semantic Precision Control</h3>
+                  <p className="text-[10px] font-bold text-white/50 uppercase tracking-widest mt-1">Dynamic Similarity Threshold Configuration</p>
+                </div>
+              </div>
+
+              <div className="space-y-8">
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <label className="text-[10px] font-black uppercase tracking-widest text-white/40 italic">Cosine Similarity Threshold</label>
+                    <span className="text-lg font-black text-memzent-glow tabular-nums">{similarityThreshold.toFixed(2)}</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="0.50"
+                    max="0.99"
+                    step="0.01"
+                    value={similarityThreshold}
+                    onChange={(e) => setSimilarityThreshold(parseFloat(e.target.value))}
+                    className="w-full h-2 bg-white/5 rounded-full appearance-none cursor-pointer accent-memzent-glow"
+                  />
+                  <div className="flex justify-between text-[9px] font-bold text-white/25 uppercase tracking-widest">
+                    <span>Broader Matches (0.50)</span>
+                    <span>Exact Only (0.99)</span>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-3 gap-4">
+                  {[
+                    { label: 'Relaxed', value: 0.70, desc: 'More cache hits, less precise' },
+                    { label: 'Balanced', value: 0.88, desc: 'Default — recommended' },
+                    { label: 'Strict', value: 0.95, desc: 'Fewer hits, maximum precision' },
+                  ].map((preset) => (
+                    <button
+                      key={preset.label}
+                      onClick={() => setSimilarityThreshold(preset.value)}
+                      className={`p-4 rounded-2xl border transition-all text-center ${
+                        Math.abs(similarityThreshold - preset.value) < 0.02
+                          ? 'border-memzent-glow/40 bg-memzent-glow/5 shadow-[0_0_15px_rgba(0,243,255,0.1)]'
+                          : 'border-white/5 bg-white/[0.02] hover:border-white/10'
+                      }`}
+                    >
+                      <div className="text-[10px] font-black uppercase tracking-widest text-white/70">{preset.label}</div>
+                      <div className="text-lg font-black text-memzent-glow mt-1">{preset.value}</div>
+                      <div className="text-[8px] text-white/30 mt-1 uppercase tracking-wider">{preset.desc}</div>
+                    </button>
+                  ))}
+                </div>
+
+                <div className="flex items-center justify-end gap-4 pt-4 border-t border-white/5">
+                  {thresholdSaved && (
+                    <span className="text-[10px] font-black text-memzent-accent uppercase tracking-widest animate-pulse">Threshold Synchronized</span>
+                  )}
+                  <Button
+                    onClick={async () => {
+                      if (!orgId) return
+                      setThresholdSaving(true)
+                      try {
+                        await updateSimilarityThreshold(orgId, similarityThreshold)
+                        setThresholdSaved(true)
+                        setTimeout(() => setThresholdSaved(false), 3000)
+                      } catch (e) {
+                        console.error('Failed to update threshold:', e)
+                      }
+                      setThresholdSaving(false)
+                    }}
+                    disabled={thresholdSaving}
+                    className="bg-memzent-glow text-black font-black uppercase tracking-[0.3em] text-[10px] px-8 h-14 rounded-2xl hover:scale-102 hover:shadow-[0_0_20px_rgba(0,243,255,0.3)] transition-all"
+                  >
+                    <Save size={16} className="mr-2" /> {thresholdSaving ? 'Syncing...' : 'Apply Threshold'}
+                  </Button>
+                </div>
+              </div>
+
+              <div className="absolute inset-0 pointer-events-none opacity-[0.02] grayscale bg-[url('https://grainy-gradients.vercel.app/noise.svg')]" />
+            </div>
+          )}
+
+          {activeTab === 'alerts' && (
             <div className="stat-card p-20 flex flex-col items-center justify-center text-center neural-bg border-dashed border-white/10">
               <div className="w-20 h-20 rounded-full bg-white/5 border border-white/5 flex items-center justify-center mb-6 text-white/10">
-                <Zap size={40} />
+                <Bell size={40} />
               </div>
-              <h3 className="text-lg font-black tracking-tighter uppercase italic text-white/45">Protocol Under Development</h3>
-              <p className="text-[10px] font-bold text-white/35 uppercase tracking-[0.3em] mt-2 mb-8">Phase 3 Integration Expansion Pending</p>
-              <Badge variant="outline" className="border-memzent-glow/20 text-memzent-glow/40 uppercase text-[9px] font-black tracking-tighter italic">L2 Synchronicity Required</Badge>
+              <h3 className="text-lg font-black tracking-tighter uppercase italic text-white/45">Webhooks & Alerts</h3>
+              <p className="text-[10px] font-bold text-white/35 uppercase tracking-[0.3em] mt-2 mb-8">Phase 7 Notification Pipeline Pending</p>
+              <Badge variant="outline" className="border-memzent-glow/20 text-memzent-glow/40 uppercase text-[9px] font-black tracking-tighter italic">Coming Soon</Badge>
             </div>
           )}
         </div>

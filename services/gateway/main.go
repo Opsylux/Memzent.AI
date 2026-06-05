@@ -750,6 +750,51 @@ func main() {
 		json.NewEncoder(w).Encode(metadata)
 	})))
 
+	// Similarity Threshold API: per-org configurable semantic precision
+	mux.Handle("/v1/settings/threshold", middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		orgID, _ := r.Context().Value("org_id").(string)
+		if orgID == "" {
+			http.Error(w, `{"error":"org_id required"}`, http.StatusBadRequest)
+			return
+		}
+
+		switch r.Method {
+		case "GET":
+			var threshold float64
+			err := rbacClient.GetDB().QueryRowContext(r.Context(),
+				"SELECT COALESCE(similarity_threshold, 0.88) FROM organizations WHERE id = $1", orgID).Scan(&threshold)
+			if err != nil {
+				threshold = 0.88
+			}
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]float64{"similarity_threshold": threshold})
+
+		case "PUT", "PATCH":
+			var body struct {
+				Threshold float64 `json:"similarity_threshold"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				http.Error(w, `{"error":"invalid body"}`, http.StatusBadRequest)
+				return
+			}
+			if body.Threshold < 0.5 || body.Threshold > 1.0 {
+				http.Error(w, `{"error":"threshold must be between 0.5 and 1.0"}`, http.StatusBadRequest)
+				return
+			}
+			_, err := rbacClient.GetDB().ExecContext(r.Context(),
+				"UPDATE organizations SET similarity_threshold = $1 WHERE id = $2", body.Threshold, orgID)
+			if err != nil {
+				http.Error(w, `{"error":"failed to update threshold"}`, http.StatusInternalServerError)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "similarity_threshold": body.Threshold})
+
+		default:
+			http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
+		}
+	})))
+
 	// /generate-token is a dev-only convenience endpoint for issuing admin JWTs.
 	// It is disabled in production. Set ENABLE_DEV_TOKEN=true to enable locally.
 	if os.Getenv("ENABLE_DEV_TOKEN") == "true" {

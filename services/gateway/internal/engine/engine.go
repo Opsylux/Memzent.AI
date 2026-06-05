@@ -601,7 +601,7 @@ func (e *MemzentEngine) Process(ctx context.Context, req *PromptRequest) (*Promp
 
 				startTime := time.Now()
 				toolCtx, cancel := context.WithTimeout(ctx, time.Duration(toolMetadata.TimeoutSeconds+1)*time.Second)
-				execResp, err := connector.Execute(toolCtx, execReq)
+					execResp, err := connectors.ExecuteWithRetry(toolCtx, connector, execReq, connectors.DefaultRetryConfig())
 				cancel()
 				duration := time.Since(startTime)
 
@@ -611,7 +611,7 @@ func (e *MemzentEngine) Process(ctx context.Context, req *PromptRequest) (*Promp
 					status = "failure"
 					errMsg = err.Error()
 					slog.Error("Chain step execution failed", "tool_id", toolMetadata.ID, "error", err)
-				} else if execResp.Status == "failure" {
+					} else if execResp != nil && execResp.Status == "failure" {
 					status = "failure"
 					errMsg = fmt.Sprintf("%v", execResp.Data)
 				}
@@ -683,7 +683,7 @@ func (e *MemzentEngine) Process(ctx context.Context, req *PromptRequest) (*Promp
 
 				startTime := time.Now()
 				toolCtx, cancel := context.WithTimeout(ctx, time.Duration(toolMetadata.TimeoutSeconds+1)*time.Second)
-				execResp, err := connector.Execute(toolCtx, execReq)
+					execResp, err := connectors.ExecuteWithRetry(toolCtx, connector, execReq, connectors.DefaultRetryConfig())
 				cancel()
 				duration := time.Since(startTime)
 
@@ -693,7 +693,7 @@ func (e *MemzentEngine) Process(ctx context.Context, req *PromptRequest) (*Promp
 					status = "failure"
 					errMsg = err.Error()
 					slog.Error("Tool execution failed", "tool_id", t.Id, "error", err)
-				} else if execResp.Status == "failure" {
+					} else if execResp != nil && execResp.Status == "failure" {
 					status = "failure"
 					errMsg = fmt.Sprintf("%v", execResp.Data)
 				}

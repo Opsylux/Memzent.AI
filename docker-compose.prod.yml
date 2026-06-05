@@ -44,6 +44,19 @@ services:
       qdrant:
         condition: service_healthy
     restart: always
+    deploy:
+      replicas: 2
+
+  # Envoy gRPC Load Balancer (fronts Rust Router replicas)
+  envoy:
+    build:
+      context: ./infra/envoy
+    container_name: memzent-envoy-prod
+    ports:
+      - "9901:9901"
+    depends_on:
+      - router
+    restart: always
 
   # Memzent Gateway (Go - Production Multi-Stage)
   gateway:
@@ -55,6 +68,7 @@ services:
       - "8080:8080"
     environment:
       - VALKEY_URL=valkey:6379
+      - ROUTER_URL=envoy:50051
       - JWT_SECRET=memzent-enterprise-secret-2026
       - OLLAMA_ENABLED=false # Production leverages scalable OpenAI/Anthropic SaaS endpoints
       - OPENAI_API_KEY=${OPENAI_API_KEY}
@@ -66,7 +80,7 @@ services:
       - STRIPE_BIZ_PRICE_ID=${STRIPE_BIZ_PRICE_ID}
       - POSTGRES_URL=${POSTGRES_URL}
     depends_on:
-      router:
+      envoy:
         condition: service_started
       valkey:
         condition: service_healthy
