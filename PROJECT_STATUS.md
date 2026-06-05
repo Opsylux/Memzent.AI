@@ -9,15 +9,17 @@ This document tracks the current completion state of Memzent features and provid
 | **Triple-Layer Caching** | Gateway/Rust | ✅ 100% | Literal, Canonical, and Semantic layers functional. |
 | **Service Boundaries** | All | ✅ 100% | Go Gateway (Auth/Orchestration), Rust Router (Math), Dashboard (UI). |
 | **RBAC Scoping & Multi-Token** | Gateway | ✅ 100% | Dynamic key generation with customizable roles and scopes. Seeded with a $10 welcome balance to unblock trials. |
-| **Dynamic Tool Registry** | Gateway | ✅ 100% | Refresh loop, Qdrant sync, `/v1/tools/sync`, `/v1/tools/status`. |
+| **Dynamic Tool Registry** | Gateway | ✅ 100% | Refresh loop, Qdrant sync, full CRUD (`/v1/tools/{id}`), Dashboard edit/delete UI. |
 | **Connector Framework** | Gateway | ✅ 100% | SQL/REST/Core connectors fully implemented, registered, and active. |
-| **Neural Dashboard** | Dashboard | ✅ 100% | Dynamic Billing (Option B), API Security metrics, live Playground with cost trace, and Provider discovery. |
-| **Provider Discovery** | Gateway | ✅ 100% | `/v1/providers` API for dynamic model/provider listing. |
-| **Marketing Website** | Website | ✅ 100% | Hybrid PAYG billing explainer, sleek dark look, logo bug fixed. |
+| **Neural Dashboard** | Dashboard | ✅ 100% | Dynamic Billing, API Security metrics, live Playground, Provider discovery, Tool CRUD, Notifications. |
+| **Provider Discovery** | Gateway | ✅ 100% | `/v1/providers` + `/v1/models` APIs. OpenAI, Anthropic, Gemini, Ollama discovery. |
+| **Marketing Website** | Website | ✅ 100% | Mobile nav, SEO/OG tags, "Why Memzent" comparison, terminal quickstart. |
 | **Advanced Orchestration (Phase 4)** | All | ✅ 100% | Model-scoped caching, PlanToolChain Go/Rust bindings, and typewriter SSE streaming. |
 | **Agent Memory (Phase 5/6)** | Gateway/Rust | ✅ 100% | PostgreSQL session threads and semantic memory Qdrant extraction. |
 | **Context Analytics (Phase 5/6)** | Dashboard/Gateway | ✅ 100% | Premium ROI tracking, latency tool telemetry, and intent theme clusters. |
-| **API Key Security Hardening** | Gateway/Dashboard | ✅ Code Complete | Expiry TTL picker, last_used_at tracking, in-place rotation with 15-min grace window, stale key audit. ⬜ Migration 020 needs applying to Supabase. |
+| **API Key Security (Phase 6)** | Gateway/Dashboard | ✅ 100% | Expiry TTL picker, last_used_at tracking, in-place rotation with 15-min grace window, stale key audit. |
+| **Notification Pipeline (Phase 7)** | Gateway/Dashboard | ✅ 100% | Webhook CRUD, 6 event types, HMAC signing, async retry with dead letter, delivery logs. |
+| **Per-User Rate Limiting** | Gateway | ✅ 100% | Role-proportional limits (viewer 20%, member 50%, admin 100% of org). |
 
 ---
 
@@ -50,26 +52,43 @@ This document tracks the current completion state of Memzent features and provid
 
 ## 3. Pending Tasks & Directives
 
-### [Phase 6] API Key Security Hardening (Priority: High — In Progress)
+### [Phase 6] API Key Security Hardening ✅ COMPLETE
 **Goal**: Harden agent credential lifecycle with expiry, activity tracking, and zero-downtime rotation.
 
 *   **Task 6.1** ✅ Migration `020_api_key_rotation.sql` — adds `expires_at`, `prev_key_hash`, `rotated_at`, `last_used_at` columns with performance indexes.
 *   **Task 6.2** ✅ `rbac.go` `VerifyAPIKey` — enforces expiry TTL, dual-hash acceptance during 15-min rotation grace window, async `last_used_at` updates, auto-clearing of `prev_key_hash`.
 *   **Task 6.3** ✅ `actions.ts` `rotateApiKey` — server action for in-place key rotation (generates new key, preserves old hash in `prev_key_hash`).
 *   **Task 6.4** ✅ `keys/page.tsx` — Rotate button (purple, with spin animation), grace window notice banner, `last_used_at` / `rotated_at` / `expires_at` displayed in key row.
-*   **Task 6.5** ⬜ Apply migration `020` to Supabase production:
-    ```
-    -- Option A: Supabase CLI
-    supabase db push
-    -- Option B: Paste migrations/020_api_key_rotation.sql into Supabase SQL Editor
-    ```
+*   **Task 6.5** ✅ Migration `020` applied to Supabase.
 *   **Task 6.6** ✅ TTL picker in key creation form — 4-option grid (Never / 24h / 7d / 30d). Passes `expires_at` ISO timestamp to `createApiKey`.
 *   **Task 6.7** ✅ Stale key audit — amber count banner in registry header; per-row `Stale` / `Expired` badges when `last_used_at` is NULL or >30 days old.
 
-*   **Task 5.1**: Define Envoy Load Balancing profiles for gRPC streams.
-*   **Task 5.2**: Implement custom retry policies with exponential backoff on native tools.
-*   **Task 5.3**: Add Dynamic Similarity Threshold settings to the Next.js Dashboard.
-*   **Task 5.4**: Refactor `RouterClient` into a `SemanticRouterInterface` to allow mock injection, unlocking 80-100% code coverage for `engine.Process`.
+### [Phase 7] Notification Pipeline ✅ COMPLETE
+**Goal**: Real-time webhook event delivery for observability and external integrations.
+
+*   **Task 7.1** ✅ Event schema — 6 typed events: `cache_hit`, `tool_execution`, `rate_limit`, `key_rotated`, `tool_registered`, `session_created`.
+*   **Task 7.2** ✅ Webhook CRUD — `POST/GET/PUT/DELETE /v1/webhooks`, `GET /v1/webhooks/{id}/deliveries`, `GET /v1/webhooks/event-types`.
+*   **Task 7.3** ✅ Async Dispatcher — 4 workers, 1024-buffer channel, HMAC-SHA256 signing (`X-Memzent-Signature`).
+*   **Task 7.4** ✅ Retry with exponential backoff (1s → 5s → 30s → 2m → 10m). Dead letter after 5 attempts. Delivery logs in Postgres.
+*   **Task 7.5** ✅ Engine integration — `EventEmitter` interface, emits `rate_limit` and `cache_hit` events. Graceful shutdown drains queue.
+*   **Task 7.6** ✅ Dashboard — `/notifications` page with webhook CRUD UI, event selector, delivery log viewer.
+*   **Task 7.7** ⬜ Apply migration `023_webhook_notifications.sql` to Supabase.
+
+### Infrastructure Tasks (Completed This Session)
+*   **Task 5.1** ✅ Envoy gRPC Load Balancing profiles.
+*   **Task 5.2** ✅ Exponential backoff retry on native tool execution.
+*   **Task 5.3** ✅ Dynamic Similarity Threshold in Dashboard settings.
+*   **Task 5.4** ✅ `SemanticRouterInterface` for mock injection/testability.
+
+### Additional Fixes (This Session)
+*   ✅ `/v1/stats` now returns `active_providers[]` and `default_provider` (contract mismatch fix).
+*   ✅ Tool CRUD: `PUT/DELETE/GET /v1/tools/{id}` endpoints + Dashboard edit/delete UI (Phase 3 completion).
+*   ✅ Session ID fix: Gateway returns `"id"` field (was `"session_id"`, breaking dashboard + test-flow).
+*   ✅ Per-user rate limiting within org (role-proportional: viewer 20%, member 50%, admin 100%).
+*   ✅ Model discovery for Anthropic + Gemini fallback model updates.
+*   ✅ CORS fixes (methods, headers, expose-headers).
+*   ✅ Text contrast safety net (both dashboard + website).
+*   ✅ Jargon cleanup across all dashboard pages.
 
 ---
 
