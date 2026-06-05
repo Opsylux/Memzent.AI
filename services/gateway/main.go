@@ -73,8 +73,10 @@ func corsMiddleware(allowedOrigins []string) func(http.Handler) http.Handler {
 				w.Header().Set("Access-Control-Allow-Origin", origin)
 				w.Header().Set("Vary", "Origin")
 			}
-			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Memzent-Provider, X-Memzent-Model, X-Skip-Cache, X-Org-ID")
+			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
+			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-API-Key, X-Memzent-Provider, X-Memzent-Model, X-Skip-Cache, X-Org-ID, X-Request-ID")
+			w.Header().Set("Access-Control-Expose-Headers", "X-Cache, X-Request-ID, X-RateLimit-Remaining")
+			w.Header().Set("Access-Control-Max-Age", "86400")
 
 			if r.Method == "OPTIONS" {
 				w.WriteHeader(http.StatusOK)
@@ -748,6 +750,26 @@ func main() {
 		metadata := memzentEngine.GetProviderMetadata()
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(metadata)
+	})))
+
+	// Full model listing endpoint — returns all discovered models per provider
+	mux.Handle("/v1/models", middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		metadata := memzentEngine.GetProviderMetadata()
+		type ModelEntry struct {
+			Provider string   `json:"provider"`
+			Models   []string `json:"models"`
+			Default  string   `json:"default_model"`
+		}
+		result := make([]ModelEntry, 0, len(metadata))
+		for _, m := range metadata {
+			result = append(result, ModelEntry{
+				Provider: m.Name,
+				Models:   m.SupportedModels,
+				Default:  m.DefaultModel,
+			})
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(result)
 	})))
 
 	// Similarity Threshold API: per-org configurable semantic precision
