@@ -1,6 +1,7 @@
 import { getMemzentTools, getMemzentStats, getOrgKeyCount, getOrgAuditStats } from "../actions";
 import { getCurrentOrg } from "@/lib/user-context";
 import { MetricCard } from "@/components/metric-card";
+import { OnboardingChecklist } from "@/components/onboarding-checklist";
 import {
   Zap,
   Activity,
@@ -43,9 +44,16 @@ export default async function Page() {
         <div className="w-2 h-8 rounded-full bg-gradient-to-b from-memzent-glow to-memzent-purple" />
         <div>
           <h1 className="text-3xl font-black tracking-tighter uppercase">{org?.orgName || 'Dashboard'}</h1>
-          <p className="text-[10px] font-black text-white/20 uppercase tracking-[0.3em] italic">Neural Mesh Overview</p>
+          <p className="text-[10px] font-black text-white/20 uppercase tracking-[0.3em] italic">System Overview</p>
         </div>
       </div>
+
+      {/* Onboarding */}
+      <OnboardingChecklist
+        hasKeys={keyCount > 0}
+        hasTools={(initialTools?.length || 0) > 0}
+        hasProvider={providerCount > 0}
+      />
 
       {/* KPI Section */}
       <section className="grid grid-cols-1 md:grid-cols-3 xl:grid-cols-5 gap-6">
@@ -59,20 +67,20 @@ export default async function Page() {
           detail={`${hits} requests saved from LLM`}
         />
         <MetricCard
-          label="Total Engine Throughput"
+          label="Total Requests"
           value={total.toLocaleString()}
-          trend="Requests"
+          trend="Processed"
           icon={<Layers size={24} />}
           color="purple"
-          detail="Organization-scoped Flow"
+          detail="Organization-scoped"
         />
         <MetricCard
-          label="Memzent Tools Registry"
+          label="Connected Tools"
           value={`${initialTools?.length || 0}`}
           trend="Online"
           icon={<ShieldCheck size={24} />}
           color="cyan"
-          detail="Active Context Bindings"
+          detail="MCP Tool Bindings"
         />
         <MetricCard
           label="Token Balance"
@@ -100,8 +108,8 @@ export default async function Page() {
         <section className="lg:col-span-2 space-y-8">
           <div className="flex items-center justify-between px-2">
             <div>
-              <h2 className="text-2xl font-black tracking-tighter">Neural Execution Trace</h2>
-              <p className="text-xs font-bold text-white/30 uppercase tracking-widest mt-1 italic">Real-time Intent-to-Tool Mapping</p>
+              <h2 className="text-2xl font-black tracking-tighter">Request Flow</h2>
+              <p className="text-xs font-bold text-white/30 uppercase tracking-widest mt-1 italic">Real-time Prompt-to-Tool Routing</p>
             </div>
             <div className="flex items-center gap-4">
               <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-memzent-glow/5 border border-memzent-glow/20">
@@ -126,24 +134,24 @@ export default async function Page() {
                     <Cpu size={24} />
                   </div>
                   <div>
-                    <h3 className="text-lg font-black tracking-tight leading-none uppercase">Intelligence Status</h3>
+                    <h3 className="text-lg font-black tracking-tight leading-none uppercase">Routing Status</h3>
                     <p className="text-[10px] font-bold text-white/20 uppercase tracking-widest mt-1 italic">Model Discovery & Routing</p>
                   </div>
                 </div>
                 <p className="text-sm font-medium text-white/40 leading-relaxed">
-                  Memzent Engine is currently managing <span className="text-white font-black">{initialTools?.length || 0} Functional Bindings</span> across <span className="text-white font-black">{providerCount} compute nodes</span>.
+                  Memzent Engine is currently managing <span className="text-white font-black">{initialTools?.length || 0} Connected Tools</span> across <span className="text-white font-black">{providerCount} providers</span>.
                   Semantic clustering is <span className="text-memzent-glow font-black italic underline decoration-memzent-glow/30 decoration-2">OPTIMIZED</span> with 98.4% intent matching accuracy.
                 </p>
               </div>
 
               <div className="grid grid-cols-2 gap-4 mt-8 pt-6 border-t border-white/5">
                 <div className="p-4 rounded-2xl bg-white/[0.02] border border-white/5">
-                  <div className="text-[10px] font-black text-white/20 uppercase mb-1">Vector Search Engine</div>
-                  <div className="text-xs font-bold text-memzent-glow truncate">Neural Core</div>
+                  <div className="text-[10px] font-black text-white/20 uppercase mb-1">Vector Engine</div>
+                  <div className="text-xs font-bold text-memzent-glow truncate">Qdrant Active</div>
                 </div>
                 <div className="p-4 rounded-2xl bg-white/[0.02] border border-white/5">
-                  <div className="text-[10px] font-black text-white/20 uppercase mb-1">Primary Synthesis</div>
-                  <div className="text-xs font-bold text-memzent-purple truncate">Intelligent Mesh</div>
+                  <div className="text-[10px] font-black text-white/20 uppercase mb-1">Default Provider</div>
+                  <div className="text-xs font-bold text-memzent-purple truncate">{defaultProvider}</div>
                 </div>
               </div>
             </div>
@@ -155,8 +163,8 @@ export default async function Page() {
                     <Zap size={24} />
                   </div>
                   <div>
-                    <h3 className="text-lg font-black tracking-tight leading-none uppercase">Active Clusters</h3>
-                    <p className="text-[10px] font-bold text-white/20 uppercase tracking-widest mt-1 italic">Multi-Provider Inventory</p>
+                    <h3 className="text-lg font-black tracking-tight leading-none uppercase">Active Providers</h3>
+                    <p className="text-[10px] font-bold text-white/20 uppercase tracking-widest mt-1 italic">Connected LLM Providers</p>
                   </div>
                 </div>
                 <div className="flex flex-wrap gap-2">
@@ -173,7 +181,7 @@ export default async function Page() {
               <div className="mt-8 pt-6 border-t border-white/5 flex items-center justify-between">
                 <div className="space-y-1">
                   <div className="text-[10px] font-black text-white/20 uppercase">Routing Status</div>
-                  <div className="text-sm font-black text-memzent-accent uppercase tracking-tighter italic">Engine Ready for Synthesis</div>
+                  <div className="text-sm font-black text-memzent-accent uppercase tracking-tighter italic">Ready for Routing</div>
                 </div>
                 <div className="w-10 h-10 rounded-full border-2 border-memzent-accent/20 border-t-memzent-accent animate-spin" />
               </div>

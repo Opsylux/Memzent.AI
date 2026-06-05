@@ -102,10 +102,10 @@ export default function SettingsPage() {
     <div className="space-y-12 pb-20">
       <header className="mb-12">
         <h1 className="text-4xl font-black tracking-tighter text-white mb-2 uppercase italic">
-          CORE_SETTINGS
+          Settings
         </h1>
         <p className="text-white/50 font-black uppercase tracking-[0.3em] text-[10px] italic">
-          {orgName ? `${orgName} — ` : ''}Governance & Infrastructure Configuration
+          {orgName ? `${orgName} — ` : ''}Organization & Configuration
         </p>
       </header>
 
@@ -283,8 +283,30 @@ export default function SettingsPage() {
                   <Shield size={28} />
                 </div>
                 <div>
-                  <h3 className="text-xl font-black tracking-tight uppercase italic leading-none">Access Control Registry</h3>
-                  <p className="text-[10px] font-bold text-white/50 uppercase tracking-widest mt-1">Multi-Tenant Member Management</p>
+                  <h3 className="text-xl font-black tracking-tight uppercase italic leading-none">Members & Permissions</h3>
+                  <p className="text-[10px] font-bold text-white/50 uppercase tracking-widest mt-1">Organization Access Control</p>
+                </div>
+              </div>
+
+              {/* Rate limit breakdown by role */}
+              <div className="mb-8 p-6 rounded-2xl bg-white/[0.02] border border-white/5">
+                <h4 className="text-[10px] font-black uppercase tracking-widest text-white/50 mb-4">Rate Limits by Role</h4>
+                <div className="grid grid-cols-3 gap-4">
+                  <div className="p-3 rounded-xl bg-white/[0.03] border border-white/5 text-center">
+                    <div className="text-[9px] font-black text-white/40 uppercase mb-1">Viewer</div>
+                    <div className="text-sm font-black text-white/60">Read Only</div>
+                    <div className="text-[9px] text-white/30 mt-1">No prompt execution</div>
+                  </div>
+                  <div className="p-3 rounded-xl bg-white/[0.03] border border-memzent-glow/10 text-center">
+                    <div className="text-[9px] font-black text-memzent-glow/60 uppercase mb-1">Member</div>
+                    <div className="text-sm font-black text-memzent-glow">50% of org limit</div>
+                    <div className="text-[9px] text-white/30 mt-1">Shared org balance</div>
+                  </div>
+                  <div className="p-3 rounded-xl bg-white/[0.03] border border-memzent-purple/10 text-center">
+                    <div className="text-[9px] font-black text-memzent-purple/60 uppercase mb-1">Admin</div>
+                    <div className="text-sm font-black text-memzent-purple">Full org limit</div>
+                    <div className="text-[9px] text-white/30 mt-1">Full access</div>
+                  </div>
                 </div>
               </div>
 
@@ -300,21 +322,27 @@ export default function SettingsPage() {
                         <p className="text-[10px] font-bold text-white/45 uppercase tracking-widest mt-0.5">{m.role}</p>
                       </div>
                     </div>
-                    <Badge variant="outline" className="border-white/10 text-white/40 uppercase text-[9px] font-black tracking-widest px-3">
-                      Verified Node
+                    <Badge variant="outline" className={`uppercase text-[9px] font-black tracking-widest px-3 ${
+                      m.role === 'admin' || m.role === 'owner'
+                        ? 'border-memzent-purple/20 text-memzent-purple'
+                        : m.role === 'viewer'
+                          ? 'border-white/10 text-white/40'
+                          : 'border-memzent-glow/20 text-memzent-glow'
+                    }`}>
+                      {m.role}
                     </Badge>
                   </div>
                 ))}
 
                 {members.length === 0 && (
-                  <div className="py-12 text-center text-white/10 font-black uppercase tracking-widest text-[10px]">
-                    Searching Central Authority for Members...
+                  <div className="py-12 text-center text-white/40 font-black uppercase tracking-widest text-[10px]">
+                    No members found
                   </div>
                 )}
               </div>
 
-              <Button className="w-full mt-8 py-6 rounded-2xl bg-white/5 border border-white/10 text-white/40 hover:text-white hover:bg-white/10 text-[10px] font-black uppercase tracking-widest transition-all" onClick={() => alert("Infrastructure Collaborator invitations are scheduled for Phase 3 Multi-Tenant release.")}>
-                Invite Infrastructure Collaborator
+              <Button className="w-full mt-8 py-6 rounded-2xl bg-white/5 border border-white/10 text-white/40 hover:text-white hover:bg-white/10 text-[10px] font-black uppercase tracking-widest transition-all" onClick={() => alert("Member invitations coming in the next release.")}>
+                Invite Member
               </Button>
             </div>
           )}

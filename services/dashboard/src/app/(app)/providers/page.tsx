@@ -61,8 +61,8 @@ export default async function ProvidersPage() {
       <div className="flex items-center gap-4 mb-4">
         <div className="w-2 h-8 rounded-full bg-gradient-to-b from-memzent-purple to-memzent-glow" />
         <div>
-          <h1 className="text-3xl font-black tracking-tighter uppercase">Provider Mesh</h1>
-          <p className="text-[10px] font-black text-white/20 uppercase tracking-[0.3em] italic">LLM Compute Node Discovery & Cost Ledger</p>
+          <h1 className="text-3xl font-black tracking-tighter uppercase">LLM Providers</h1>
+          <p className="text-[10px] font-black text-white/40 uppercase tracking-[0.3em] italic">Connected Models & Cost Overview</p>
         </div>
       </div>
 

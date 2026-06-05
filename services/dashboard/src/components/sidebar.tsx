@@ -85,7 +85,7 @@ export function Sidebar({ orgName, tier, initials, role }: SidebarProps) {
 
       {/* Navigation */}
       <nav className="flex-1 space-y-2">
-        <div className="text-[10px] font-black uppercase text-white/20 tracking-[0.2em] mb-4 px-4 italic">Neural_Node</div>
+        <div className="text-[10px] font-black uppercase text-white/20 tracking-[0.2em] mb-4 px-4 italic">Navigation</div>
         {navItems.map((item) => {
           const isActive = pathname === item.href
           return (
@@ -105,7 +105,7 @@ export function Sidebar({ orgName, tier, initials, role }: SidebarProps) {
 
         {role === 'platform_staff' && (
           <div className="pt-8 space-y-2">
-            <div className="text-[10px] font-black uppercase text-memzent-purple/40 tracking-[0.2em] mb-4 px-4 italic">Infrastructure_Ops</div>
+            <div className="text-[10px] font-black uppercase text-memzent-purple/40 tracking-[0.2em] mb-4 px-4 italic">Admin_Ops</div>
             {staffItems.map((item) => {
               const isActive = pathname === item.href
               return (

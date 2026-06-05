@@ -305,26 +305,56 @@ func (e *MemzentEngine) Process(ctx context.Context, req *PromptRequest) (*Promp
 	}
 
 	// Dynamic Rate Limiting Based on Tier (Distributed via Valkey)
-	limit := int64(10) // Free default
+	// Org-level aggregate limit
+	orgLimit := int64(10) // Free default
 	if tier == "pro" {
-		limit = 100
+		orgLimit = 100
 	} else if tier == "business" {
-		limit = 1000
+		orgLimit = 1000
 	}
 
 	// Pay-as-you-go boost: if they have a positive token balance, promote rate limit from free (10) to pro (100)
-	if limit < 100 && settings != nil && settings.TokenBalance > 0 {
-		limit = 100
+	if orgLimit < 100 && settings != nil && settings.TokenBalance > 0 {
+		orgLimit = 100
 	}
 
-	limitKey := fmt.Sprintf("rl:%s:%s", orgID, req.UserID)
+	// Per-user limit within org: viewers get 20% of org limit, agents get 50%, admins get full
+	userRole, _ := ctx.Value("user_role").(string)
+	userLimit := orgLimit // Default: admin/owner gets full org limit
+	switch userRole {
+	case "viewer":
+		userLimit = max(orgLimit/5, 5) // Minimum 5 RPM for viewers
+	case "member", "agent":
+		userLimit = max(orgLimit/2, 10) // Members/agents get 50%
+	case "admin", "owner", "":
+		userLimit = orgLimit // Full access
+	}
+
+	// Check org-level rate limit first
+	orgLimitKey := fmt.Sprintf("rl:%s", orgID)
 	if e.cache != nil {
-		allowed, rlErr := e.cache.RateLimit(ctx, limitKey, limit)
+		allowed, rlErr := e.cache.RateLimit(ctx, orgLimitKey, orgLimit)
 		if rlErr != nil {
-			slog.Warn("Distributed rate limit check failed, falling back to allow", "error", rlErr)
+			slog.Warn("Distributed org rate limit check failed, falling back to allow", "error", rlErr)
 		} else if !allowed {
 			return nil, fmt.Errorf("rate limit exceeded for organization %s (tier: %s)", orgID, tier)
 		}
+	}
+
+	// Check per-user rate limit within org
+	limitKey := fmt.Sprintf("rl:%s:%s", orgID, req.UserID)
+	if e.cache != nil {
+		allowed, rlErr := e.cache.RateLimit(ctx, limitKey, userLimit)
+		if rlErr != nil {
+			slog.Warn("Distributed user rate limit check failed, falling back to allow", "error", rlErr)
+		} else if !allowed {
+			return nil, fmt.Errorf("rate limit exceeded for user %s (role: %s, limit: %d RPM)", req.UserID, userRole, userLimit)
+		}
+	}
+
+	// Permission check: viewers cannot execute prompts (read-only access)
+	if userRole == "viewer" {
+		return nil, fmt.Errorf("permission denied: viewer role cannot execute prompts (user: %s)", req.UserID)
 	}
 
 	// A.1 Billing Pre-Check (Bypass check for internal dashboard sessions / JWT users)

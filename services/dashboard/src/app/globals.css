@@ -147,3 +147,14 @@
   /* Timestamps, IDs, fine print — minimum readable */
   color: rgba(255, 255, 255, 0.50);
 }
+
+/* ─── Contrast Safety Net ──────────────────────────────────────────────────
+   Override dangerously low-contrast text globally.
+   Any text-white/10, text-white/15, text-white/20 gets bumped to minimum readable.
+   ─────────────────────────────────────────────────────────────────────── */
+
+@layer utilities {
+  .text-white\/10 { color: rgba(255, 255, 255, 0.40) !important; }
+  .text-white\/15 { color: rgba(255, 255, 255, 0.40) !important; }
+  .text-white\/20 { color: rgba(255, 255, 255, 0.45) !important; }
+}
