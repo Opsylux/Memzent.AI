@@ -129,7 +129,7 @@ docker compose up -d --build
 ## 📂 Project Structure
 
 ```
-MemzentMCP/
+Memzent.AI/
 ├── services/
 │   ├── gateway/        # Go 1.25: Primary Proxy, Auth, Cache, Provider Router
 │   │   └── internal/
