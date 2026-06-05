@@ -556,3 +556,50 @@ export async function getContextAnalytics(orgId?: string) {
         };
     }
 }
+
+// ─── Tool CRUD API ─────────────────────────────────────────────────────────
+
+export async function getTool(toolId: string, orgId?: string) {
+    try {
+        const headers = await gatewayHeaders(orgId)
+        const res = await fetch(`${GATEWAY_URL}/v1/tools/${toolId}`, {
+            method: "GET",
+            headers,
+            cache: 'no-store'
+        });
+        if (!res.ok) return null;
+        return res.json();
+    } catch (e) {
+        console.error("Gateway tool fetch failed", e);
+        return null;
+    }
+}
+
+export async function updateTool(toolId: string, data: Record<string, any>, orgId?: string) {
+    const headers = await gatewayHeaders(orgId)
+    const res = await fetch(`${GATEWAY_URL}/v1/tools/${toolId}`, {
+        method: "PUT",
+        headers,
+        body: JSON.stringify(data),
+        cache: 'no-store'
+    });
+    if (!res.ok) {
+        const err = await res.text();
+        throw new Error(err || "Failed to update tool");
+    }
+    return res.json();
+}
+
+export async function deleteTool(toolId: string, orgId?: string) {
+    const headers = await gatewayHeaders(orgId)
+    const res = await fetch(`${GATEWAY_URL}/v1/tools/${toolId}`, {
+        method: "DELETE",
+        headers,
+        cache: 'no-store'
+    });
+    if (!res.ok) {
+        const err = await res.text();
+        throw new Error(err || "Failed to delete tool");
+    }
+    return res.json();
+}

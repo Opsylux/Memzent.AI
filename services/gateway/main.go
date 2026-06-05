@@ -586,6 +586,32 @@ func main() {
 	mux.Handle("/v1/tools/register", middleware(requireScope("tools:write", tools.HandleRegisterTool(toolRegistry, rClient, auditLogger))))
 	mux.Handle("/v1/tools/status", middleware(requireScope("tools:read", tools.HandleRegistryStatus(toolRegistry))))
 
+	// Tool CRUD by ID: GET, PUT, DELETE /v1/tools/{toolId}
+	mux.Handle("/v1/tools/", middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			if !auth.HasScope(r.Context(), "tools:read") {
+				http.Error(w, "Forbidden", http.StatusForbidden)
+				return
+			}
+			tools.HandleGetTool(toolRegistry)(w, r)
+		case http.MethodPut:
+			if !auth.HasScope(r.Context(), "tools:write") {
+				http.Error(w, "Forbidden", http.StatusForbidden)
+				return
+			}
+			tools.HandleUpdateTool(toolRegistry, rClient, auditLogger)(w, r)
+		case http.MethodDelete:
+			if !auth.HasScope(r.Context(), "tools:write") {
+				http.Error(w, "Forbidden", http.StatusForbidden)
+				return
+			}
+			tools.HandleDisableTool(toolRegistry)(w, r)
+		default:
+			http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+		}
+	})))
+
 	// Audit API
 	mux.Handle("/v1/audit", middleware(requireScope("audit:read", func(w http.ResponseWriter, r *http.Request) {
 		orgID, _ := r.Context().Value("org_id").(string)
@@ -621,13 +647,21 @@ func main() {
 			tokenBalance, _ = billingLedger.GetBalance(r.Context(), orgID)
 		}
 
+		// Build list of active provider names
+		activeProviders := make([]string, 0, len(providers))
+		for name := range providers {
+			activeProviders = append(activeProviders, name)
+		}
+
 		stats := map[string]any{
-			"total_requests": reqs,
-			"cache_hits":     hits,
-			"token_balance":  tokenBalance,
-			"uptime_seconds": int(time.Since(startupTime).Seconds()),
-			"status":         "online",
-			"org_id":         orgID,
+			"total_requests":   reqs,
+			"cache_hits":       hits,
+			"token_balance":    tokenBalance,
+			"uptime_seconds":   int(time.Since(startupTime).Seconds()),
+			"status":           "online",
+			"org_id":           orgID,
+			"active_providers": activeProviders,
+			"default_provider": defaultProvider,
 		}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(stats)

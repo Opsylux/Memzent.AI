@@ -266,6 +266,35 @@ func (r *Registry) DisableTool(ctx context.Context, toolID string) error {
 	return err
 }
 
+// UpdateTool updates mutable fields of an existing tool
+func (r *Registry) UpdateTool(ctx context.Context, tool *Tool) error {
+	query := `
+		UPDATE tools SET
+			name = $2,
+			description = $3,
+			connector_type = $4,
+			endpoint = $5,
+			config = $6,
+			input_schema = $7,
+			output_schema = $8,
+			timeout_seconds = $9,
+			enabled = $10,
+			requires_auth = $11,
+			updated_at = NOW()
+		WHERE id = $1
+	`
+	configBuf, _ := json.Marshal(tool.Config)
+	inputBuf, _ := json.Marshal(tool.InputSchema)
+	outputBuf, _ := json.Marshal(tool.OutputSchema)
+
+	_, err := r.db.ExecContext(ctx, query,
+		tool.ID, tool.Name, tool.Description, tool.ConnectorType, tool.Endpoint,
+		configBuf, inputBuf, outputBuf, tool.TimeoutSeconds,
+		tool.Enabled, tool.RequiresAuth,
+	)
+	return err
+}
+
 // ListByConnectorType returns all tools of a specific connector type
 func (r *Registry) ListByConnectorType(ctx context.Context, connectorType ToolConnectorType) ([]*Tool, error) {
 	query := `
