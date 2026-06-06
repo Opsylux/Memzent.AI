@@ -130,7 +130,7 @@ function renderMarkdown(md: string): string {
     .replace(/\n/g, '<br/>');
 
   // Wrap list items
-  html = html.replace(/(<li>.*?<\/li>)/gs, '<ul>$1</ul>');
+  html = html.replace(/(<li>[\s\S]*?<\/li>)/g, '<ul>$1</ul>');
   // Remove duplicate ul wrappers
   html = html.replace(/<\/ul>\s*<ul>/g, '');
 
