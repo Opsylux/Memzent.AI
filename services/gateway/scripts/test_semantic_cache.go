@@ -16,10 +16,10 @@ import (
 type TestCase struct {
 	Name           string
 	Prompt         string
-	ExpectCached   *bool   // nil = don't care, true/false = assert
-	MustContain    string  // substring the response MUST contain
-	MustNotContain string  // substring the response MUST NOT contain
-	SkipCache      bool    // send X-Skip-Cache: true
+	ExpectCached   *bool  // nil = don't care, true/false = assert
+	MustContain    string // substring the response MUST contain
+	MustNotContain string // substring the response MUST NOT contain
+	SkipCache      bool   // send X-Skip-Cache: true
 }
 
 type ChatResponse struct {
@@ -32,7 +32,7 @@ type ChatResponse struct {
 
 var (
 	baseURL = envOr("MEMZENT_BASE_URL", "https://api.memzent.ai")
-	apiKey  = envOr("MEMZENT_API_KEY", "")
+	apiKey  = envOr("MEMZENT_API_KEY", "memzent_aef5299d4207cf9f180f237ebfb80a78fc92363cb7649b22")
 )
 
 func main() {
@@ -58,10 +58,10 @@ func main() {
 			MustContain: "49",
 		},
 		{
-			Name:         "1b. Same formula, different numbers → must NOT be cached",
-			Prompt:       "what is (a+b)^2 where a=3, b=7",
-			ExpectCached: &falseVal,
-			MustContain:  "100",
+			Name:           "1b. Same formula, different numbers → must NOT be cached",
+			Prompt:         "what is (a+b)^2 where a=3, b=7",
+			ExpectCached:   &falseVal,
+			MustContain:    "100",
 			MustNotContain: "49",
 		},
 		{
@@ -85,22 +85,22 @@ func main() {
 			MustContain:  "225",
 		},
 		{
-			Name:         "2c. Different numbers: a=5, b=15 → MUST NOT return 225",
-			Prompt:       "calculate (a+b)^2 when a=5 and b=15",
-			ExpectCached: &falseVal,
-			MustContain:  "400",
+			Name:           "2c. Different numbers: a=5, b=15 → MUST NOT return 225",
+			Prompt:         "calculate (a+b)^2 when a=5 and b=15",
+			ExpectCached:   &falseVal,
+			MustContain:    "400",
 			MustNotContain: "225",
 		},
 
 		// ──── Group 3: Similar Natural Language, Different Intent ────
 		{
-			Name:        "3a. Weather in Paris (skip cache)",
-			Prompt:      "What is the population of Paris?",
-			SkipCache:   true,
+			Name:      "3a. Weather in Paris (skip cache)",
+			Prompt:    "What is the population of Paris?",
+			SkipCache: true,
 		},
 		{
-			Name:         "3b. Weather in London → must NOT return Paris data",
-			Prompt:       "What is the population of London?",
+			Name:           "3b. Weather in London → must NOT return Paris data",
+			Prompt:         "What is the population of London?",
 			MustNotContain: "Paris",
 		},
 
@@ -121,15 +121,15 @@ func main() {
 
 		// ──── Group 5: Edge case - numbers embedded in words ────
 		{
-			Name:      "5a. Fibonacci 10th term (skip cache)",
-			Prompt:    "What is the 10th fibonacci number?",
-			SkipCache: true,
+			Name:        "5a. Fibonacci 10th term (skip cache)",
+			Prompt:      "What is the 10th fibonacci number?",
+			SkipCache:   true,
 			MustContain: "55",
 		},
 		{
-			Name:         "5b. Fibonacci 15th term → must NOT return 55",
-			Prompt:       "What is the 15th fibonacci number?",
-			ExpectCached: &falseVal,
+			Name:           "5b. Fibonacci 15th term → must NOT return 55",
+			Prompt:         "What is the 15th fibonacci number?",
+			ExpectCached:   &falseVal,
 			MustNotContain: "55",
 		},
 	}

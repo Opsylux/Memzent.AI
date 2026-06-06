@@ -1803,6 +1803,7 @@ dependencies = [
  "fastembed",
  "prost 0.12.6",
  "qdrant-client",
+ "regex",
  "serde",
  "serde_json",
  "sha2",
