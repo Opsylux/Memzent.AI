@@ -16,8 +16,10 @@ import {
   Cpu,
   Menu,
   X,
-  Github
+  Code as Github
 } from 'lucide-react';
+
+
 
 import FeatureCard from './components/FeatureCard';
 
