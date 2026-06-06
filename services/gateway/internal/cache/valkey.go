@@ -45,6 +45,41 @@ func (c *MemzentCache) Close() {
 	c.client.Close()
 }
 
+// FlushByPattern deletes all keys matching the given glob pattern.
+// Use with care — intended for cache invalidation after schema changes.
+func (c *MemzentCache) FlushByPattern(ctx context.Context, pattern string) (int64, error) {
+	var deleted int64
+	var cursor uint64
+
+	for {
+		cmd := c.client.B().Scan().Cursor(cursor).Match(pattern).Count(100).Build()
+		resp := c.client.Do(ctx, cmd)
+		if err := resp.Error(); err != nil {
+			return deleted, err
+		}
+
+		entry, err := resp.AsScanEntry()
+		if err != nil {
+			return deleted, err
+		}
+
+		if len(entry.Elements) > 0 {
+			delArgs := c.client.B().Del().Key(entry.Elements...).Build()
+			delResp := c.client.Do(ctx, delArgs)
+			if err := delResp.Error(); err == nil {
+				n, _ := delResp.ToInt64()
+				deleted += n
+			}
+		}
+
+		cursor = entry.Cursor
+		if cursor == 0 {
+			break
+		}
+	}
+	return deleted, nil
+}
+
 // RateLimit implements a sliding window rate limiter using Valkey.
 // Returns (allowed bool, err error). Uses a 60-second sliding window.
 // key: unique identifier (e.g. "rl:<orgID>:<userID>")

@@ -973,6 +973,47 @@ func main() {
 		}
 	})))
 
+	// Cache Flush API: invalidate stale canonical/semantic cache entries for an org
+	mux.Handle("/v1/cache/flush", middleware(requireScope("tools:write", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
+			return
+		}
+		orgID, _ := r.Context().Value("org_id").(string)
+		if orgID == "" {
+			http.Error(w, `{"error":"org_id required"}`, http.StatusBadRequest)
+			return
+		}
+
+		if vCache == nil {
+			http.Error(w, `{"error":"cache not initialized"}`, http.StatusServiceUnavailable)
+			return
+		}
+
+		// Flush all cache keys for this org (literal, canonical, semantic)
+		pattern := fmt.Sprintf("org:%s:*", orgID)
+		deleted, err := vCache.FlushByPattern(r.Context(), pattern)
+		if err != nil {
+			slog.Error("Cache flush failed", "error", err, "org_id", orgID)
+			http.Error(w, `{"error":"cache flush failed"}`, http.StatusInternalServerError)
+			return
+		}
+
+		// Also purge persistent DB cache for this org
+		if rbacClient != nil && rbacClient.GetDB() != nil {
+			_, _ = rbacClient.GetDB().ExecContext(r.Context(),
+				"DELETE FROM cache_entries WHERE org_id = $1", orgID)
+		}
+
+		slog.Info("🗑️ Cache flushed", "org_id", orgID, "valkey_keys_deleted", deleted)
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success":      true,
+			"keys_deleted": deleted,
+			"org_id":       orgID,
+		})
+	})))
+
 	// /generate-token is a dev-only convenience endpoint for issuing admin JWTs.
 	// It is disabled in production. Set ENABLE_DEV_TOKEN=true to enable locally.
 	if os.Getenv("ENABLE_DEV_TOKEN") == "true" {

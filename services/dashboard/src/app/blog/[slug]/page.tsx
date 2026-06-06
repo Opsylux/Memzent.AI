@@ -15,6 +15,19 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
 
   if (!post) notFound();
 
+  // Find 2 related posts by shared tags or same category
+  const allPosts = await getAllPosts();
+  const related = allPosts
+    .filter((p) => p.slug !== post.slug)
+    .map((p) => {
+      const sharedTags = p.tags.filter((t) => post.tags.includes(t)).length;
+      const sameCategory = p.category === post.category ? 1 : 0;
+      return { post: p, score: sharedTags * 2 + sameCategory };
+    })
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 2)
+    .map((r) => r.post);
+
   const cat = BLOG_CATEGORIES[post.category];
 
   return (
@@ -99,40 +112,136 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
           <div dangerouslySetInnerHTML={{ __html: renderMarkdown(post.content) }} />
         </div>
       </article>
+
+      {/* Suggested Posts */}
+      {related.length > 0 && (
+        <section className="max-w-4xl mx-auto px-6 pb-16">
+          <div className="border-t border-white/5 pt-10">
+            <h2 className="text-xs font-black uppercase tracking-widest text-white/30 mb-6">
+              Continue Reading
+            </h2>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {related.map((r) => {
+                const rCat = BLOG_CATEGORIES[r.category];
+                return (
+                  <Link
+                    key={r.slug}
+                    href={`/blog/${r.slug}`}
+                    className="group block p-5 rounded-xl border border-white/5 bg-white/[0.02] hover:bg-white/[0.04] hover:border-white/10 transition-all"
+                  >
+                    <span className={`text-[9px] font-black uppercase tracking-widest ${rCat.color}`}>
+                      {rCat.label}
+                    </span>
+                    <h3 className="text-sm font-bold text-white/80 mt-2 group-hover:text-memzent-glow transition-colors line-clamp-2">
+                      {r.title}
+                    </h3>
+                    <p className="text-[11px] text-white/30 mt-2 line-clamp-2">
+                      {r.description}
+                    </p>
+                    <div className="flex items-center gap-3 mt-3">
+                      <span className="text-[10px] text-white/20">{r.reading_time} min read</span>
+                      <span className="text-[10px] text-white/20">
+                        {new Date(r.published_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                      </span>
+                    </div>
+                  </Link>
+                );
+              })}
+            </div>
+          </div>
+        </section>
+      )}
     </div>
   );
 }
 
 /**
- * Simple markdown to HTML renderer (no external deps).
- * For production, replace with remark/rehype or MDX compilation.
+ * Markdown to HTML renderer supporting:
+ * - Code blocks (fenced with ```) with language class
+ * - Inline code
+ * - Images (![alt](src))
+ * - Headers (h1-h3)
+ * - Bold, italic
+ * - Links
+ * - Unordered and ordered lists
+ * - Blockquotes
+ * - Tables (GFM-style)
+ * - Horizontal rules
  */
 function renderMarkdown(md: string): string {
-  let html = md
-    // Code blocks
-    .replace(/```(\w*)\n([\s\S]*?)```/g, '<pre><code class="language-$1">$2</code></pre>')
-    // Inline code
-    .replace(/`([^`]+)`/g, '<code>$1</code>')
-    // Headers
-    .replace(/^### (.+)$/gm, '<h3>$1</h3>')
-    .replace(/^## (.+)$/gm, '<h2>$1</h2>')
-    .replace(/^# (.+)$/gm, '<h1>$1</h1>')
-    // Bold and italic
-    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-    .replace(/\*(.+?)\*/g, '<em>$1</em>')
-    // Links
-    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>')
-    // Unordered lists
-    .replace(/^- (.+)$/gm, '<li>$1</li>')
-    // Paragraphs (simple: double newlines)
-    .replace(/\n\n/g, '</p><p>')
-    // Line breaks
-    .replace(/\n/g, '<br/>');
+  // Protect code blocks from other transforms
+  const codeBlocks: string[] = [];
+  let html = md.replace(/```(\w*)\n([\s\S]*?)```/g, (_match, lang, code) => {
+    const escaped = code.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const idx = codeBlocks.length;
+    codeBlocks.push(
+      `<div class="relative group my-6 rounded-xl overflow-hidden border border-white/5 bg-black/60">` +
+      (lang ? `<div class="px-4 py-1.5 border-b border-white/5 bg-white/[0.02]"><span class="text-[10px] font-black uppercase tracking-widest text-white/20">${lang}</span></div>` : '') +
+      `<pre class="p-4 overflow-x-auto text-[13px] font-mono leading-relaxed text-slate-300"><code class="language-${lang}">${escaped}</code></pre></div>`
+    );
+    return `%%CODEBLOCK_${idx}%%`;
+  });
 
-  // Wrap list items
-  html = html.replace(/(<li>[\s\S]*?<\/li>)/g, '<ul>$1</ul>');
-  // Remove duplicate ul wrappers
-  html = html.replace(/<\/ul>\s*<ul>/g, '');
+  // Images
+  html = html.replace(/!\[([^\]]*)\]\(([^)]+)\)/g,
+    '<figure class="my-6"><img src="$2" alt="$1" class="rounded-xl border border-white/5 w-full" /><figcaption class="text-[10px] text-white/30 text-center mt-2">$1</figcaption></figure>'
+  );
+
+  // Tables (GFM)
+  html = html.replace(/^(\|.+\|)\n(\|[-| :]+\|)\n((?:\|.+\|\n?)+)/gm, (_match, header, _sep, body) => {
+    const headers = header.split('|').filter((c: string) => c.trim()).map((c: string) =>
+      `<th class="text-left px-4 py-2 font-black text-white/60 text-xs">${c.trim()}</th>`
+    ).join('');
+    const rows = body.trim().split('\n').map((row: string) => {
+      const cells = row.split('|').filter((c: string) => c.trim()).map((c: string) =>
+        `<td class="px-4 py-2 text-xs text-white/40">${c.trim()}</td>`
+      ).join('');
+      return `<tr class="border-b border-white/5">${cells}</tr>`;
+    }).join('');
+    return `<div class="overflow-x-auto my-6"><table class="w-full border border-white/5 rounded-lg overflow-hidden"><thead><tr class="bg-white/[0.03] border-b border-white/5">${headers}</tr></thead><tbody>${rows}</tbody></table></div>`;
+  });
+
+  // Blockquotes
+  html = html.replace(/^> (.+)$/gm, '<blockquote class="border-l-2 border-memzent-glow/30 pl-4 my-4 text-white/40 italic text-sm">$1</blockquote>');
+
+  // Horizontal rules
+  html = html.replace(/^---$/gm, '<hr class="border-white/5 my-8" />');
+
+  // Headers
+  html = html.replace(/^### (.+)$/gm, '<h3>$1</h3>');
+  html = html.replace(/^## (.+)$/gm, '<h2>$1</h2>');
+  html = html.replace(/^# (.+)$/gm, '<h1>$1</h1>');
+
+  // Inline code
+  html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
+
+  // Bold and italic
+  html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+  html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
+
+  // Links
+  html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>');
+
+  // Ordered lists
+  html = html.replace(/^(\d+)\. (.+)$/gm, '<li class="list-decimal">$2</li>');
+
+  // Unordered lists
+  html = html.replace(/^- (.+)$/gm, '<li>$1</li>');
+
+  // Wrap consecutive list items
+  html = html.replace(/((?:<li[^>]*>.*?<\/li>\s*)+)/g, '<ul class="space-y-1 my-4 pl-5">$1</ul>');
+
+  // Paragraphs (double newlines)
+  html = html.replace(/\n\n/g, '</p><p>');
+
+  // Line breaks within paragraphs
+  html = html.replace(/\n/g, '<br/>');
+
+  // Restore code blocks
+  codeBlocks.forEach((block, idx) => {
+    html = html.replace(`%%CODEBLOCK_${idx}%%`, block);
+  });
 
   return `<p>${html}</p>`;
 }
+
