@@ -493,7 +493,9 @@ func (e *MemzentEngine) Process(ctx context.Context, req *PromptRequest) (*Promp
 			hitCounter, _ := e.orgHits.LoadOrStore(orgID, &atomic.Uint64{})
 			hitCounter.(*atomic.Uint64).Add(1)
 			slog.Info("🎯 Stage 1.5 Cache HIT (Org-Isolated)", "org_id", orgID, "canonical", cHash)
-			_ = e.cache.SetResult(ctx, cacheKey, cachedCanon, e.cacheTTL)
+			// NOTE: Do NOT backfill the literal cache from canonical matches.
+			// If the canonical normalization is imprecise, backfilling would poison
+			// the literal cache with incorrect responses for future exact-match lookups.
 			e.chargeCacheHit(ctx, orgID, req.Provider, req.Model, queryPrompt)
 
 			// Append user message and cached response to chat session history

@@ -3,6 +3,8 @@ import { BLOG_CATEGORIES } from "@/lib/blog-types";
 import Link from "next/link";
 import { Calendar, Clock, ArrowRight, BookOpen } from "lucide-react";
 
+export const dynamic = "force-dynamic";
+
 export default async function BlogPage() {
   const posts = await getAllPosts();
 
