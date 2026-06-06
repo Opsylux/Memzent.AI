@@ -8,8 +8,12 @@ import (
 )
 
 var (
-	// regexDigits matches numeric IDs (3 or more digits) or common patterns like write011
-	regexDigits = regexp.MustCompile(`\d{2,}`)
+	// regexLongDigits matches long numeric sequences (4+ digits) that are likely IDs,
+	// not mathematical parameters. Short numbers (1-3 digits) are preserved because
+	// they often represent meaningful values (a=10, 15th, etc.) that affect the answer.
+	regexLongDigits = regexp.MustCompile(`\d{4,}`)
+	// regexHashID matches # followed by digits (e.g., ticket #45, issue #123)
+	regexHashID = regexp.MustCompile(`#\d+`)
 	// regexExtraSpace matches multiple whitespaces
 	regexExtraSpace = regexp.MustCompile(`\s+`)
 )
@@ -20,9 +24,12 @@ func NormalizePrompt(prompt string) (canonical string, hash string) {
 	// 1. Lowercase and trim
 	text := strings.ToLower(strings.TrimSpace(prompt))
 
-	// 2. ID Masking: Replace numeric sequences (2+ digits) with a generic <ID> token.
-	// This ensures "write011" and "write111" become identical intents.
-	text = regexDigits.ReplaceAllString(text, "<id>")
+	// 2. ID Masking: Replace hash-prefixed numbers (#45, #123) and long numeric
+	// sequences (4+ digits) with <id>. Short numbers (1-3 digits) are preserved
+	// because they typically represent mathematical values or ordinals that
+	// change the semantics of the query (e.g., a=10, 15th fibonacci).
+	text = regexHashID.ReplaceAllString(text, "<id>")
+	text = regexLongDigits.ReplaceAllString(text, "<id>")
 
 	// 3. Remove punctuation and stabilize spaces
 	text = strings.Map(func(r rune) rune {

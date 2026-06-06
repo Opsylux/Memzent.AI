@@ -16,9 +16,14 @@ func TestNormalizePrompt(t *testing.T) {
 			wantCanonical: "hello world",
 		},
 		{
-			name:          "number masking 2+ digits",
-			input:         "write123 and test45",
-			wantCanonical: "write<id> and test<id>",
+			name:          "long number masking 4+ digits",
+			input:         "write12345 and test45",
+			wantCanonical: "write<id> and test45",
+		},
+		{
+			name:          "short numbers preserved",
+			input:         "calculate a=10, b=15",
+			wantCanonical: "calculate a10 b15",
 		},
 		{
 			name:          "single digit remains",
@@ -36,9 +41,24 @@ func TestNormalizePrompt(t *testing.T) {
 			wantCanonical: "hello world",
 		},
 		{
-			name:          "complex real world prompt",
+			name:          "hash ID masked",
 			input:         "Get me the ticket #4582 from the CRM, please.",
 			wantCanonical: "get me the ticket <id> from the crm please",
+		},
+		{
+			name:          "short hash ID masked",
+			input:         "fix issue #45 now",
+			wantCanonical: "fix issue <id> now",
+		},
+		{
+			name:          "ordinals preserved",
+			input:         "What is the 15th fibonacci number?",
+			wantCanonical: "what is the 15th fibonacci number",
+		},
+		{
+			name:          "math parameters preserved and differentiated",
+			input:         "what is (a+b)^2 where a=5, b=15",
+			wantCanonical: "what is ab2 where a5 b15",
 		},
 	}
 
