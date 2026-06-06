@@ -120,27 +120,35 @@ func (l *Ledger) GetBalance(ctx context.Context, orgID string) (float64, error) 
 	return balance, nil
 }
 
-// SpendLimitStatus represents whether org has hit daily/monthly caps
+// SpendLimitStatus represents whether org has hit daily/monthly caps (dollars + tokens)
 type SpendLimitStatus struct {
-	DailySpend     float64  `json:"daily_spend"`
-	MonthlySpend   float64  `json:"monthly_spend"`
-	DailyLimit     *float64 `json:"daily_limit,omitempty"`
-	MonthlyLimit   *float64 `json:"monthly_limit,omitempty"`
-	DailyExceeded  bool     `json:"daily_exceeded"`
-	MonthlyExceeded bool    `json:"monthly_exceeded"`
+	DailySpend       float64  `json:"daily_spend"`
+	MonthlySpend     float64  `json:"monthly_spend"`
+	DailyLimit       *float64 `json:"daily_limit,omitempty"`
+	MonthlyLimit     *float64 `json:"monthly_limit,omitempty"`
+	DailyExceeded    bool     `json:"daily_exceeded"`
+	MonthlyExceeded  bool     `json:"monthly_exceeded"`
+	DailyTokensUsed     int64  `json:"daily_tokens_used"`
+	MonthlyTokensUsed   int64  `json:"monthly_tokens_used"`
+	DailyTokenLimit     *int64 `json:"daily_token_limit,omitempty"`
+	MonthlyTokenLimit   *int64 `json:"monthly_token_limit,omitempty"`
+	DailyTokensExceeded  bool  `json:"daily_tokens_exceeded"`
+	MonthlyTokensExceeded bool `json:"monthly_tokens_exceeded"`
 }
 
-// CheckSpendLimits verifies if the org is within configured spend limits.
-// Returns nil if no limits are set or limits not exceeded.
+// CheckSpendLimits verifies if the org is within configured spend limits (dollar + token).
+// Returns nil if no limits are set.
 func (l *Ledger) CheckSpendLimits(ctx context.Context, orgID string) (*SpendLimitStatus, error) {
 	if orgID == "default" || orgID == "" {
 		return nil, nil
 	}
 
 	var dailyLimit, monthlyLimit sql.NullFloat64
+	var dailyTokenLimit, monthlyTokenLimit sql.NullInt64
 	err := l.db.QueryRowContext(ctx,
-		"SELECT daily_spend_limit, monthly_spend_limit FROM organizations WHERE id = $1", orgID,
-	).Scan(&dailyLimit, &monthlyLimit)
+		`SELECT daily_spend_limit, monthly_spend_limit, daily_token_limit, monthly_token_limit
+		 FROM organizations WHERE id = $1`, orgID,
+	).Scan(&dailyLimit, &monthlyLimit, &dailyTokenLimit, &monthlyTokenLimit)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, nil
@@ -148,25 +156,28 @@ func (l *Ledger) CheckSpendLimits(ctx context.Context, orgID string) (*SpendLimi
 		return nil, err
 	}
 
-	// If no limits configured, skip
-	if !dailyLimit.Valid && !monthlyLimit.Valid {
+	// If no limits configured at all, skip
+	if !dailyLimit.Valid && !monthlyLimit.Valid && !dailyTokenLimit.Valid && !monthlyTokenLimit.Valid {
 		return nil, nil
 	}
 
 	status := &SpendLimitStatus{}
 
-	// Get today's spend
+	// Get today's spend (dollars + tokens)
 	_ = l.db.QueryRowContext(ctx,
-		"SELECT COALESCE(ABS(SUM(amount)), 0) FROM billing_ledger WHERE org_id = $1 AND amount < 0 AND created_at > CURRENT_DATE",
+		`SELECT COALESCE(ABS(SUM(amount)), 0), COALESCE(SUM(tokens_used), 0)
+		 FROM billing_ledger WHERE org_id = $1 AND amount < 0 AND created_at > CURRENT_DATE`,
 		orgID,
-	).Scan(&status.DailySpend)
+	).Scan(&status.DailySpend, &status.DailyTokensUsed)
 
-	// Get this month's spend
+	// Get this month's spend (dollars + tokens)
 	_ = l.db.QueryRowContext(ctx,
-		"SELECT COALESCE(ABS(SUM(amount)), 0) FROM billing_ledger WHERE org_id = $1 AND amount < 0 AND created_at > DATE_TRUNC('month', CURRENT_DATE)",
+		`SELECT COALESCE(ABS(SUM(amount)), 0), COALESCE(SUM(tokens_used), 0)
+		 FROM billing_ledger WHERE org_id = $1 AND amount < 0 AND created_at > DATE_TRUNC('month', CURRENT_DATE)`,
 		orgID,
-	).Scan(&status.MonthlySpend)
+	).Scan(&status.MonthlySpend, &status.MonthlyTokensUsed)
 
+	// Dollar caps
 	if dailyLimit.Valid {
 		status.DailyLimit = &dailyLimit.Float64
 		status.DailyExceeded = status.DailySpend >= dailyLimit.Float64
@@ -176,14 +187,27 @@ func (l *Ledger) CheckSpendLimits(ctx context.Context, orgID string) (*SpendLimi
 		status.MonthlyExceeded = status.MonthlySpend >= monthlyLimit.Float64
 	}
 
+	// Token caps
+	if dailyTokenLimit.Valid {
+		v := dailyTokenLimit.Int64
+		status.DailyTokenLimit = &v
+		status.DailyTokensExceeded = status.DailyTokensUsed >= v
+	}
+	if monthlyTokenLimit.Valid {
+		v := monthlyTokenLimit.Int64
+		status.MonthlyTokenLimit = &v
+		status.MonthlyTokensExceeded = status.MonthlyTokensUsed >= v
+	}
+
 	return status, nil
 }
 
-// SetSpendLimits updates the org's daily/monthly spend caps
-func (l *Ledger) SetSpendLimits(ctx context.Context, orgID string, dailyLimit, monthlyLimit *float64) error {
+// SetSpendLimits updates the org's daily/monthly spend caps (dollar + token)
+func (l *Ledger) SetSpendLimits(ctx context.Context, orgID string, dailyLimit, monthlyLimit *float64, dailyTokenLimit, monthlyTokenLimit *int64) error {
 	_, err := l.db.ExecContext(ctx,
-		"UPDATE organizations SET daily_spend_limit = $2, monthly_spend_limit = $3 WHERE id = $1",
-		orgID, dailyLimit, monthlyLimit,
+		`UPDATE organizations SET daily_spend_limit = $2, monthly_spend_limit = $3,
+		 daily_token_limit = $4, monthly_token_limit = $5 WHERE id = $1`,
+		orgID, dailyLimit, monthlyLimit, dailyTokenLimit, monthlyTokenLimit,
 	)
 	return err
 }

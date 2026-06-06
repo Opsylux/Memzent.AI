@@ -654,7 +654,7 @@ export async function getSpendLimits(orgId?: string) {
     }
 }
 
-export async function setSpendLimits(data: { daily_limit?: number | null; monthly_limit?: number | null }, orgId?: string) {
+export async function setSpendLimits(data: { daily_limit?: number | null; monthly_limit?: number | null; daily_token_limit?: number | null; monthly_token_limit?: number | null }, orgId?: string) {
     const headers = await gatewayHeaders(orgId)
     const res = await fetch(`${GATEWAY_URL}/v1/billing/spend-limits`, {
         method: "PUT",

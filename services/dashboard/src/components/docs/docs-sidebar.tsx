@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Book, Zap, Shield, Key, Code, MessageCircle, Cpu } from "lucide-react";
+import { Book, Zap, Shield, Key, Code, MessageCircle, Cpu, DollarSign } from "lucide-react";
 
 export const docSections = [
   {
@@ -32,6 +32,12 @@ export const docSections = [
     title: "Tools & Registry",
     items: [
       { name: "Dynamic Tool Registry", href: "/docs/tool-registry", icon: Cpu },
+    ]
+  },
+  {
+    title: "Billing & Limits",
+    items: [
+      { name: "Spend Limits & Budget", href: "/docs/spend-limits", icon: DollarSign },
     ]
   }
 ];

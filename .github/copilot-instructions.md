@@ -67,7 +67,7 @@ Every request through `engine.Process()` follows this mandatory sequence:
 
 1. **Rate Limiting** — Distributed via Valkey (org-level + per-user role-proportional)
 2. **Permission Check** — Viewer role blocked from execution
-3. **Billing Pre-check** — Token balance validation
+3. **Billing Pre-check** — Token balance + spend limits (daily/monthly dollar + token caps)
 4. **Cache Check** — 3-stage: Literal hash → Canonical hash → Semantic similarity (Qdrant)
 5. **Session Memory** — Append user message, load history
 6. **Semantic Routing** — gRPC to Rust for tool matching + memory recall
@@ -130,4 +130,18 @@ When adding a new feature that touches the routing pipeline:
 
 ## Migrations
 
-SQL migrations live in `/migrations/` (numbered `001_` through `023_`). Apply via Supabase SQL Editor or CLI (`supabase db push`).
+SQL migrations live in `/migrations/` (numbered `001_` through `024_`). Apply via Supabase SQL Editor or CLI (`supabase db push`).
+
+## Billing & Spend Limits API
+
+The gateway exposes budget forecast and spend limit endpoints under `/v1/billing/`:
+
+| Endpoint | Method | Purpose |
+|----------|--------|---------|
+| `/v1/billing/budget` | GET | Full budget status — balance, burn rate, provider breakdown, projections |
+| `/v1/billing/spend-limits` | GET | Current spend vs limits (dollar + token caps) |
+| `/v1/billing/spend-limits` | PUT | Set daily/monthly dollar + token caps (`null` to remove) |
+| `/v1/billing/spend-timeseries?days=N` | GET | Daily spend data for charts (default 30 days) |
+| `/v1/billing/checkout` | POST | Stripe checkout session for top-ups |
+
+**Enforcement:** Engine checks spend limits after balance check in `engine.Process()`. Blocks with clear error when daily or monthly cap (dollar or token) is exceeded. All limits are opt-in (`NULL` = no limit).

@@ -765,15 +765,17 @@ func main() {
 
 		case http.MethodPut:
 			var req struct {
-				DailyLimit   *float64 `json:"daily_limit"`
-				MonthlyLimit *float64 `json:"monthly_limit"`
+				DailyLimit       *float64 `json:"daily_limit"`
+				MonthlyLimit     *float64 `json:"monthly_limit"`
+				DailyTokenLimit  *int64   `json:"daily_token_limit"`
+				MonthlyTokenLimit *int64  `json:"monthly_token_limit"`
 			}
 			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 				http.Error(w, "Invalid request body", http.StatusBadRequest)
 				return
 			}
 
-			if err := billingLedger.SetSpendLimits(r.Context(), orgID, req.DailyLimit, req.MonthlyLimit); err != nil {
+			if err := billingLedger.SetSpendLimits(r.Context(), orgID, req.DailyLimit, req.MonthlyLimit, req.DailyTokenLimit, req.MonthlyTokenLimit); err != nil {
 				http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 				return
 			}

@@ -385,7 +385,7 @@ func (e *MemzentEngine) Process(ctx context.Context, req *PromptRequest) (*Promp
 			return nil, fmt.Errorf("payment required: token balance depleted")
 		}
 
-		// A.2 Spend Limit Check (daily/monthly caps)
+		// A.2 Spend Limit Check (daily/monthly dollar + token caps)
 		if spendStatus, err := e.ledger.CheckSpendLimits(ctx, orgID); err == nil && spendStatus != nil {
 			if spendStatus.DailyExceeded {
 				slog.Warn("Daily spend limit exceeded", "org_id", orgID, "spent", spendStatus.DailySpend, "limit", *spendStatus.DailyLimit)
@@ -394,6 +394,14 @@ func (e *MemzentEngine) Process(ctx context.Context, req *PromptRequest) (*Promp
 			if spendStatus.MonthlyExceeded {
 				slog.Warn("Monthly spend limit exceeded", "org_id", orgID, "spent", spendStatus.MonthlySpend, "limit", *spendStatus.MonthlyLimit)
 				return nil, fmt.Errorf("monthly spend limit reached ($%.2f of $%.2f). Resets on the 1st", spendStatus.MonthlySpend, *spendStatus.MonthlyLimit)
+			}
+			if spendStatus.DailyTokensExceeded {
+				slog.Warn("Daily token limit exceeded", "org_id", orgID, "used", spendStatus.DailyTokensUsed, "limit", *spendStatus.DailyTokenLimit)
+				return nil, fmt.Errorf("daily token limit reached (%d of %d). Resets at midnight UTC", spendStatus.DailyTokensUsed, *spendStatus.DailyTokenLimit)
+			}
+			if spendStatus.MonthlyTokensExceeded {
+				slog.Warn("Monthly token limit exceeded", "org_id", orgID, "used", spendStatus.MonthlyTokensUsed, "limit", *spendStatus.MonthlyTokenLimit)
+				return nil, fmt.Errorf("monthly token limit reached (%d of %d). Resets on the 1st", spendStatus.MonthlyTokensUsed, *spendStatus.MonthlyTokenLimit)
 			}
 		}
 	}

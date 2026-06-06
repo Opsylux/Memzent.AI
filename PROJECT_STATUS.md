@@ -18,6 +18,7 @@ This document tracks the current completion state of Memzent features and provid
 | **Agent Memory (Phase 5/6)** | Gateway/Rust | ✅ 100% | PostgreSQL session threads and semantic memory Qdrant extraction. |
 | **Context Analytics (Phase 5/6)** | Dashboard/Gateway | ✅ 100% | Premium ROI tracking, latency tool telemetry, and intent theme clusters. |
 | **API Key Security (Phase 6)** | Gateway/Dashboard | ✅ 100% | Expiry TTL picker, last_used_at tracking, in-place rotation with 15-min grace window, stale key audit. |
+| **Spend Limits & Budget Forecast** | Gateway/Dashboard | ✅ 100% | Dollar + token caps (daily/monthly), budget forecast API, spend timeseries, provider breakdown. |
 | **Notification Pipeline (Phase 7)** | Gateway/Dashboard | ✅ 100% | Webhook CRUD, 6 event types, HMAC signing, async retry with dead letter, delivery logs. |
 | **Per-User Rate Limiting** | Gateway | ✅ 100% | Role-proportional limits (viewer 20%, member 50%, admin 100% of org). |
 
@@ -73,6 +74,20 @@ This document tracks the current completion state of Memzent features and provid
 *   **Task 7.5** ✅ Engine integration — `EventEmitter` interface, emits `rate_limit` and `cache_hit` events. Graceful shutdown drains queue.
 *   **Task 7.6** ✅ Dashboard — `/notifications` page with webhook CRUD UI, event selector, delivery log viewer.
 *   **Task 7.7** ⬜ Apply migration `023_webhook_notifications.sql` to Supabase.
+
+### [Phase 7.5] Spend Limits & Budget Forecast ✅ COMPLETE
+**Goal**: Prevent runaway token bills with configurable spend caps and provide budget forecast data for planning tools.
+
+*   **Task 7.5.1** ✅ Migration `024_spend_limits.sql` — `daily_spend_limit`, `monthly_spend_limit` (dollar), `daily_token_limit`, `monthly_token_limit` (tokens) on organizations. `provider` + `tokens_used` columns on `billing_ledger`.
+*   **Task 7.5.2** ✅ `CheckSpendLimits()` — queries daily/monthly dollar + token spend, returns `SpendLimitStatus` struct with exceeded flags.
+*   **Task 7.5.3** ✅ Engine enforcement — spend limit check wired after balance check in `engine.Process()`. Blocks with descriptive error messages (resets at midnight UTC / 1st of month).
+*   **Task 7.5.4** ✅ `GET /v1/billing/budget` — returns balance, burn rate, projected days remaining, 24h/7d/30d summaries, provider breakdown. Designed for FinOps/planning tool integrations.
+*   **Task 7.5.5** ✅ `GET/PUT /v1/billing/spend-limits` — view/configure dollar + token caps (set `null` to remove a limit).
+*   **Task 7.5.6** ✅ `GET /v1/billing/spend-timeseries?days=N` — daily spend chart data.
+*   **Task 7.5.7** ✅ Dashboard server actions — `getBudgetStatus()`, `getSpendTimeseries()`, `getSpendLimits()`, `setSpendLimits()`.
+*   **Task 7.5.8** ✅ Documentation — `/docs/spend-limits` page with API reference, enforcement flow, integration examples.
+*   **Task 7.5.9** ⬜ Apply migration `024_spend_limits.sql` to Supabase.
+*   **Task 7.5.10** ⬜ Dashboard spend limits visualization page (in progress).
 
 ### Infrastructure Tasks (Completed This Session)
 *   **Task 5.1** ✅ Envoy gRPC Load Balancing profiles.
