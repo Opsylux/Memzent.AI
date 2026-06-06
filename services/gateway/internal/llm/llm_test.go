@@ -30,15 +30,22 @@ func newJSONResponse(statusCode int, bodyObj interface{}) *http.Response {
 
 func TestBuildSystemPrompt(t *testing.T) {
 	promptWithoutTools := BuildSystemPrompt(nil)
-	if !strings.Contains(promptWithoutTools, "memzent.ai") {
+	if !strings.Contains(promptWithoutTools, "Memzent") {
 		t.Errorf("expected system prompt to contain product branding")
 	}
-	if !strings.Contains(promptWithoutTools, "Provide a helpful, direct, and concise response") {
-		t.Errorf("expected fallback instruction in system prompt")
+	if !strings.Contains(promptWithoutTools, "directly, accurately, and concisely") {
+		t.Errorf("expected concise instruction in system prompt")
+	}
+	// Ensure no API docs leakage
+	if strings.Contains(promptWithoutTools, "localhost:8080") {
+		t.Errorf("system prompt should NOT contain internal API URLs")
+	}
+	if strings.Contains(promptWithoutTools, "import requests") {
+		t.Errorf("system prompt should NOT contain code samples")
 	}
 
 	promptWithTools := BuildSystemPrompt([]any{"dummy_tool"})
-	if !strings.Contains(promptWithTools, "supplemented with data from semantic tools") {
+	if !strings.Contains(promptWithTools, "context from semantic tools") {
 		t.Errorf("expected tool instruction in system prompt")
 	}
 }

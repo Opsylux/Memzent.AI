@@ -6,6 +6,7 @@ use qdrant_client::qdrant::{
 };
 use std::collections::HashMap;
 
+use regex::Regex;
 use crate::embedding::{Embedder, compress_text, calculate_hash};
 use crate::router_proto::semantic_router_server::SemanticRouter;
 use crate::router_proto::{
@@ -55,17 +56,39 @@ impl SemanticRouter for MyRouter {
 
         if let Ok(cache_res) = self.q_client.search_points(cache_search_request).await {
             if let Some(hit) = cache_res.result.first() {
-                println!("🔍 Semantic Cache Candidate: Score {}, Threshold 0.88", hit.score);
+                println!("🔍 Semantic Cache Candidate: Score {}, Threshold 0.95", hit.score);
 
-                if hit.score > 0.88 {
-                    similar_prompt_hash = hit.payload.get("prompt_hash")
+                if hit.score > 0.95 {
+                    // Numeric guard: extract numbers from both prompts and reject
+                    // cache hit if numerical values differ (prevents false positives
+                    // on parametric queries like "a=10" vs "a=11").
+                    let cached_prompt_text = hit.payload.get("prompt_text")
                         .and_then(|v| v.kind.as_ref())
                         .map(|k| match k {
                             qdrant_client::qdrant::value::Kind::StringValue(s) => s.clone(),
                             _ => String::new(),
                         })
                         .unwrap_or_default();
-                    println!("🎯 Semantic Cache Hit! Hash: {}", similar_prompt_hash);
+
+                    let numbers_match = if cached_prompt_text.is_empty() {
+                        // No stored prompt text — allow hit (backward compat)
+                        true
+                    } else {
+                        extract_numbers(&req.prompt) == extract_numbers(&cached_prompt_text)
+                    };
+
+                    if numbers_match {
+                        similar_prompt_hash = hit.payload.get("prompt_hash")
+                            .and_then(|v| v.kind.as_ref())
+                            .map(|k| match k {
+                                qdrant_client::qdrant::value::Kind::StringValue(s) => s.clone(),
+                                _ => String::new(),
+                            })
+                            .unwrap_or_default();
+                        println!("🎯 Semantic Cache Hit! Hash: {}", similar_prompt_hash);
+                    } else {
+                        println!("⚠️ Semantic Cache REJECTED: numeric values differ between prompts");
+                    }
                 }
             }
         }
@@ -76,6 +99,7 @@ impl SemanticRouter for MyRouter {
 
             let mut payload = HashMap::new();
             payload.insert("prompt_hash".to_string(), Value::from(prompt_hash.clone()));
+            payload.insert("prompt_text".to_string(), Value::from(req.prompt.clone()));
             payload.insert("user_id".to_string(), Value::from(req.user_id.clone()));
             payload.insert("org_id".to_string(), Value::from(req.org_id.clone()));
 
@@ -376,4 +400,13 @@ impl SemanticRouter for MyRouter {
 
         Ok(Response::new(QueryMemoryResponse { memories }))
     }
+}
+
+/// Extracts all numeric values (integers and decimals) from a string in order
+/// of appearance. Used by the semantic cache numeric guard to prevent false
+/// positives on parametric queries (e.g. "a=10" vs "a=11", or "a=2,b=5" vs "a=5,b=2").
+/// Order is preserved (NOT sorted) so positional differences are detected.
+fn extract_numbers(text: &str) -> Vec<String> {
+    let re = Regex::new(r"\d+\.?\d*").unwrap();
+    re.find_iter(text).map(|m| m.as_str().to_string()).collect()
 }
