@@ -86,6 +86,50 @@ export default function AuthPage() {
         </div>
       </section>
 
+      {/* Scopes */}
+      <section className="space-y-5 pt-2">
+        <h2 className="text-2xl font-black tracking-tighter uppercase">Permission Scopes</h2>
+        <p className="text-sm text-white/60 leading-relaxed font-medium">
+          API keys are issued with specific scopes that determine what operations they can perform.
+          Requests to endpoints requiring a scope the key lacks will receive a <code className="text-red-400 font-mono">403 Forbidden</code>.
+        </p>
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs border border-white/5 rounded-lg overflow-hidden">
+            <thead>
+              <tr className="bg-white/[0.03] border-b border-white/5">
+                <th className="text-left px-4 py-2 font-black text-white/60">Scope</th>
+                <th className="text-left px-4 py-2 font-black text-white/60">Grants Access To</th>
+              </tr>
+            </thead>
+            <tbody className="text-white/40">
+              <tr className="border-b border-white/5"><td className="px-4 py-2 font-mono text-memzent-glow/70">chat:execute</td><td className="px-4 py-2">POST /v1/chat — send prompts and receive responses</td></tr>
+              <tr className="border-b border-white/5"><td className="px-4 py-2 font-mono text-memzent-glow/70">tools:read</td><td className="px-4 py-2">GET /v1/tools — list registered tools</td></tr>
+              <tr className="border-b border-white/5"><td className="px-4 py-2 font-mono text-memzent-glow/70">tools:write</td><td className="px-4 py-2">POST/PUT/DELETE /v1/tools — manage tool registry</td></tr>
+              <tr><td className="px-4 py-2 font-mono text-memzent-glow/70">audit:read</td><td className="px-4 py-2">GET /v1/audit — view audit logs and analytics</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      {/* Auth Errors */}
+      <section className="space-y-5 pt-2">
+        <h2 className="text-2xl font-black tracking-tighter uppercase">Error Responses</h2>
+        <div className="space-y-3 text-[11px] text-white/40 font-bold">
+          <div className="p-3 rounded-lg border border-white/5 bg-white/[0.02]">
+            <code className="text-red-400">401</code> — <span className="text-white/60">Missing identity (JWT or API Key)</span> — No auth header provided
+          </div>
+          <div className="p-3 rounded-lg border border-white/5 bg-white/[0.02]">
+            <code className="text-red-400">401</code> — <span className="text-white/60">Invalid Authorization Header Format</span> — Malformed Bearer token
+          </div>
+          <div className="p-3 rounded-lg border border-white/5 bg-white/[0.02]">
+            <code className="text-red-400">403</code> — <span className="text-white/60">Forbidden: API key lacks required scope</span> — Key doesn&apos;t have the needed scope
+          </div>
+          <div className="p-3 rounded-lg border border-white/5 bg-white/[0.02]">
+            <code className="text-red-400">403</code> — <span className="text-white/60">Organizational context missing</span> — Valid auth but no org membership found
+          </div>
+        </div>
+      </section>
+
       <DocsPager />
     </div>
   );

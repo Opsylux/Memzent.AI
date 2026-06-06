@@ -24,14 +24,13 @@ export default function ArchitecturePage() {
         {/* Visual flow diagram */}
         <div className="flex flex-col sm:flex-row items-center gap-2 py-6 overflow-x-auto">
           {[
-            { label: "Your App" },
-            { label: "Memzent Gateway" },
-            { label: "Your Tools" },
-            { label: "AI Model" },
-            { label: "Response" },
+            { label: "Client" },
+            { label: "Go Gateway (:8080)" },
+            { label: "Rust Router (gRPC)" },
+            { label: "Qdrant (Vectors)" },
           ].map((node, i, arr) => (
             <div key={node.label} className="flex items-center gap-2 shrink-0">
-              <div className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-tight border ${node.label === "Memzent Gateway"
+              <div className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-tight border ${node.label.includes("Gateway")
                 ? "bg-memzent-glow/10 border-memzent-glow/30 text-memzent-glow shadow-[0_0_20px_rgba(0,243,255,0.08)]"
                 : "bg-white/[0.02] border-white/10 text-white/50"
                 }`}>
@@ -40,6 +39,18 @@ export default function ArchitecturePage() {
               {i < arr.length - 1 && (
                 <ArrowRight size={14} className="text-white/20 shrink-0" />
               )}
+            </div>
+          ))}
+        </div>
+        <div className="flex flex-col sm:flex-row items-center gap-2 py-2 overflow-x-auto">
+          {[
+            { label: "Valkey (Cache)" },
+            { label: "Postgres (RBAC/Billing)" },
+            { label: "LLM Providers" },
+            { label: "MCP Tools" },
+          ].map((node) => (
+            <div key={node.label} className="px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-tight border bg-white/[0.01] border-white/5 text-white/30">
+              {node.label}
             </div>
           ))}
         </div>
@@ -58,43 +69,71 @@ export default function ArchitecturePage() {
               icon: <ShieldCheck size={16} />,
               color: "text-white/50",
               step: "01",
-              title: "Identity & Access Check",
-              desc: "Memzent verifies who is making the request and confirms they have permission to access the tools and models they need. Unauthorized requests are stopped before any work begins."
+              title: "Rate Limiting",
+              desc: "Distributed rate limiting via Valkey checks org tier (free: 10/min, pro: 100/min, business: 1000/min) and per-user proportional limits based on role."
+            },
+            {
+              icon: <ShieldCheck size={16} />,
+              color: "text-memzent-accent",
+              step: "02",
+              title: "Auth & Permission Check",
+              desc: "API key or JWT is verified. RBAC checks confirm the user has the required scope (chat:execute, tools:read, etc). Viewer role is blocked from execution."
+            },
+            {
+              icon: <Zap size={16} />,
+              color: "text-yellow-400",
+              step: "03",
+              title: "Billing Pre-check",
+              desc: "Token balance is verified and spend limits (daily/monthly dollar + token caps) are checked. Requests are blocked with 402 if limits are exceeded."
             },
             {
               icon: <Search size={16} />,
               color: "text-memzent-glow",
-              step: "02",
-              title: "Did We Already Answer This?",
-              desc: "Memzent checks its semantic memory. If a similar question was already answered — even if worded differently — the cached response is returned instantly. No model call, no cost, zero wait."
+              step: "04",
+              title: "Triple-Layer Cache Check",
+              desc: "Layer 1: Exact hash match in Valkey. Layer 1.5: Canonical (normalized) hash match. Layer 2: Semantic vector similarity via Rust Router + Qdrant (threshold 0.95). With durable Postgres fallback if Valkey is down."
             },
             {
               icon: <Layers size={16} />,
               color: "text-memzent-purple",
-              step: "03",
-              title: "Finding the Right Tools",
-              desc: "Memzent understands the intent behind the question and identifies which of your connected tools — databases, APIs, knowledge bases — can provide the most relevant context."
+              step: "05",
+              title: "Session Memory & Recall",
+              desc: "Conversation history is loaded from the session. Long-term semantic memories (user preferences, facts) are recalled from Qdrant if relevance > 0.65."
+            },
+            {
+              icon: <Layers size={16} />,
+              color: "text-blue-400",
+              step: "06",
+              title: "Semantic Routing (Rust gRPC)",
+              desc: "Prompt is embedded via all-MiniLM-L6-v2 (384-dim). Qdrant is searched for matching tools and similar prompts. Tools above the relevance threshold are selected."
             },
             {
               icon: <RefreshCw size={16} />,
               color: "text-memzent-accent",
-              step: "04",
-              title: "Gathering Context",
-              desc: "The matched tools are called to retrieve live data: customer records, documents, metrics, or anything else your tools expose. This context is assembled alongside the original question."
+              step: "07",
+              title: "Tool Execution",
+              desc: "Matched MCP tools and connectors are called to gather live context. Supports sequential chaining when prompts require multi-step workflows."
             },
             {
               icon: <Sparkles size={16} />,
               color: "text-memzent-glow",
-              step: "05",
-              title: "AI Generates the Answer",
-              desc: "The enriched prompt is sent to the AI model of your choice. Because Memzent already gathered the relevant context, the model produces a more accurate, grounded response — using fewer tokens."
+              step: "08",
+              title: "LLM Synthesis",
+              desc: "The enriched prompt (with tool results, memory, session history) is sent to the selected provider — Ollama, OpenAI, Anthropic, or Gemini."
             },
             {
               icon: <Zap size={16} />,
               color: "text-memzent-accent",
-              step: "06",
-              title: "Response Saved for Next Time",
-              desc: "The answer is returned to your app and saved in Memzent's semantic memory. The next time someone asks something similar, they get an instant response — from any provider, any region."
+              step: "09",
+              title: "Cache Set & Billing",
+              desc: "Response is cached in Valkey + Postgres. Billing is deducted (90% discount for cache hits). Semantic memory facts are auto-extracted in background."
+            },
+            {
+              icon: <RefreshCw size={16} />,
+              color: "text-white/50",
+              step: "10",
+              title: "Webhook Events",
+              desc: "Subscribed webhooks receive notifications (cache_hit, tool_execution, rate_limit, etc.) with signed payloads for audit and monitoring."
             },
           ].map((item) => (
             <div

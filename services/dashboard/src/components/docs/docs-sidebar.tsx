@@ -2,15 +2,16 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Book, Zap, Shield, Key, Code, MessageCircle, Cpu, DollarSign } from "lucide-react";
+import { Book, Zap, Shield, Key, Code, MessageCircle, Cpu, DollarSign, Globe, AlertTriangle, Bell, Database, Layers } from "lucide-react";
 
 export const docSections = [
   {
     title: "Core Concepts",
     items: [
       { name: "Introduction", href: "/docs", icon: Book },
-      { name: "Memzent Architecture", href: "/docs/architecture", icon: Zap },
+      { name: "Architecture", href: "/docs/architecture", icon: Zap },
       { name: "Semantic Proxying", href: "/docs/semantic-proxy", icon: MessageCircle },
+      { name: "Caching Deep Dive", href: "/docs/caching", icon: Layers },
     ]
   },
   {
@@ -19,6 +20,16 @@ export const docSections = [
       { name: "Quickstart", href: "/docs/quickstart", icon: Zap },
       { name: "Authentication", href: "/docs/auth", icon: Key },
       { name: "Your First Request", href: "/docs/first-request", icon: Code },
+    ]
+  },
+  {
+    title: "API Reference",
+    items: [
+      { name: "Endpoints", href: "/docs/api-reference", icon: Code },
+      { name: "Providers & Models", href: "/docs/providers", icon: Globe },
+      { name: "Sessions & Memory", href: "/docs/sessions", icon: Database },
+      { name: "Webhooks", href: "/docs/webhooks", icon: Bell },
+      { name: "Errors & Rate Limits", href: "/docs/errors", icon: AlertTriangle },
     ]
   },
   {

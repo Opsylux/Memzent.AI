@@ -49,9 +49,9 @@ export default function RBACGuide() {
       <section className="space-y-5 pt-2">
         <h2 className="text-2xl font-black tracking-tighter uppercase">Roles</h2>
         <p className="text-sm text-white/60 leading-relaxed font-medium">
-          Every organization member has one of two roles. Roles control what they can do — not just what they can see.
+          Every organization member has one of three roles. Roles control what they can do — not just what they can see.
         </p>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
           <div className="p-6 rounded-2xl bg-white/[0.02] border border-white/5 space-y-4">
             <div className="flex items-center gap-2 text-memzent-glow">
               <Lock size={15} />
@@ -59,11 +59,13 @@ export default function RBACGuide() {
             </div>
             <ul className="space-y-2">
               {[
+                "Full org management",
                 "Manage all API keys",
                 "Register and remove tools",
                 "View all audit activity",
-                "Manage billing plan",
+                "Manage billing and spend limits",
                 "Invite and remove members",
+                "Full rate limit allocation",
               ].map((item) => (
                 <li key={item} className="flex items-center gap-2">
                   <CheckCircle2 size={12} className="text-memzent-glow shrink-0" />
@@ -74,16 +76,40 @@ export default function RBACGuide() {
           </div>
 
           <div className="p-6 rounded-2xl bg-white/[0.02] border border-white/5 space-y-4">
-            <div className="flex items-center gap-2 text-white/40">
+            <div className="flex items-center gap-2 text-blue-400">
               <Users size={15} />
-              <span className="text-xs font-black uppercase">Member</span>
+              <span className="text-xs font-black uppercase">Member (Agent)</span>
             </div>
             <ul className="space-y-2">
               {[
+                "Execute chat prompts",
                 "Create personal API keys",
                 "Use permitted tools",
                 "View their own activity",
-                "Discover available AI models",
+                "Discover available models",
+                "Proportional rate limit share",
+              ].map((item) => (
+                <li key={item} className="flex items-center gap-2">
+                  <CheckCircle2 size={12} className="text-blue-400/50 shrink-0" />
+                  <span className="text-[11px] text-white/40 font-bold">{item}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          <div className="p-6 rounded-2xl bg-white/[0.02] border border-white/5 space-y-4">
+            <div className="flex items-center gap-2 text-white/40">
+              <Users size={15} />
+              <span className="text-xs font-black uppercase">Viewer</span>
+            </div>
+            <ul className="space-y-2">
+              {[
+                "Read-only access",
+                "View tools and models",
+                "View audit logs (own)",
+                "Cannot execute prompts",
+                "Cannot register tools",
+                "Blocked from chat:execute",
               ].map((item) => (
                 <li key={item} className="flex items-center gap-2">
                   <CheckCircle2 size={12} className="text-white/20 shrink-0" />

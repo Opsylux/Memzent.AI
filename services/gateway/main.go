@@ -461,6 +461,9 @@ func main() {
 		if m := r.Header.Get("X-Memzent-Model"); m != "" {
 			req.Model = m
 		}
+		if strings.EqualFold(r.Header.Get("X-Skip-Cache"), "true") {
+			req.SkipCache = true
+		}
 
 		reqID := r.Header.Get("X-Request-ID")
 		if reqID == "" {

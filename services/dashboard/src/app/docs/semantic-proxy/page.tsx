@@ -34,22 +34,22 @@ export default function SemanticProxyPage() {
               label: "L1",
               color: "text-memzent-glow",
               bg: "bg-memzent-glow/10",
-              title: "Exact Match",
-              desc: "If the same question was asked before — word for word — the answer comes back in under a millisecond from memory. No model is called."
+              title: "Literal Match (Exact Hash)",
+              desc: "SHA-256 hash of the raw prompt text looked up in Valkey. Sub-millisecond. Only matches character-for-character identical prompts."
+            },
+            {
+              label: "L1.5",
+              color: "text-memzent-purple",
+              bg: "bg-memzent-purple/10",
+              title: "Canonical Match (Normalized Hash)",
+              desc: "Prompt is normalized (lowercased, whitespace collapsed, punctuation standardized) then hashed. Catches formatting variants: \"What is AI?\" matches \"what is ai ?\"."
             },
             {
               label: "L2",
-              color: "text-memzent-purple",
-              bg: "bg-memzent-purple/10",
-              title: "Normalized Match",
-              desc: "Minor variations in punctuation, capitalization, or whitespace are stripped away. The same intent, written slightly differently, still hits the cache."
-            },
-            {
-              label: "L3",
               color: "text-memzent-accent",
               bg: "bg-memzent-accent/10",
-              title: "Meaning Match",
-              desc: "Even completely different phrasing can match a previous question if the underlying meaning is the same. This is Memzent's deepest layer — understanding intent, not just text."
+              title: "Semantic Match (Vector Similarity)",
+              desc: "Prompt is embedded into a 384-dim vector via all-MiniLM-L6-v2 (Rust Router) and compared against stored prompts in Qdrant. Threshold: 0.95 similarity. Includes a numeric guard that rejects matches when parameter values differ."
             }
           ].map((item) => (
             <div key={item.label} className="p-6 rounded-2xl bg-white/[0.02] border border-white/5 space-y-3">
