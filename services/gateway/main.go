@@ -1000,17 +1000,24 @@ func main() {
 		}
 
 		// Also purge persistent DB cache for this org
+		var dbDeleted int64
 		if rbacClient != nil && rbacClient.GetDB() != nil {
-			_, _ = rbacClient.GetDB().ExecContext(r.Context(),
-				"DELETE FROM cache_entries WHERE org_id = $1", orgID)
+			result, dbErr := rbacClient.GetDB().ExecContext(r.Context(),
+				"DELETE FROM persistent_cache WHERE org_id = $1", orgID)
+			if dbErr != nil {
+				slog.Warn("Persistent cache flush failed (non-fatal)", "error", dbErr, "org_id", orgID)
+			} else if result != nil {
+				dbDeleted, _ = result.RowsAffected()
+			}
 		}
 
-		slog.Info("🗑️ Cache flushed", "org_id", orgID, "valkey_keys_deleted", deleted)
+		slog.Info("🗑️ Cache flushed", "org_id", orgID, "valkey_keys_deleted", deleted, "db_rows_deleted", dbDeleted)
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]interface{}{
-			"success":      true,
-			"keys_deleted": deleted,
-			"org_id":       orgID,
+			"success":             true,
+			"valkey_keys_deleted": deleted,
+			"db_rows_deleted":     dbDeleted,
+			"org_id":              orgID,
 		})
 	})))
 
