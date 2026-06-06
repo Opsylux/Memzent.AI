@@ -70,11 +70,14 @@ impl SemanticRouter for MyRouter {
                         })
                         .unwrap_or_default();
 
+                    let current_numbers = extract_numbers(&req.prompt);
                     let numbers_match = if cached_prompt_text.is_empty() {
-                        // No stored prompt text — allow hit (backward compat)
-                        true
+                        // No stored prompt text — only allow hit if the current
+                        // prompt has no numeric values (prevents false positives
+                        // on parametric queries matched against old entries).
+                        current_numbers.is_empty()
                     } else {
-                        extract_numbers(&req.prompt) == extract_numbers(&cached_prompt_text)
+                        current_numbers == extract_numbers(&cached_prompt_text)
                     };
 
                     if numbers_match {

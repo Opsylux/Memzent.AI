@@ -22,4 +22,8 @@ logs:
 test-flow:
 	cd services/gateway && go run scripts/test_flow.go
 
-.PHONY: gen-proto up down test-flow
+# Run semantic cache correctness tests (requires MEMZENT_API_KEY env var)
+test-cache:
+	cd services/gateway && go run scripts/test_semantic_cache.go
+
+.PHONY: gen-proto up down test-flow test-cache
