@@ -7,9 +7,10 @@ interface CodeBlockProps {
   code: string;
   language?: string;
   filename?: string;
+  title?: string;
 }
 
-export function CodeBlock({ code, language = "typescript", filename }: CodeBlockProps) {
+export function CodeBlock({ code, language = "typescript", filename, title }: CodeBlockProps) {
   const [copied, setCopied] = useState(false);
 
   const handleCopy = async () => {
@@ -20,9 +21,9 @@ export function CodeBlock({ code, language = "typescript", filename }: CodeBlock
 
   return (
     <div className="relative group rounded-xl overflow-hidden border border-white/5 bg-black/40 my-6 shadow-2xl">
-      {filename && (
+      {(filename || title) && (
         <div className="flex items-center justify-between px-4 py-2 border-b border-white/5 bg-white/[0.02]">
-          <span className="text-[10px] font-black uppercase tracking-widest text-white/20">{filename}</span>
+          <span className="text-[10px] font-black uppercase tracking-widest text-white/20">{filename || title}</span>
           <span className="text-[10px] font-black uppercase tracking-widest text-white/20">{language}</span>
         </div>
       )}
