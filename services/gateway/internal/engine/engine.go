@@ -384,6 +384,18 @@ func (e *MemzentEngine) Process(ctx context.Context, req *PromptRequest) (*Promp
 			slog.Warn("Organization out of tokens", "org_id", orgID)
 			return nil, fmt.Errorf("payment required: token balance depleted")
 		}
+
+		// A.2 Spend Limit Check (daily/monthly caps)
+		if spendStatus, err := e.ledger.CheckSpendLimits(ctx, orgID); err == nil && spendStatus != nil {
+			if spendStatus.DailyExceeded {
+				slog.Warn("Daily spend limit exceeded", "org_id", orgID, "spent", spendStatus.DailySpend, "limit", *spendStatus.DailyLimit)
+				return nil, fmt.Errorf("daily spend limit reached ($%.2f of $%.2f). Resets at midnight UTC", spendStatus.DailySpend, *spendStatus.DailyLimit)
+			}
+			if spendStatus.MonthlyExceeded {
+				slog.Warn("Monthly spend limit exceeded", "org_id", orgID, "spent", spendStatus.MonthlySpend, "limit", *spendStatus.MonthlyLimit)
+				return nil, fmt.Errorf("monthly spend limit reached ($%.2f of $%.2f). Resets on the 1st", spendStatus.MonthlySpend, *spendStatus.MonthlyLimit)
+			}
+		}
 	}
 
 	// Resolve selected provider and model for cache key partitioning

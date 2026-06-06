@@ -604,6 +604,71 @@ export async function deleteTool(toolId: string, orgId?: string) {
     return res.json();
 }
 
+// ─── Budget & Spend API ────────────────────────────────────────────────────
+
+export async function getBudgetStatus(orgId?: string) {
+    try {
+        const headers = await gatewayHeaders(orgId)
+        const res = await fetch(`${GATEWAY_URL}/v1/billing/budget`, {
+            method: "GET",
+            headers,
+            cache: 'no-store'
+        });
+        if (!res.ok) return null;
+        return res.json();
+    } catch (e) {
+        console.error("Gateway budget status fetch failed", e);
+        return null;
+    }
+}
+
+export async function getSpendTimeseries(days: number = 30, orgId?: string) {
+    try {
+        const headers = await gatewayHeaders(orgId)
+        const res = await fetch(`${GATEWAY_URL}/v1/billing/spend-timeseries?days=${days}`, {
+            method: "GET",
+            headers,
+            cache: 'no-store'
+        });
+        if (!res.ok) return [];
+        return res.json();
+    } catch (e) {
+        console.error("Gateway spend timeseries fetch failed", e);
+        return [];
+    }
+}
+
+export async function getSpendLimits(orgId?: string) {
+    try {
+        const headers = await gatewayHeaders(orgId)
+        const res = await fetch(`${GATEWAY_URL}/v1/billing/spend-limits`, {
+            method: "GET",
+            headers,
+            cache: 'no-store'
+        });
+        if (!res.ok) return null;
+        return res.json();
+    } catch (e) {
+        console.error("Gateway spend limits fetch failed", e);
+        return null;
+    }
+}
+
+export async function setSpendLimits(data: { daily_limit?: number | null; monthly_limit?: number | null }, orgId?: string) {
+    const headers = await gatewayHeaders(orgId)
+    const res = await fetch(`${GATEWAY_URL}/v1/billing/spend-limits`, {
+        method: "PUT",
+        headers,
+        body: JSON.stringify(data),
+        cache: 'no-store'
+    });
+    if (!res.ok) {
+        const err = await res.text();
+        throw new Error(err || "Failed to set spend limits");
+    }
+    return res.json();
+}
+
 // ─── Webhooks API (Phase 7) ────────────────────────────────────────────────
 
 export async function getWebhooks(orgId?: string) {

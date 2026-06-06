@@ -691,6 +691,101 @@ func main() {
 
 	mux.Handle("/v1/billing/checkout", middleware(http.HandlerFunc(stripeHandler.CreateCheckoutSession)))
 
+	// Budget & Spend API (for planning tools / external integrations)
+	mux.Handle("/v1/billing/budget", middleware(requireScope("audit:read", func(w http.ResponseWriter, r *http.Request) {
+		orgID, _ := r.Context().Value("org_id").(string)
+
+		if billingLedger == nil {
+			http.Error(w, "Billing not configured", http.StatusServiceUnavailable)
+			return
+		}
+
+		status, err := billingLedger.GetBudgetStatus(r.Context(), orgID)
+		if err != nil {
+			slog.Error("Failed to get budget status", "error", err)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		// Include spend limits
+		if spendLimits, err := billingLedger.CheckSpendLimits(r.Context(), orgID); err == nil && spendLimits != nil {
+			status.SpendLimit = spendLimits.DailyLimit
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(status)
+	})))
+
+	mux.Handle("/v1/billing/spend-timeseries", middleware(requireScope("audit:read", func(w http.ResponseWriter, r *http.Request) {
+		orgID, _ := r.Context().Value("org_id").(string)
+
+		if billingLedger == nil {
+			http.Error(w, "Billing not configured", http.StatusServiceUnavailable)
+			return
+		}
+
+		days := 30
+		if d := r.URL.Query().Get("days"); d != "" {
+			if parsed, err := fmt.Sscanf(d, "%d", &days); parsed == 0 || err != nil {
+				days = 30
+			}
+		}
+
+		data, err := billingLedger.GetSpendTimeseries(r.Context(), orgID, days)
+		if err != nil {
+			slog.Error("Failed to get spend timeseries", "error", err)
+			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(data)
+	})))
+
+	mux.Handle("/v1/billing/spend-limits", middleware(requireScope("audit:read", func(w http.ResponseWriter, r *http.Request) {
+		orgID, _ := r.Context().Value("org_id").(string)
+
+		if billingLedger == nil {
+			http.Error(w, "Billing not configured", http.StatusServiceUnavailable)
+			return
+		}
+
+		switch r.Method {
+		case http.MethodGet:
+			status, err := billingLedger.CheckSpendLimits(r.Context(), orgID)
+			if err != nil {
+				http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+				return
+			}
+			if status == nil {
+				status = &billing.SpendLimitStatus{}
+			}
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(status)
+
+		case http.MethodPut:
+			var req struct {
+				DailyLimit   *float64 `json:"daily_limit"`
+				MonthlyLimit *float64 `json:"monthly_limit"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+				http.Error(w, "Invalid request body", http.StatusBadRequest)
+				return
+			}
+
+			if err := billingLedger.SetSpendLimits(r.Context(), orgID, req.DailyLimit, req.MonthlyLimit); err != nil {
+				http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+				return
+			}
+
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]string{"status": "updated"})
+
+		default:
+			http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+		}
+	})))
+
 	// Sessions API
 	mux.Handle("/v1/sessions", middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		orgID, _ := r.Context().Value("org_id").(string)
