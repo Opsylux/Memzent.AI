@@ -177,13 +177,15 @@ Everything discussed so far is **reactive** — the request arrives, then we opt
 ```go
 // After every request completes (cache hit or LLM response)
 go e.offlinePlane.Emit(OfflineEvent{
-    OrgID:       orgID,
-    Prompt:      queryPrompt,
-    Entities:    extractedEntities,
-    ToolsUsed:   toolResults,
-    CacheLayer:  "L5",  // which layer resolved this
-    LatencyMs:   duration.Milliseconds(),
-    Provider:    providerKey,
+    OrgID:         orgID,
+    PromptHash:    sha256Hex(queryPrompt),
+    CanonicalHash: canonicalHash,
+    Entities:      extractedEntities,
+    EntitySource:  "regex", // or "llm" or "none"
+    ToolsUsed:     toolResults,
+    CacheLayer:    "L5",  // which layer resolved this
+    LatencyMs:     duration.Milliseconds(),
+    Provider:      providerKey,
 })
 ```
 
@@ -196,7 +198,7 @@ Uses `try_send` / buffered channel semantics — if the channel is full, the eve
 | **O1: Request Mining** | Audit logs, request patterns | Entity extraction patterns, frequency maps | "12,000 requests match `customer_purchase_history` pattern" |
 | **O2: Cache Mining** | Cache miss logs | Pre-warmed L1b entries | Nightly: compute top-1000 prompt embeddings + workflow mappings |
 | **O3: Workflow Mining** | Tool execution sequences | Promoted workflow templates (via Replay Simulation) | Detect: Search→Ledger→Balance→Format runs 50,000 times → simulate → create `CustomerBalanceWorkflow` |
-| **O4: Agent Pattern Mining** | Multi-agent traces | Speculative pre-warm hints | ⚠️ **Phase 6 (Experimental)** — Markov chains add complexity with diminishing returns until massive scale |
+| **O4: Agent Pattern Mining** | Multi-agent traces | Speculative pre-warm hints | ⚠️ **E6 (Experimental)** — Markov chains add complexity with diminishing returns until massive scale |
 
 ### Critical Safety Rails
 
@@ -321,16 +323,18 @@ engine.Process(req)
 
 ---
 
-## 6. Implementation Phases
+## 6. Implementation Phases (Evolution Track E1–E6)
 
-### Phase 1: Entity Extraction Layer (2-3 weeks) — Highest ROI
+> **Naming Convention:** These are labeled "Evolution Phases E1–E6" to avoid collision with the existing `ARCHITECTURE.md` Phases 1–5 (Core Foundation → BYO LLM). The E-track runs in parallel as a cache/routing intelligence upgrade.
+
+### Evolution Phase E1: Entity Extraction Layer (2-3 weeks) — Highest ROI
 **Goal**: Replace `extract_numbers()` with structured entity comparison. No major redesign.
 
-**Rust Router Changes:**
-- [ ] Fix `extract_numbers` regex: `\d+\.?\d*` → `\d+(?:\.\d+)?`
-- [ ] New `extract_entities()` function — returns `HashMap<String, String>` with labeled params
+**Rust Router Changes (`services/router/src/handlers.rs`):**
+- [ ] **Remove `sort_by` calls** (lines 78-79) — this is the actual bug that destroys positional information. The regex itself (`\d+(?:\.\d+)?`) is already correct.
+- [ ] New `extract_entities()` function — returns `HashMap<String, String>` with labeled params (e.g., `{"source_account": "123", "target_account": "456", "amount": "100"}`)
+- [ ] Replace the sorted-array comparison with entity map comparison: keys + values must match
 - [ ] Store entities in `prompts_collection` Qdrant payload alongside `prompt_hash` and `prompt_text`
-- [ ] Semantic cache guard: compare entity maps instead of raw number arrays
 - [ ] Update proto: add `map<string, string> entities` to `ToolResponse`
 
 **Go Gateway Changes:**
@@ -341,7 +345,7 @@ engine.Process(req)
 **Dashboard:**
 - [ ] Show extracted entities in request detail view
 
-### Phase 2: L1b Hot Path Cache + Valkey Upgrade (1-2 weeks)
+### Evolution Phase E2: L1b Hot Path Cache + Valkey Upgrade (1-2 weeks)
 **Goal**: Add a Redis/Valkey layer for high-frequency entity-keyed lookups.
 
 - [ ] Entity-keyed Valkey entries: `transfer:source=123:target=456:amount=100`
@@ -349,13 +353,13 @@ engine.Process(req)
 - [ ] Dual-write: on cache set, write both prompt_hash key AND entity key
 - [ ] Dashboard: cache layer hit distribution chart (L1 vs L1b vs L2)
 
-### Phase 3: Offline Learning Plane (3-4 weeks) — Game Changer
+### Evolution Phase E3: Offline Learning Plane (3-4 weeks) — Game Changer
 **Goal**: Background system that learns from traffic patterns, never blocks requests.
 
 **Infrastructure:**
 - [ ] `internal/offline/` Go package with buffered channel event bus (v1)
 - [ ] Non-blocking `Emit()` method called from `engine.Process()` post-response
-- [ ] `OfflineEvent` struct: org_id, prompt, entities, tools_used, cache_layer, latency
+- [ ] `OfflineEvent` struct: org_id, prompt_hash, canonical_hash, entities, entity_source, tools_used, cache_layer, latency (no raw prompt — see §7.2)
 - [ ] v1.1: Migrate to Valkey Streams (`XADD` with `MAXLEN ~10000`) for crash durability
 
 **O1: Request Miner:**
@@ -380,7 +384,7 @@ engine.Process(req)
 - [ ] Semaphore-bounded worker pool (auto-throttle under pressure)
 - [ ] All auto-detected workflows require replay simulation + human approval
 
-### Phase 4: Workflow Registry — Hot Paths Only (2 weeks)
+### Evolution Phase E4: Workflow Registry — Hot Paths Only (2 weeks)
 **Goal**: Promote only top 5-10% traffic patterns into deterministic workflows.
 
 - [ ] `workflow_registry` Postgres table (migration `025_`)
@@ -391,7 +395,7 @@ engine.Process(req)
 - [ ] Only for high-volume patterns (math, weather, currency, customer lookup, inventory)
 - [ ] **Do NOT make everything a workflow** — let embeddings handle the long tail
 
-### Phase 5: Model Router + Entity Quality Metrics (1-2 weeks)
+### Evolution Phase E5: Model Router + Entity Quality Metrics (1-2 weeks)
 **Goal**: Route to appropriate model size based on complexity. Track entity extraction health.
 
 ```
@@ -412,7 +416,7 @@ Complex reasoning     → GPT / Claude / Gemini
 - [ ] LLM entity extraction usage (% of requests needing LLM for entities)
 - [ ] Alert if regex failure rate > 15% (trigger SLM evaluation)
 
-### Phase 6: Agent Pattern Mining — Experimental (Future)
+### Evolution Phase E6: Agent Pattern Mining — Experimental (Future)
 **Goal**: Markov chain prediction for speculative pre-warming. Only at massive scale.
 
 - [ ] O4 Miner: Build Markov transition matrices from multi-agent tool call traces
@@ -439,20 +443,32 @@ Complex reasoning     → GPT / Claude / Gemini
 }
 ```
 
-### 7.2 Offline Event (Go Gateway)
+### 7.2 Offline Event (Go Gateway — emitted post-response)
 ```go
 type OfflineEvent struct {
-    OrgID      string            `json:"org_id"`
-    UserID     string            `json:"user_id"`
-    Prompt     string            `json:"prompt"`
-    Entities   map[string]string `json:"entities"`
-    ToolsUsed  []string          `json:"tools_used"`
-    CacheLayer string            `json:"cache_layer"` // L1, L1b, L2, L5
-    LatencyMs  int64             `json:"latency_ms"`
-    Provider   string            `json:"provider"`
-    Timestamp  time.Time         `json:"timestamp"`
+    OrgID         string            `json:"org_id"`
+    UserID        string            `json:"user_id"`
+    PromptHash    string            `json:"prompt_hash"`     // SHA-256 — non-reversible, joins to L1 cache
+    CanonicalHash string            `json:"canonical_hash"`  // joins to L1.5 cache
+    Entities      map[string]string `json:"entities"`        // only present when extraction succeeded
+    EntitySource  string            `json:"entity_source"`   // "regex" | "llm" | "none"
+    ToolsUsed     []string          `json:"tools_used"`
+    CacheLayer    string            `json:"cache_layer"`     // L1, L1b, L2, L5
+    LatencyMs     int64             `json:"latency_ms"`
+    TokensUsed    int               `json:"tokens_used"`
+    Provider      string            `json:"provider"`
+    Success       bool              `json:"success"`
+    Timestamp     time.Time         `json:"timestamp"`
 }
 ```
+
+> **⚠️ DBRE Amendment — No Raw Prompts in Event Stream:**
+> Raw prompt text is **never** emitted to the offline plane. Miners operate on hashes, entity maps, and tool sequences — they don't need raw text. This prevents:
+> - PII exposure in the event ring buffer
+> - Cross-org data governance violations
+> - Compliance issues for enterprise customers asking "what do you retain?"
+>
+> If a miner needs to reference the original prompt (e.g., for replay simulation), it queries the cache by `PromptHash` — access-controlled and audit-logged.
 
 ### 7.3 Workflow Candidate (Postgres — from O3 Miner)
 ```sql
@@ -485,7 +501,7 @@ message ToolResponse {
     map<string, string> entities = 6;  // NEW: extracted entities
 }
 
-// New: for future Phase 4 workflow classification
+// New: for future E4 workflow classification
 message ClassifyIntentRequest {
     string prompt = 1;
     string org_id = 2;
@@ -542,7 +558,7 @@ The interesting metric isn't cache hit ratio anymore. It's:
 GPU Avoidance Rate = (LLM calls avoided) / (total requests)
 ```
 
-| Metric | Current | Phase 2 | Phase 3 (8wk) | Phase 5 (Long-term) |
+| Metric | Current | E2 | E3 (8wk) | E5 (Long-term) |
 |--------|---------|---------|---------------|---------------------|
 | GPU Avoidance Rate | 50% | 65% | **70-80%** | 95% (objective) |
 | Daily LLM Cost (100k req) | $1,500 | $1,050 | $450-$600 | $150 |
@@ -653,7 +669,7 @@ If confidence is between 80-95%, the system still uses LLM but passes the workfl
 
 **Offline Plane**: Runs O(minutes) in background, improves future request resolution by 10-100x.
 
-**Primary Target**: GPU Avoidance Rate ≥ 70-80% within 8 weeks of Phase 3 deployment. 95% is a long-term objective (6+ months of traffic learning).
+**Primary Target**: GPU Avoidance Rate ≥ 70-80% within 8 weeks of E3 deployment. 95% is a long-term objective (6+ months of traffic learning).
 
 **Secondary Target**: 80%+ of recurring agent requests resolved at L1/L1b/L2 within 6 weeks.
 
@@ -728,7 +744,7 @@ L1b Prediction Yield:  74.2%  (speculative hits / speculative entries created)
 | **Auto-learning safety** | Human approval required | Prevents garbage workflow accumulation |
 | **Speculative execution** | Read-only tools only | Never speculatively run state-mutating tools |
 | **Deduplication** | In-memory map + Valkey TTL lock | Prevents cache stampede on identical background runs |
-| **Entity extraction method** | Regex + labeled patterns (Phase 1), SLM upgrade only when metrics demand (Phase 5+) | Start simple, graduate to model-based when traffic justifies |
+| **Entity extraction method** | Regex + labeled patterns (E1), SLM upgrade only when metrics demand (E5+) | Start simple, graduate to model-based when traffic justifies |
 | **Existing router preserved** | No rewrite | Current vector routing scales without human intervention |
 | **North star metric** | GPU Avoidance Rate, not cache hit ratio | Directly maps to infrastructure cost and unit economics |
 | **LLM role** | Compiler, not runtime | LLM solves a problem class ONCE; deterministic execution handles all future instances |
@@ -739,7 +755,7 @@ L1b Prediction Yield:  74.2%  (speculative hits / speculative entries created)
 | **Entity extraction quality** | Track regex success/failure rate, LLM fallback %, mismatch rate | Alert at >15% regex failure — data-driven SLM decision |
 | **LLM dual-return format** | Structured JSON (not HTML comments) | Parseable, validatable, works with response_format enforcement |
 | **GPU target** | 70-80% in 8 weeks, 95% long-term | Realistic — avoids premature management commitment |
-| **O4 Markov chains** | Phase 6 (Experimental) — only at >500k req/day | Workflow mining captures most value; Markov adds complexity for diminishing returns |
+| **O4 Markov chains** | E6 (Experimental) — only at >500k req/day | Workflow mining captures most value; Markov adds complexity for diminishing returns |
 
 ---
 
