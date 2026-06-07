@@ -3,7 +3,7 @@ use qdrant_client::Qdrant;
 use qdrant_client::qdrant::{
     Condition, Filter, SearchPointsBuilder, FieldCondition, Match, r#match::MatchValue,
     condition::ConditionOneOf, PointStruct, UpsertPointsBuilder, Value,
-    DeletePointsBuilder, PointsSelector, points_selector::PointsSelectorOneOf,
+    DeletePointsBuilder, points_selector::PointsSelectorOneOf,
 };
 use std::collections::HashMap;
 
@@ -482,9 +482,7 @@ impl SemanticRouter for MyRouter {
 
         let delete_result = self.q_client.delete_points(
             DeletePointsBuilder::new("prompts_collection")
-                .points(PointsSelector {
-                    points_selector_one_of: Some(PointsSelectorOneOf::Filter(filter)),
-                }),
+                .points(PointsSelectorOneOf::Filter(filter)),
         ).await;
 
         match delete_result {
