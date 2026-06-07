@@ -42,6 +42,7 @@ message ToolRequest {
   repeated string allowed_tool_ids = 3; // For RBAC-filtered searches
   float score_threshold_override = 4;   // Override default relevance threshold
   string org_id = 5;                    // Org isolation — required for cache partitioning
+  bool skip_cache = 6;                  // When true, skip semantic cache lookup AND suppress Qdrant prompt storage
 }
 
 message Tool {

@@ -31,15 +31,107 @@ impl SemanticRouter for MyRouter {
         println!("Received request for user: {}", req.user_id);
         println!("Prompt to route: \"{}\"", req.prompt);
 
-        // 1. Vector Embedding
-        let real_vector = self.embedder.embed(&req.prompt)?;
+        // 1. Vector Embedding (Map embedding errors to gRPC Status)
+        let real_vector = self.embedder.embed(&req.prompt)
+            .map_err(|e| Status::internal(format!("Embedding generation failed: {}", e)))?;
         let prompt_hash = calculate_hash(&req.prompt);
 
         // --- Semantic Cache Lookup (Org-Isolated) ---
         let mut similar_prompt_hash = String::new();
-        let mut cache_filter_conditions: Vec<Condition> = Vec::new();
+        if !req.skip_cache {
+            let mut cache_filter_conditions: Vec<Condition> = Vec::new();
+            if !req.org_id.is_empty() {
+                cache_filter_conditions.push(Condition {
+                    condition_one_of: Some(ConditionOneOf::Field(FieldCondition {
+                        key: "org_id".to_string(),
+                        r#match: Some(Match {
+                            match_value: Some(MatchValue::Keyword(req.org_id.clone())),
+                        }),
+                        ..Default::default()
+                    })),
+                });
+            }
+
+            let cache_search_request = SearchPointsBuilder::new("prompts_collection", real_vector.clone(), 1)
+                .filter(Filter { must: cache_filter_conditions, ..Default::default() })
+                .with_payload(true)
+                .build();
+
+            if let Ok(cache_res) = self.q_client.search_points(cache_search_request).await {
+                if let Some(hit) = cache_res.result.first() {
+                    println!("🔍 Semantic Cache Candidate: Score {}, Threshold 0.95", hit.score);
+
+                    if hit.score > 0.95 {
+                        let cached_prompt_text = hit.payload.get("prompt_text")
+                            .and_then(|v| v.kind.as_ref())
+                            .map(|k| match k {
+                                qdrant_client::qdrant::value::Kind::StringValue(s) => s.clone(),
+                                _ => String::new(),
+                            })
+                            .unwrap_or_default();
+
+                        let mut current_numbers = extract_numbers(&req.prompt);
+                        let mut cached_numbers = extract_numbers(&cached_prompt_text);
+
+                        // Sort both vectors to neutralize user input order variations (e.g. a=10,b=5 vs b=5,a=10)
+                        current_numbers.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+                        cached_numbers.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+
+                        let numbers_match = if cached_prompt_text.is_empty() {
+                            current_numbers.is_empty()
+                        } else {
+                            current_numbers == cached_numbers
+                        };
+
+                        if numbers_match {
+                            similar_prompt_hash = hit.payload.get("prompt_hash")
+                                .and_then(|v| v.kind.as_ref())
+                                .map(|k| match k {
+                                    qdrant_client::qdrant::value::Kind::StringValue(s) => s.clone(),
+                                    _ => String::new(),
+                                })
+                                .unwrap_or_default();
+                            println!("🎯 Semantic Cache Hit! Hash: {}", similar_prompt_hash);
+                        } else {
+                            println!("⚠️ Semantic Cache REJECTED: numerical values differ between prompts");
+                        }
+                    }
+                }
+            }
+
+            // Store new template signature if cache missed
+            if similar_prompt_hash.is_empty() {
+                println!("💾 Semantic Cache Store: New prompt intent saved");
+
+                let mut payload = HashMap::new();
+                payload.insert("prompt_hash".to_string(), Value::from(prompt_hash.clone()));
+                payload.insert("prompt_text".to_string(), Value::from(req.prompt.clone()));
+                payload.insert("user_id".to_string(), Value::from(req.user_id.clone()));
+                payload.insert("org_id".to_string(), Value::from(req.org_id.clone()));
+
+                let _ = self.q_client.upsert_points(UpsertPointsBuilder::new(
+                    "prompts_collection",
+                    vec![PointStruct::new(
+                        uuid::Uuid::new_v4().to_string(),
+                        real_vector.clone(),
+                        payload,
+                    )],
+                )).await;
+            }
+        } else {
+            println!("⏭️ Semantic Cache skipped (skip_cache=true)");
+        }
+
+        // --- Prompt Compression ---
+        let compressed = compress_text(&req.prompt);
+        let tokens_saved = (req.prompt.len() as i32 - compressed.len() as i32) / 4;
+
+        // 2. Build Payload Filter for RBAC + Tenant Isolation
+        let mut must_conditions = Vec::new();
+
+        // Multi-tenant guard: Enforce org isolation at tool level
         if !req.org_id.is_empty() {
-            cache_filter_conditions.push(Condition {
+            must_conditions.push(Condition {
                 condition_one_of: Some(ConditionOneOf::Field(FieldCondition {
                     key: "org_id".to_string(),
                     r#match: Some(Match {
@@ -49,81 +141,10 @@ impl SemanticRouter for MyRouter {
                 })),
             });
         }
-        let cache_search_request = SearchPointsBuilder::new("prompts_collection", real_vector.clone(), 1)
-            .filter(Filter { must: cache_filter_conditions, ..Default::default() })
-            .with_payload(true)
-            .build();
 
-        if let Ok(cache_res) = self.q_client.search_points(cache_search_request).await {
-            if let Some(hit) = cache_res.result.first() {
-                println!("🔍 Semantic Cache Candidate: Score {}, Threshold 0.95", hit.score);
-
-                if hit.score > 0.95 {
-                    // Numeric guard: extract numbers from both prompts and reject
-                    // cache hit if numerical values differ (prevents false positives
-                    // on parametric queries like "a=10" vs "a=11").
-                    let cached_prompt_text = hit.payload.get("prompt_text")
-                        .and_then(|v| v.kind.as_ref())
-                        .map(|k| match k {
-                            qdrant_client::qdrant::value::Kind::StringValue(s) => s.clone(),
-                            _ => String::new(),
-                        })
-                        .unwrap_or_default();
-
-                    let current_numbers = extract_numbers(&req.prompt);
-                    let numbers_match = if cached_prompt_text.is_empty() {
-                        // No stored prompt text — only allow hit if the current
-                        // prompt has no numeric values (prevents false positives
-                        // on parametric queries matched against old entries).
-                        current_numbers.is_empty()
-                    } else {
-                        current_numbers == extract_numbers(&cached_prompt_text)
-                    };
-
-                    if numbers_match {
-                        similar_prompt_hash = hit.payload.get("prompt_hash")
-                            .and_then(|v| v.kind.as_ref())
-                            .map(|k| match k {
-                                qdrant_client::qdrant::value::Kind::StringValue(s) => s.clone(),
-                                _ => String::new(),
-                            })
-                            .unwrap_or_default();
-                        println!("🎯 Semantic Cache Hit! Hash: {}", similar_prompt_hash);
-                    } else {
-                        println!("⚠️ Semantic Cache REJECTED: numeric values differ between prompts");
-                    }
-                }
-            }
-        }
-
-        // If no similar prompt found, store this one for future reference
-        if similar_prompt_hash.is_empty() {
-            println!("💾 Semantic Cache Store: New prompt intent saved");
-
-            let mut payload = HashMap::new();
-            payload.insert("prompt_hash".to_string(), Value::from(prompt_hash.clone()));
-            payload.insert("prompt_text".to_string(), Value::from(req.prompt.clone()));
-            payload.insert("user_id".to_string(), Value::from(req.user_id.clone()));
-            payload.insert("org_id".to_string(), Value::from(req.org_id.clone()));
-
-            let _ = self.q_client.upsert_points(UpsertPointsBuilder::new(
-                "prompts_collection",
-                vec![PointStruct::new(
-                    uuid::Uuid::new_v4().to_string(),
-                    real_vector.clone(),
-                    payload,
-                )],
-            )).await;
-        }
-
-        // --- Prompt Compression ---
-        let compressed = compress_text(&req.prompt);
-        let tokens_saved = (req.prompt.len() as i32 - compressed.len() as i32) / 4;
-
-        // 2. Build Payload Filter for RBAC (allowed_tool_ids)
-        let mut filter = None;
+        let mut should_conditions = Vec::new();
         if !req.allowed_tool_ids.is_empty() {
-            let should_conditions: Vec<Condition> = req.allowed_tool_ids.iter().map(|id| {
+            should_conditions = req.allowed_tool_ids.iter().map(|id| {
                 Condition {
                     condition_one_of: Some(ConditionOneOf::Field(FieldCondition {
                         key: "tool_id".to_string(),
@@ -134,23 +155,24 @@ impl SemanticRouter for MyRouter {
                     })),
                 }
             }).collect();
-
-            filter = Some(Filter {
-                should: should_conditions,
-                ..Default::default()
-            });
         }
+
+        let tool_filter = Filter {
+            must: must_conditions,
+            should: should_conditions,
+            ..Default::default()
+        };
 
         // 3. Search Qdrant (for Tools)
         let search_request = SearchPointsBuilder::new("tools_collection", real_vector, 10)
-            .filter(filter.unwrap_or_default())
+            .filter(tool_filter)
             .with_payload(true)
             .build();
 
         let search_result = match self.q_client.search_points(search_request).await {
             Ok(res) => res,
             Err(e) => {
-                eprintln!("Qdrant search failed (likely empty collection): {}", e);
+                eprintln!("Qdrant search failed: {}", e);
                 qdrant_client::qdrant::SearchResponse {
                     result: vec![],
                     time: 0.0,
@@ -219,7 +241,8 @@ impl SemanticRouter for MyRouter {
         let req = request.into_inner();
         println!("📝 Registering new tool semantic intent: {} (ID: {})", req.name, req.id);
 
-        let vector = self.embedder.embed(&req.description)?;
+        let vector = self.embedder.embed(&req.description)
+            .map_err(|e| Status::internal(format!("Embedding generation failed: {}", e)))?;
 
         let mut payload = HashMap::new();
         payload.insert("tool_id".to_string(), Value::from(req.id.clone()));
@@ -255,10 +278,25 @@ impl SemanticRouter for MyRouter {
         let req = request.into_inner();
         println!("🔮 Planning sequential tool chain for prompt: \"{}\"", req.prompt);
 
-        let real_vector = self.embedder.embed(&req.prompt)?;
+        let real_vector = self.embedder.embed(&req.prompt)
+            .map_err(|e| Status::internal(format!("Embedding generation failed: {}", e)))?;
 
-        let tool_filter = if !req.allowed_tool_ids.is_empty() {
-            let should_conditions: Vec<Condition> = req.allowed_tool_ids.iter().map(|id| {
+        let mut must_conditions = Vec::new();
+        if !req.org_id.is_empty() {
+            must_conditions.push(Condition {
+                condition_one_of: Some(ConditionOneOf::Field(FieldCondition {
+                    key: "org_id".to_string(),
+                    r#match: Some(Match {
+                        match_value: Some(MatchValue::Keyword(req.org_id.clone())),
+                    }),
+                    ..Default::default()
+                })),
+            });
+        }
+
+        let mut should_conditions = Vec::new();
+        if !req.allowed_tool_ids.is_empty() {
+            should_conditions = req.allowed_tool_ids.iter().map(|id| {
                 Condition {
                     condition_one_of: Some(ConditionOneOf::Field(FieldCondition {
                         key: "tool_id".to_string(),
@@ -269,9 +307,12 @@ impl SemanticRouter for MyRouter {
                     })),
                 }
             }).collect();
-            Filter { should: should_conditions, ..Default::default() }
-        } else {
-            Filter::default()
+        }
+
+        let tool_filter = Filter {
+            must: must_conditions,
+            should: should_conditions,
+            ..Default::default()
         };
 
         let search_request = SearchPointsBuilder::new("tools_collection", real_vector, 5)
@@ -286,8 +327,10 @@ impl SemanticRouter for MyRouter {
             let mut matched_tools = search_res.result;
             matched_tools.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
 
+            let threshold = if req.score_threshold_override > 0.0 { req.score_threshold_override } else { 0.65 };
+
             for (idx, hit) in matched_tools.iter().enumerate() {
-                if hit.score > req.score_threshold_override {
+                if hit.score > threshold {
                     let tool_name = hit.payload.get("tool_name")
                         .and_then(|v| v.kind.as_ref())
                         .map(|k| match k {
@@ -319,7 +362,8 @@ impl SemanticRouter for MyRouter {
         let req = request.into_inner();
         println!("💾 Storing semantic memory fact: \"{}\" for org: {}", req.fact, req.org_id);
 
-        let vector = self.embedder.embed(&req.fact)?;
+        let vector = self.embedder.embed(&req.fact)
+            .map_err(|e| Status::internal(format!("Embedding generation failed: {}", e)))?;
 
         let mut payload = HashMap::new();
         payload.insert("fact".to_string(), Value::from(req.fact.clone()));
@@ -351,7 +395,8 @@ impl SemanticRouter for MyRouter {
         let req = request.into_inner();
         println!("🔍 Querying semantic memories for prompt: \"{}\" under org: {}", req.prompt, req.org_id);
 
-        let real_vector = self.embedder.embed(&req.prompt)?;
+        let real_vector = self.embedder.embed(&req.prompt)
+            .map_err(|e| Status::internal(format!("Embedding generation failed: {}", e)))?;
 
         let mut filter_conditions = Vec::new();
         if !req.org_id.is_empty() {
@@ -374,7 +419,7 @@ impl SemanticRouter for MyRouter {
         let search_result = match self.q_client.search_points(search_request).await {
             Ok(res) => res,
             Err(e) => {
-                eprintln!("Qdrant memory search failed (likely empty collection): {}", e);
+                eprintln!("Qdrant memory search failed: {}", e);
                 qdrant_client::qdrant::SearchResponse { result: vec![], time: 0.0, ..Default::default() }
             }
         };
@@ -405,11 +450,9 @@ impl SemanticRouter for MyRouter {
     }
 }
 
-/// Extracts all numeric values (integers and decimals) from a string in order
-/// of appearance. Used by the semantic cache numeric guard to prevent false
-/// positives on parametric queries (e.g. "a=10" vs "a=11", or "a=2,b=5" vs "a=5,b=2").
-/// Order is preserved (NOT sorted) so positional differences are detected.
+/// Extracts numerical components securely, ensuring trailing punctuation marks
+/// do not contaminate token evaluations.
 fn extract_numbers(text: &str) -> Vec<String> {
-    let re = Regex::new(r"\d+\.?\d*").unwrap();
+    let re = Regex::new(r"\d+(?:\.\d+)?").unwrap();
     re.find_iter(text).map(|m| m.as_str().to_string()).collect()
 }

@@ -557,7 +557,7 @@ func (e *MemzentEngine) Process(ctx context.Context, req *PromptRequest) (*Promp
 	}
 
 	// D. Semantic Routing (includes Vector Search & Prompt Compression via Rust)
-	tools, compressedPrompt, similarPromptHash, currentPromptHash, err := e.router.GetBestTools(ctx, queryPrompt, orgID, allowedTools)
+	tools, compressedPrompt, similarPromptHash, currentPromptHash, err := e.router.GetBestTools(ctx, queryPrompt, orgID, allowedTools, req.SkipCache)
 	if err != nil {
 		slog.Warn("Router fallback engaged", "error", err)
 	}
@@ -838,7 +838,10 @@ func (e *MemzentEngine) Process(ctx context.Context, req *PromptRequest) (*Promp
 	}
 
 	// G. Populate Cache for future requests (Org-Isolated, Model-Scoped & Force Refresh)
-	if e.cache != nil {
+	// Skip all cache writes when SkipCache=true — forced-fresh requests must not
+	// populate Valkey or the persistent DB, otherwise subsequent requests for the
+	// same prompt would return cached=true even though the intent was a fresh hit.
+	if e.cache != nil && !req.SkipCache {
 		cacheKey := e.buildCacheKey(orgID, "p", resolvedModel, queryPrompt)
 		_ = e.cache.SetResult(ctx, cacheKey, aiResp, e.cacheTTL)
 		e.setPersistentCache(ctx, orgID, cacheKey, aiResp, e.cacheTTL)

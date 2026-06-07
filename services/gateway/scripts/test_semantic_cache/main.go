@@ -46,7 +46,9 @@ func main() {
 	fmt.Printf("\033[1;36m══════════════════════════════════════════════════════\033[0m\n")
 	fmt.Printf("  Target: %s\n\n", baseURL)
 
-	// Flush cache before tests to remove stale entries from prior runs
+	// Flush cache before tests to remove stale entries from prior runs.
+	// This is required for idempotent test runs: without it, prompts cached
+	// in a previous run would return cached=true for cases that expect fresh hits.
 	fmt.Printf("\033[1;33m[SETUP]\033[0m Flushing org cache to start clean...\n")
 	if err := flushCache(); err != nil {
 		fmt.Printf("  ⚠️  Cache flush failed (may not be deployed yet): %v\n", err)

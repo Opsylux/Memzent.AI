@@ -150,6 +150,7 @@ type ToolRequest struct {
 	AllowedToolIds         []string               `protobuf:"bytes,3,rep,name=allowed_tool_ids,json=allowedToolIds,proto3" json:"allowed_tool_ids,omitempty"`                           // For RBAC-filtered searches
 	ScoreThresholdOverride float32                `protobuf:"fixed32,4,opt,name=score_threshold_override,json=scoreThresholdOverride,proto3" json:"score_threshold_override,omitempty"` // Override default relevance threshold
 	OrgId                  string                 `protobuf:"bytes,5,opt,name=org_id,json=orgId,proto3" json:"org_id,omitempty"`                                                        // Org isolation — required for cache partitioning
+	SkipCache              bool                   `protobuf:"varint,6,opt,name=skip_cache,json=skipCache,proto3" json:"skip_cache,omitempty"`                                           // When true, skip semantic cache lookup AND suppress Qdrant prompt storage
 	unknownFields          protoimpl.UnknownFields
 	sizeCache              protoimpl.SizeCache
 }
@@ -217,6 +218,13 @@ func (x *ToolRequest) GetOrgId() string {
 		return x.OrgId
 	}
 	return ""
+}
+
+func (x *ToolRequest) GetSkipCache() bool {
+	if x != nil {
+		return x.SkipCache
+	}
+	return false
 }
 
 type Tool struct {
@@ -839,13 +847,15 @@ const file_router_proto_rawDesc = "" +
 	"\x06org_id\x18\x04 \x01(\tR\x05orgId\"F\n" +
 	"\x14RegisterToolResponse\x12\x18\n" +
 	"\asuccess\x18\x01 \x01(\bR\asuccess\x12\x14\n" +
-	"\x05error\x18\x02 \x01(\tR\x05error\"\xb9\x01\n" +
+	"\x05error\x18\x02 \x01(\tR\x05error\"\xd8\x01\n" +
 	"\vToolRequest\x12\x16\n" +
 	"\x06prompt\x18\x01 \x01(\tR\x06prompt\x12\x17\n" +
 	"\auser_id\x18\x02 \x01(\tR\x06userId\x12(\n" +
 	"\x10allowed_tool_ids\x18\x03 \x03(\tR\x0eallowedToolIds\x128\n" +
 	"\x18score_threshold_override\x18\x04 \x01(\x02R\x16scoreThresholdOverride\x12\x15\n" +
-	"\x06org_id\x18\x05 \x01(\tR\x05orgId\"u\n" +
+	"\x06org_id\x18\x05 \x01(\tR\x05orgId\x12\x1d\n" +
+	"\n" +
+	"skip_cache\x18\x06 \x01(\bR\tskipCache\"u\n" +
 	"\x04Tool\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12'\n" +

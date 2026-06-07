@@ -12,7 +12,7 @@ import (
 // SemanticRouterInterface defines the contract for the semantic router.
 // Implement this interface to mock the router in tests.
 type SemanticRouterInterface interface {
-	GetBestTools(ctx context.Context, prompt string, orgID string, allowedToolIDs []string) ([]*Tool, string, string, string, error)
+	GetBestTools(ctx context.Context, prompt string, orgID string, allowedToolIDs []string, skipCache bool) ([]*Tool, string, string, string, error)
 	RegisterTool(ctx context.Context, id, name, description, orgID string) (bool, error)
 	PlanToolChain(ctx context.Context, prompt string, orgID string, allowedToolIDs []string) ([]*ToolStep, float32, error)
 	StoreMemory(ctx context.Context, fact, orgID, userID string) (bool, error)
@@ -63,13 +63,16 @@ func NewRouterClient(ctx context.Context, addr string) (*RouterClient, error) {
 // GetBestTools calls the Rust Router to find relevant tools for a prompt.
 // orgID is passed in the OrgId field so the Rust router can scope the
 // prompts_collection cache lookup to this organisation only.
-func (rc *RouterClient) GetBestTools(ctx context.Context, prompt string, orgID string, allowedToolIDs []string) ([]*Tool, string, string, string, error) {
+// skipCache=true tells the Rust router to skip the prompts_collection lookup
+// and upsert, preventing forced-fresh requests from polluting the vector store.
+func (rc *RouterClient) GetBestTools(ctx context.Context, prompt string, orgID string, allowedToolIDs []string, skipCache bool) ([]*Tool, string, string, string, error) {
 	req := &ToolRequest{
 		Prompt:                 prompt,
 		UserId:                 orgID, // kept for backward compat with existing Qdrant payloads
 		OrgId:                  orgID, // new field — drives org-isolated cache lookup
 		AllowedToolIds:         allowedToolIDs,
 		ScoreThresholdOverride: 0.65,
+		SkipCache:              skipCache,
 	}
 
 	resp, err := rc.client.SelectTools(ctx, req)
