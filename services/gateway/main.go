@@ -999,7 +999,7 @@ func main() {
 			return
 		}
 
-		// Also purge persistent DB cache for this org
+		// Purge persistent DB cache for this org
 		var dbDeleted int64
 		if rbacClient != nil && rbacClient.GetDB() != nil {
 			result, dbErr := rbacClient.GetDB().ExecContext(r.Context(),
@@ -1008,6 +1008,13 @@ func main() {
 				slog.Warn("Persistent cache flush failed (non-fatal)", "error", dbErr, "org_id", orgID)
 			} else if result != nil {
 				dbDeleted, _ = result.RowsAffected()
+			}
+		}
+
+		// Flush Qdrant prompts_collection for this org (semantic Stage 2 cache)
+		if rClient != nil {
+			if flushErr := rClient.FlushPromptCache(r.Context(), orgID); flushErr != nil {
+				slog.Warn("Qdrant prompt cache flush failed (non-fatal)", "error", flushErr, "org_id", orgID)
 			}
 		}
 

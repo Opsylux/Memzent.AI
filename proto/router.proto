@@ -21,6 +21,9 @@ service SemanticRouter {
 
   // Queries semantic memory facts for a prompt
   rpc QueryMemory (QueryMemoryRequest) returns (QueryMemoryResponse);
+
+  // Flushes cached prompt vectors for an org from the prompts_collection
+  rpc FlushPromptCache (FlushPromptCacheRequest) returns (FlushPromptCacheResponse);
 }
 
 message RegisterToolRequest {
@@ -103,6 +106,16 @@ message MemoryHit {
 
 message QueryMemoryResponse {
   repeated MemoryHit memories = 1;
+}
+
+message FlushPromptCacheRequest {
+  string org_id = 1;
+}
+
+message FlushPromptCacheResponse {
+  bool success = 1;
+  int64 deleted_count = 2;
+  string error = 3;
 }
 
 

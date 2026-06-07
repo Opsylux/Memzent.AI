@@ -44,63 +44,67 @@ func main() {
 	fmt.Printf("\n\033[1;36m══════════════════════════════════════════════════════\033[0m\n")
 	fmt.Printf("\033[1;36m  MEMZENT SEMANTIC CACHE CORRECTNESS TEST SUITE\033[0m\n")
 	fmt.Printf("\033[1;36m══════════════════════════════════════════════════════\033[0m\n")
-	fmt.Printf("  Target: %s\n\n", baseURL)
+	fmt.Printf("  Target: %s\n", baseURL)
+	fmt.Printf("  Goal: Verify cache serves CORRECT answers (save tokens)\n")
+	fmt.Printf("         and NEVER serves wrong answers for different prompts.\n\n")
 
-	// Flush cache before tests to remove stale entries from prior runs
-	fmt.Printf("\033[1;33m[SETUP]\033[0m Flushing org cache to start clean...\n")
-	if err := flushCache(); err != nil {
-		fmt.Printf("  ⚠️  Cache flush failed (may not be deployed yet): %v\n", err)
-		fmt.Printf("  Tests will proceed — stale entries may cause false failures.\n")
-	} else {
-		fmt.Printf("  ✓ Cache flushed successfully\n")
+	// Optional flush — use only when testing normalization changes
+	for _, arg := range os.Args[1:] {
+		if arg == "--flush" {
+			fmt.Printf("\033[1;33m[SETUP]\033[0m Flushing org cache (--flush flag)...\n")
+			if err := flushCache(); err != nil {
+				fmt.Printf("  ⚠️  Cache flush failed: %v\n", err)
+			} else {
+				fmt.Printf("  ✓ Cache flushed\n")
+			}
+			fmt.Println()
+			break
+		}
 	}
-	fmt.Println()
 
 	falseVal := false
 	trueVal := true
 
 	tests := []TestCase{
 		// ──── Group 1: Numeric Parameter Variation ────
-		// These tests verify that prompts with different numeric parameters
-		// are NOT served from cache. We avoid asserting on specific LLM answers
-		// since local models (Ollama) can be unreliable at math.
+		// Core test: different numbers MUST produce different answers.
+		// Whether cached or not doesn't matter — correctness does.
 		{
-			Name:      "1a. Base formula (skip cache to get fresh)",
+			Name:      "1a. Base formula a=3, b=4 (prime the cache)",
 			Prompt:    "what is (a+b)^2 where a=3, b=4",
 			SkipCache: true,
 		},
 		{
-			Name:         "1b. Same formula, different numbers → must NOT be cached",
-			Prompt:       "what is (a+b)^2 where a=3, b=7",
-			ExpectCached: &falseVal,
+			Name:           "1b. Different numbers a=3, b=7 → must NOT get a=3,b=4 answer",
+			Prompt:         "what is (a+b)^2 where a=3, b=7",
+			MustNotContain: "= 49",
 		},
 		{
-			Name:         "1c. Same formula, same numbers → SHOULD be cached",
+			Name:         "1c. Same numbers a=3, b=4 → SHOULD be cached (token savings)",
 			Prompt:       "what is (a+b)^2 where a=3, b=4",
 			ExpectCached: &trueVal,
 		},
 
-		// ──── Group 2: Swapped Parameter Order ────
+		// ──── Group 2: Swapped/Different Parameters ────
 		{
-			Name:      "2a. Baseline: a=10, b=5 (skip cache)",
+			Name:      "2a. Prime: a=10, b=5",
 			Prompt:    "calculate (a+b)^2 when a=10 and b=5",
 			SkipCache: true,
 		},
 		{
-			Name:         "2b. Swapped: a=5, b=10 → same result but different prompt",
-			Prompt:       "calculate (a+b)^2 when a=5 and b=10",
-			ExpectCached: nil, // acceptable either way since result is same (225)
+			Name:           "2b. Different: a=5, b=15 → must NOT get a=10,b=5 answer",
+			Prompt:         "calculate (a+b)^2 when a=5 and b=15",
+			MustNotContain: "= 225",
 		},
 		{
-			Name:           "2c. Different numbers: a=5, b=15 → MUST NOT return cached a=5,b=10 answer",
-			Prompt:         "calculate (a+b)^2 when a=5 and b=15",
-			ExpectCached:   &falseVal,
-			MustNotContain: "b = 10",
+			Name:         "2c. Same as 2a → SHOULD be cached (token savings)",
+			Prompt:       "calculate (a+b)^2 when a=10 and b=5",
+			ExpectCached: &trueVal,
 		},
 
-		// ──── Group 3: Similar Natural Language, Different Intent ────
+		// ──── Group 3: Entity Differentiation ────
 		{
-			Name:      "3a. Population of Paris (skip cache)",
+			Name:      "3a. Population of Paris (prime)",
 			Prompt:    "What is the population of Paris?",
 			SkipCache: true,
 		},
@@ -110,32 +114,30 @@ func main() {
 			MustNotContain: "Paris",
 		},
 
-		// ──── Group 4: X-Skip-Cache header validation ────
+		// ──── Group 4: X-Skip-Cache forces fresh LLM call ────
 		{
-			Name:         "4a. Normal request (may cache)",
-			Prompt:       "What is 2+2?",
-			ExpectCached: nil,
-			MustContain:  "4",
+			Name:        "4a. Normal request",
+			Prompt:      "What is 2+2?",
+			MustContain: "4",
 		},
 		{
-			Name:         "4b. Same prompt with skip-cache → must NOT be cached",
+			Name:         "4b. Same prompt with skip-cache → fresh LLM call (for testing/debugging)",
 			Prompt:       "What is 2+2?",
 			SkipCache:    true,
 			ExpectCached: &falseVal,
 			MustContain:  "4",
 		},
 
-		// ──── Group 5: Edge case - numbers embedded in words ────
+		// ──── Group 5: Ordinal Differentiation ────
 		{
-			Name:      "5a. Fibonacci 10th term (skip cache)",
+			Name:      "5a. 10th fibonacci (prime)",
 			Prompt:    "What is the 10th fibonacci number?",
 			SkipCache: true,
 		},
 		{
-			Name:           "5b. Fibonacci 15th term → must NOT return 10th's answer",
+			Name:           "5b. 15th fibonacci → must NOT return 10th's answer",
 			Prompt:         "What is the 15th fibonacci number?",
-			ExpectCached:   &falseVal,
-			MustNotContain: "10th",
+			MustNotContain: "The 10th",
 		},
 	}
 

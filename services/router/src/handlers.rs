@@ -13,6 +13,7 @@ use crate::router_proto::{
     ToolRequest, ToolResponse, Tool, RegisterToolRequest, RegisterToolResponse,
     ToolChainRequest, ToolChainResponse, ToolStep, StoreMemoryRequest,
     StoreMemoryResponse, QueryMemoryRequest, QueryMemoryResponse, MemoryHit,
+    FlushPromptCacheRequest, FlushPromptCacheResponse,
 };
 
 pub struct MyRouter {
@@ -402,6 +403,61 @@ impl SemanticRouter for MyRouter {
         }
 
         Ok(Response::new(QueryMemoryResponse { memories }))
+    }
+
+    async fn flush_prompt_cache(
+        &self,
+        request: Request<FlushPromptCacheRequest>,
+    ) -> Result<Response<FlushPromptCacheResponse>, Status> {
+        let req = request.into_inner();
+        println!("🗑️ Flushing prompt cache for org: {}", req.org_id);
+
+        if req.org_id.is_empty() {
+            return Ok(Response::new(FlushPromptCacheResponse {
+                success: false,
+                deleted_count: 0,
+                error: "org_id is required".to_string(),
+            }));
+        }
+
+        // Delete all points in prompts_collection that belong to this org
+        let filter = Filter {
+            must: vec![Condition {
+                condition_one_of: Some(ConditionOneOf::Field(FieldCondition {
+                    key: "org_id".to_string(),
+                    r#match: Some(Match {
+                        match_value: Some(MatchValue::Keyword(req.org_id.clone())),
+                    }),
+                    ..Default::default()
+                })),
+            }],
+            ..Default::default()
+        };
+
+        let delete_result = self.q_client.delete_points(
+            "prompts_collection",
+            &filter.into(),
+        ).await;
+
+        match delete_result {
+            Ok(resp) => {
+                let status = resp.result.map(|s| s.status).unwrap_or(0);
+                println!("✅ Prompt cache flushed for org: {} (status: {})", req.org_id, status);
+                Ok(Response::new(FlushPromptCacheResponse {
+                    success: true,
+                    deleted_count: 0, // Qdrant doesn't return count on delete
+                    error: String::new(),
+                }))
+            }
+            Err(e) => {
+                eprintln!("❌ Failed to flush prompt cache: {}", e);
+                Ok(Response::new(FlushPromptCacheResponse {
+                    success: false,
+                    deleted_count: 0,
+                    error: format!("Qdrant delete failed: {}", e),
+                }))
+            }
+        }
     }
 }
 

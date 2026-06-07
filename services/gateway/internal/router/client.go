@@ -154,6 +154,20 @@ func (rc *RouterClient) QueryMemory(ctx context.Context, prompt, orgID, userID s
 }
 
 
+// FlushPromptCache deletes all cached prompt vectors for an org from Qdrant.
+// Uses a direct gRPC call — the message types are defined here until proto is regenerated.
+func (rc *RouterClient) FlushPromptCache(ctx context.Context, orgID string) error {
+	req := &FlushPromptCacheRequest{OrgId: orgID}
+	resp, err := rc.client.FlushPromptCache(ctx, req)
+	if err != nil {
+		return fmt.Errorf("gRPC FlushPromptCache failed: %w", err)
+	}
+	if !resp.Success {
+		return fmt.Errorf("flush failed: %s", resp.Error)
+	}
+	return nil
+}
+
 // Close cleans up the gRPC connection
 func (rc *RouterClient) Close() {
 	if rc.conn != nil {
