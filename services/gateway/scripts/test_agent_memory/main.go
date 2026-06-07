@@ -141,8 +141,8 @@ func main() {
 	}
 
 	// Allow time for background fact extraction to complete
-	fmt.Printf("\033[1;90m  ⏳ Waiting 5s for async fact extraction to complete...\033[0m\n\n")
-	time.Sleep(5 * time.Second)
+	fmt.Printf("\033[1;90m  ⏳ Waiting 10s for async fact extraction to complete...\033[0m\n\n")
+	time.Sleep(10 * time.Second)
 
 	// ═══════════════════════════════════════════════════════
 	// Phase 2: Long-Term Semantic Memory Recall
