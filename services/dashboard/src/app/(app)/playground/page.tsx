@@ -439,6 +439,28 @@ export default function PlaygroundPage() {
             )}
           </div>
 
+          {/* Extracted Entities (E1) */}
+          <div className="stat-card neural-bg border-white/5 p-6">
+            <div className="flex items-center gap-3 mb-4">
+              <Layers size={14} className="text-memzent-accent" />
+              <h2 className="text-xs font-black uppercase tracking-widest text-white/60">Extracted Entities</h2>
+            </div>
+            {result?.entities && Object.keys(result.entities).length > 0 ? (
+              <div className="space-y-2">
+                {Object.entries(result.entities).map(([key, value]) => (
+                  <div key={key} className="flex items-center justify-between p-3 rounded-xl bg-white/[0.02] border border-white/5">
+                    <span className="text-[9px] font-black text-white/40 uppercase tracking-wider">{key}</span>
+                    <span className="text-[10px] font-mono font-bold text-memzent-accent">{String(value)}</span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-[9px] font-black uppercase tracking-widest text-white/10 text-center py-6">
+                {status === 'idle' ? 'No execution yet' : 'No entities extracted'}
+              </p>
+            )}
+          </div>
+
           {/* Active Memory Profile */}
           <div className="stat-card neural-bg border-white/5 p-6">
             <div className="flex items-center gap-3 mb-4">

@@ -38,12 +38,13 @@ type PromptRequest struct {
 
 // PromptResponse defines the gateway's response to the client
 type PromptResponse struct {
-	Text      string `json:"text"`
-	Cached    bool   `json:"cached"`
-	Provider  string `json:"provider,omitempty"`
-	Tools     []any  `json:"tools,omitempty"`
-	RequestID string `json:"request_id,omitempty"`
-	SessionID string `json:"session_id,omitempty"`
+	Text      string            `json:"text"`
+	Cached    bool              `json:"cached"`
+	Provider  string            `json:"provider,omitempty"`
+	Tools     []any             `json:"tools,omitempty"`
+	RequestID string            `json:"request_id,omitempty"`
+	SessionID string            `json:"session_id,omitempty"`
+	Entities  map[string]string `json:"entities,omitempty"` // extracted entities from the prompt (E1)
 }
 
 // rateLimiterEntry is retained for backward compatibility but the primary
@@ -883,6 +884,7 @@ func (e *MemzentEngine) Process(ctx context.Context, req *PromptRequest) (*Promp
 			User:      req.UserID,
 			Detail:    fmt.Sprintf("Provider: %s", selectedProvider.GetProviderName()),
 			Status:    "success",
+			Entities:  extractedEntities,
 		}, map[string]interface{}{"provider": selectedProvider.GetProviderName(), "tools_count": len(llmTools)})
 	}
 
@@ -892,6 +894,7 @@ func (e *MemzentEngine) Process(ctx context.Context, req *PromptRequest) (*Promp
 		Provider:  selectedProvider.GetProviderName(),
 		Tools:     llmTools,
 		SessionID: req.SessionID,
+		Entities:  extractedEntities,
 	}, nil
 }
 
