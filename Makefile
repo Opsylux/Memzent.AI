@@ -30,4 +30,8 @@ test-cache:
 test-memory:
 	cd services/gateway && go run scripts/test_agent_memory/main.go
 
-.PHONY: gen-proto up down test-flow test-cache test-memory
+# Run entity extraction cache guard tests (requires MEMZENT_API_KEY env var)
+test-entity:
+	cd services/gateway && go run scripts/test_entity_extraction/main.go
+
+.PHONY: gen-proto up down test-flow test-cache test-memory test-entity
