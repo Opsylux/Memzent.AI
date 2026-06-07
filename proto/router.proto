@@ -61,6 +61,7 @@ message ToolResponse {
   string compressed_prompt = 3;
   string similar_prompt_hash = 4; // Hash of a previously seen similar prompt (if any)
   string current_prompt_hash = 5; // Canonical hash of the incoming prompt
+  map<string, string> entities = 6; // Extracted structured entities from the prompt
 }
 
 message ToolChainRequest {

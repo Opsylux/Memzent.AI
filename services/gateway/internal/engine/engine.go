@@ -557,9 +557,12 @@ func (e *MemzentEngine) Process(ctx context.Context, req *PromptRequest) (*Promp
 	}
 
 	// D. Semantic Routing (includes Vector Search & Prompt Compression via Rust)
-	tools, compressedPrompt, similarPromptHash, currentPromptHash, err := e.router.GetBestTools(ctx, queryPrompt, orgID, allowedTools, req.SkipCache)
+	tools, compressedPrompt, similarPromptHash, currentPromptHash, extractedEntities, err := e.router.GetBestTools(ctx, queryPrompt, orgID, allowedTools, req.SkipCache)
 	if err != nil {
 		slog.Warn("Router fallback engaged", "error", err)
+	}
+	if len(extractedEntities) > 0 {
+		slog.Info("🏷️ Entities extracted", "org_id", orgID, "entities", extractedEntities)
 	}
 
 	// NEW: Stage 2 Cache Check (Fuzzy Vector Semantic Match) — Org-Isolated & Model-Scoped

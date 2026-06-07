@@ -72,20 +72,48 @@ impl SemanticRouter for MyRouter {
                             })
                             .unwrap_or_default();
 
-                        let mut current_numbers = extract_numbers(&req.prompt);
-                        let mut cached_numbers = extract_numbers(&cached_prompt_text);
+                        // --- Entity-based Cache Guard (replaces positional-blind sort) ---
+                        // Try entity comparison first; fall back to old numeric guard for legacy entries
+                        let cached_entities: HashMap<String, String> = hit.payload.get("entities")
+                            .and_then(|v| v.kind.as_ref())
+                            .and_then(|k| match k {
+                                qdrant_client::qdrant::value::Kind::StructValue(s) => {
+                                    Some(s.fields.iter().map(|(key, val)| {
+                                        let v = val.kind.as_ref().map(|k| match k {
+                                            qdrant_client::qdrant::value::Kind::StringValue(s) => s.clone(),
+                                            _ => String::new(),
+                                        }).unwrap_or_default();
+                                        (key.clone(), v)
+                                    }).collect::<HashMap<String, String>>())
+                                },
+                                _ => None,
+                            })
+                            .unwrap_or_default();
 
-                        // Sort both vectors to neutralize user input order variations (e.g. a=10,b=5 vs b=5,a=10)
-                        current_numbers.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
-                        cached_numbers.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
-
-                        let numbers_match = if cached_prompt_text.is_empty() {
-                            current_numbers.is_empty()
+                        let guard_pass = if !cached_entities.is_empty() {
+                            // New path: entity map comparison (positional-aware)
+                            let current_entities = extract_entities(&req.prompt);
+                            let matched = entities_match(&current_entities, &cached_entities);
+                            if matched {
+                                println!("🎯 Entity Guard PASS: entities match cached payload");
+                            } else {
+                                println!("⚠️ Entity Guard REJECT: entities differ (current={:?}, cached={:?})", current_entities, cached_entities);
+                            }
+                            matched
                         } else {
-                            current_numbers == cached_numbers
+                            // Legacy fallback: old sorted-number comparison for entries without entity map
+                            let mut current_numbers = extract_numbers(&req.prompt);
+                            let mut cached_numbers = extract_numbers(&cached_prompt_text);
+                            current_numbers.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+                            cached_numbers.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+                            if cached_prompt_text.is_empty() {
+                                current_numbers.is_empty()
+                            } else {
+                                current_numbers == cached_numbers
+                            }
                         };
 
-                        if numbers_match {
+                        if guard_pass {
                             similar_prompt_hash = hit.payload.get("prompt_hash")
                                 .and_then(|v| v.kind.as_ref())
                                 .map(|k| match k {
@@ -95,21 +123,35 @@ impl SemanticRouter for MyRouter {
                                 .unwrap_or_default();
                             println!("🎯 Semantic Cache Hit! Hash: {}", similar_prompt_hash);
                         } else {
-                            println!("⚠️ Semantic Cache REJECTED: numerical values differ between prompts");
+                            println!("⚠️ Semantic Cache REJECTED: entity/numeric guard failed");
                         }
                     }
                 }
             }
 
-            // Store new template signature if cache missed
+            // Store new template signature if cache missed (with entities for future lookups)
             if similar_prompt_hash.is_empty() {
                 println!("💾 Semantic Cache Store: New prompt intent saved");
+
+                let prompt_entities = extract_entities(&req.prompt);
 
                 let mut payload = HashMap::new();
                 payload.insert("prompt_hash".to_string(), Value::from(prompt_hash.clone()));
                 payload.insert("prompt_text".to_string(), Value::from(req.prompt.clone()));
                 payload.insert("user_id".to_string(), Value::from(req.user_id.clone()));
                 payload.insert("org_id".to_string(), Value::from(req.org_id.clone()));
+
+                // Store entities as a Struct value in the payload
+                if !prompt_entities.is_empty() {
+                    let entity_fields: HashMap<String, Value> = prompt_entities.iter()
+                        .map(|(k, v)| (k.clone(), Value::from(v.clone())))
+                        .collect();
+                    payload.insert("entities".to_string(), Value {
+                        kind: Some(qdrant_client::qdrant::value::Kind::StructValue(
+                            qdrant_client::qdrant::Struct { fields: entity_fields }
+                        )),
+                    });
+                }
 
                 let _ = self.q_client.upsert_points(UpsertPointsBuilder::new(
                     "prompts_collection",
@@ -225,12 +267,16 @@ impl SemanticRouter for MyRouter {
             });
         }
 
+        // Extract entities from the incoming prompt to return to gateway
+        let response_entities = extract_entities(&req.prompt);
+
         let reply = ToolResponse {
             tools,
             total_tokens_saved: tokens_saved.max(0),
             compressed_prompt: compressed,
             similar_prompt_hash,
             current_prompt_hash: prompt_hash,
+            entities: response_entities,
         };
 
         Ok(Response::new(reply))
@@ -512,4 +558,108 @@ impl SemanticRouter for MyRouter {
 fn extract_numbers(text: &str) -> Vec<String> {
     let re = Regex::new(r"\d+(?:\.\d+)?").unwrap();
     re.find_iter(text).map(|m| m.as_str().to_string()).collect()
+}
+
+/// Extracts structured, labeled entities from a prompt using regex-based extractors.
+/// Returns a HashMap where keys are semantic roles (e.g., "source_account", "amount")
+/// and values are the extracted strings. Runs in <1ms — no SLM involved.
+fn extract_entities(text: &str) -> HashMap<String, String> {
+    let mut entities: HashMap<String, String> = HashMap::new();
+    let lower = text.to_lowercase();
+
+    // --- Money Extractor ---
+    // Matches: $100, $1,000.50, 100 dollars, etc.
+    let money_re = Regex::new(r"(?i)\$\s*(\d[\d,]*(?:\.\d+)?)|(\d[\d,]*(?:\.\d+)?)\s*(?:dollars?|usd)").unwrap();
+    if let Some(cap) = money_re.captures(text) {
+        let amount = cap.get(1).or_else(|| cap.get(2))
+            .map(|m| m.as_str().replace(',', ""))
+            .unwrap_or_default();
+        if !amount.is_empty() {
+            entities.insert("amount".to_string(), amount);
+        }
+    }
+
+    // --- Account/ID Extractor ---
+    // Matches: "account 123", "account #456", "id 789", "invoice #101"
+    let id_re = Regex::new(r"(?i)(?:account|acct|id|invoice|order|customer|user)\s*#?\s*(\d+)").unwrap();
+    let id_matches: Vec<_> = id_re.captures_iter(text).collect();
+
+    // --- Directional Transfer Detection ---
+    // Detect "from X to Y" pattern for positional entity labeling
+    let transfer_re = Regex::new(r"(?i)(?:from|source)\s+(?:account\s*#?\s*)?(\d+)\s+(?:to|into|→)\s+(?:account\s*#?\s*)?(\d+)").unwrap();
+    if let Some(cap) = transfer_re.captures(text) {
+        if let Some(src) = cap.get(1) {
+            entities.insert("source_account".to_string(), src.as_str().to_string());
+        }
+        if let Some(dst) = cap.get(2) {
+            entities.insert("target_account".to_string(), dst.as_str().to_string());
+        }
+    } else if id_matches.len() >= 2 {
+        // Fallback: if multiple IDs found but no directional pattern, label generically
+        if let Some(cap) = id_matches.get(0) {
+            if let Some(m) = cap.get(1) {
+                entities.insert("entity_id_1".to_string(), m.as_str().to_string());
+            }
+        }
+        if let Some(cap) = id_matches.get(1) {
+            if let Some(m) = cap.get(1) {
+                entities.insert("entity_id_2".to_string(), m.as_str().to_string());
+            }
+        }
+    } else if let Some(cap) = id_matches.first() {
+        if let Some(m) = cap.get(1) {
+            entities.insert("entity_id".to_string(), m.as_str().to_string());
+        }
+    }
+
+    // --- Action Extractor ---
+    // Detect the primary action verb
+    let actions = [
+        ("transfer", vec!["transfer", "send", "move", "wire"]),
+        ("balance", vec!["balance", "owe", "owes", "outstanding", "dues", "due amount"]),
+        ("lookup", vec!["lookup", "look up", "find", "search", "get", "fetch", "show", "check"]),
+        ("create", vec!["create", "add", "new", "register"]),
+        ("delete", vec!["delete", "remove", "cancel"]),
+        ("update", vec!["update", "edit", "modify", "change"]),
+    ];
+    for (action_key, keywords) in &actions {
+        if keywords.iter().any(|kw| lower.contains(kw)) {
+            entities.insert("action".to_string(), action_key.to_string());
+            break;
+        }
+    }
+
+    // --- Customer/Name Extractor ---
+    // Matches: "customer Raj", "client Acme", "for Raj"
+    let name_re = Regex::new(r"(?i)(?:customer|client|for|user)\s+([A-Z][a-zA-Z]+(?:\s+[A-Z][a-zA-Z]+)?)").unwrap();
+    if let Some(cap) = name_re.captures(text) {
+        if let Some(name) = cap.get(1) {
+            entities.insert("customer".to_string(), name.as_str().to_string());
+        }
+    }
+
+    // --- Date Extractor ---
+    // Matches: 2024-01-15, Jan 15 2024, 15/01/2024
+    let date_re = Regex::new(r"(\d{4}-\d{2}-\d{2}|\d{1,2}/\d{1,2}/\d{4})").unwrap();
+    if let Some(cap) = date_re.captures(text) {
+        if let Some(d) = cap.get(1) {
+            entities.insert("date".to_string(), d.as_str().to_string());
+        }
+    }
+
+    entities
+}
+
+/// Compares two entity maps. Returns true if all keys in the cached entities
+/// exist in current entities with matching values. This is the replacement
+/// for the positional-blind sorted number comparison.
+fn entities_match(current: &HashMap<String, String>, cached: &HashMap<String, String>) -> bool {
+    if cached.is_empty() && current.is_empty() {
+        return true;
+    }
+    if cached.is_empty() || current.is_empty() {
+        return false;
+    }
+    // All cached entity keys must exist in current with same values
+    cached.iter().all(|(k, v)| current.get(k).map_or(false, |cv| cv == v))
 }

@@ -9,6 +9,8 @@
 package router
 
 import (
+	"fmt"
+
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	reflect "reflect"
@@ -302,6 +304,7 @@ type ToolResponse struct {
 	CompressedPrompt  string                 `protobuf:"bytes,3,opt,name=compressed_prompt,json=compressedPrompt,proto3" json:"compressed_prompt,omitempty"`
 	SimilarPromptHash string                 `protobuf:"bytes,4,opt,name=similar_prompt_hash,json=similarPromptHash,proto3" json:"similar_prompt_hash,omitempty"` // Hash of a previously seen similar prompt (if any)
 	CurrentPromptHash string                 `protobuf:"bytes,5,opt,name=current_prompt_hash,json=currentPromptHash,proto3" json:"current_prompt_hash,omitempty"` // Canonical hash of the incoming prompt
+	Entities          map[string]string      `protobuf:"bytes,6,rep,name=entities,proto3" json:"entities,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"` // Extracted structured entities from the prompt
 	unknownFields     protoimpl.UnknownFields
 	sizeCache         protoimpl.SizeCache
 }
@@ -369,6 +372,13 @@ func (x *ToolResponse) GetCurrentPromptHash() string {
 		return x.CurrentPromptHash
 	}
 	return ""
+}
+
+func (x *ToolResponse) GetEntities() map[string]string {
+	if x != nil {
+		return x.Entities
+	}
+	return nil
 }
 
 type ToolChainRequest struct {
@@ -833,6 +843,62 @@ func (x *QueryMemoryResponse) GetMemories() []*MemoryHit {
 		return x.Memories
 	}
 	return nil
+}
+
+// FlushPromptCacheRequest — hand-maintained stub until protoc regeneration
+type FlushPromptCacheRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	OrgId         string                 `protobuf:"bytes,1,opt,name=org_id,json=orgId,proto3" json:"org_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *FlushPromptCacheRequest) Reset()         {}
+func (x *FlushPromptCacheRequest) String() string { return fmt.Sprintf("FlushPromptCacheRequest{OrgId: %s}", x.OrgId) }
+func (x *FlushPromptCacheRequest) ProtoMessage()  {}
+func (x *FlushPromptCacheRequest) ProtoReflect() protoreflect.Message { return nil }
+
+func (x *FlushPromptCacheRequest) GetOrgId() string {
+	if x != nil {
+		return x.OrgId
+	}
+	return ""
+}
+
+// FlushPromptCacheResponse — hand-maintained stub until protoc regeneration
+type FlushPromptCacheResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Success       bool                   `protobuf:"varint,1,opt,name=success,proto3" json:"success,omitempty"`
+	DeletedCount  int64                  `protobuf:"varint,2,opt,name=deleted_count,json=deletedCount,proto3" json:"deleted_count,omitempty"`
+	Error         string                 `protobuf:"bytes,3,opt,name=error,proto3" json:"error,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *FlushPromptCacheResponse) Reset()         {}
+func (x *FlushPromptCacheResponse) String() string { return "FlushPromptCacheResponse{}" }
+func (x *FlushPromptCacheResponse) ProtoMessage()  {}
+func (x *FlushPromptCacheResponse) ProtoReflect() protoreflect.Message { return nil }
+
+func (x *FlushPromptCacheResponse) GetSuccess() bool {
+	if x != nil {
+		return x.Success
+	}
+	return false
+}
+
+func (x *FlushPromptCacheResponse) GetDeletedCount() int64 {
+	if x != nil {
+		return x.DeletedCount
+	}
+	return 0
+}
+
+func (x *FlushPromptCacheResponse) GetError() string {
+	if x != nil {
+		return x.Error
+	}
+	return ""
 }
 
 var File_router_proto protoreflect.FileDescriptor

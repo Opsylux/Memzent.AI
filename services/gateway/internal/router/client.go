@@ -12,7 +12,7 @@ import (
 // SemanticRouterInterface defines the contract for the semantic router.
 // Implement this interface to mock the router in tests.
 type SemanticRouterInterface interface {
-	GetBestTools(ctx context.Context, prompt string, orgID string, allowedToolIDs []string, skipCache bool) ([]*Tool, string, string, string, error)
+	GetBestTools(ctx context.Context, prompt string, orgID string, allowedToolIDs []string, skipCache bool) ([]*Tool, string, string, string, map[string]string, error)
 	RegisterTool(ctx context.Context, id, name, description, orgID string) (bool, error)
 	PlanToolChain(ctx context.Context, prompt string, orgID string, allowedToolIDs []string) ([]*ToolStep, float32, error)
 	StoreMemory(ctx context.Context, fact, orgID, userID string) (bool, error)
@@ -65,7 +65,7 @@ func NewRouterClient(ctx context.Context, addr string) (*RouterClient, error) {
 // prompts_collection cache lookup to this organisation only.
 // skipCache=true tells the Rust router to skip the prompts_collection lookup
 // and upsert, preventing forced-fresh requests from polluting the vector store.
-func (rc *RouterClient) GetBestTools(ctx context.Context, prompt string, orgID string, allowedToolIDs []string, skipCache bool) ([]*Tool, string, string, string, error) {
+func (rc *RouterClient) GetBestTools(ctx context.Context, prompt string, orgID string, allowedToolIDs []string, skipCache bool) ([]*Tool, string, string, string, map[string]string, error) {
 	req := &ToolRequest{
 		Prompt:                 prompt,
 		UserId:                 orgID, // kept for backward compat with existing Qdrant payloads
@@ -77,10 +77,10 @@ func (rc *RouterClient) GetBestTools(ctx context.Context, prompt string, orgID s
 
 	resp, err := rc.client.SelectTools(ctx, req)
 	if err != nil {
-		return nil, "", "", "", fmt.Errorf("gRPC SelectTools failed: %w", err)
+		return nil, "", "", "", nil, fmt.Errorf("gRPC SelectTools failed: %w", err)
 	}
 
-	return resp.Tools, resp.CompressedPrompt, resp.SimilarPromptHash, resp.CurrentPromptHash, nil
+	return resp.Tools, resp.CompressedPrompt, resp.SimilarPromptHash, resp.CurrentPromptHash, resp.GetEntities(), nil
 }
 
 // RegisterTool notifies the Rust router about a new tool to vectorize it in Qdrant
