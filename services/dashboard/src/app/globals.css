@@ -1,0 +1,160 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@custom-variant dark (&:is(.dark *));
+
+/* 1. Theme Configuration */
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-geist-mono);
+
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-primary: var(--primary);
+  --color-secondary: var(--secondary);
+  --color-muted: var(--muted);
+  --color-accent: var(--accent);
+  --color-popover: var(--popover);
+  --color-card: var(--card);
+
+  /* Memzent Enterprise Branding Tokens */
+  --color-memzent-dark: #050505;
+  --color-memzent-glow: #00f3ff;
+  --color-memzent-purple: #9d00ff;
+  --color-memzent-accent: #00ff8e;
+  --color-memzent-matrix: #0a0a0a;
+
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+
+  --animate-pulse-slow: pulse 4s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* 2. Global CSS Variables */
+:root {
+  --background: oklch(0.145 0 0);
+  --foreground: oklch(0.985 0 0);
+  --card: oklch(0.205 0 0);
+  --card-foreground: oklch(0.985 0 0);
+  --popover: oklch(0.205 0 0);
+  --popover-foreground: oklch(0.985 0 0);
+  --primary: oklch(0.922 0 0);
+  --primary-foreground: oklch(0.205 0 0);
+  --secondary: oklch(0.269 0 0);
+  --secondary-foreground: oklch(0.985 0 0);
+  --muted: oklch(0.269 0 0);
+  --muted-foreground: oklch(0.72 0 0);  /* was 0.80 — slightly warmer for labels */
+  --accent: oklch(0.269 0 0);
+  --accent-foreground: oklch(0.985 0 0);
+  --destructive: oklch(0.704 0.191 22.216);
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 15%);
+  --ring: oklch(0.556 0 0);
+  --radius: 0.75rem;
+}
+
+/* 3. Base Styles */
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+
+  body {
+    @apply bg-memzent-dark text-foreground antialiased;
+  }
+}
+
+/* 4. Top-Level Utilities (Space-Safe for v4) */
+
+@utility glass {
+  @apply bg-white/[0.03] backdrop-blur-xl border border-white/10;
+}
+
+@utility glow-cyan {
+  /* CRITICAL: No spaces inside the shadow brackets */
+  @apply border-memzent-glow/20 shadow-[0_0_20px_rgba(0,243,255,0.05)];
+}
+
+@utility glow-purple {
+  /* CRITICAL: No spaces inside the shadow brackets */
+  @apply border-memzent-purple/20 shadow-[0_0_20px_rgba(157,0,255,0.05)];
+}
+
+@utility stat-card {
+  @apply glass p-6 rounded-3xl transition-all duration-300 hover:bg-white/[0.05] hover:border-white/20;
+}
+
+@utility prose-memzent {
+
+  & h1,
+  & h2,
+  & h3,
+  & h4 {
+    @apply uppercase tracking-tighter font-black text-white;
+  }
+
+  & a {
+    @apply text-memzent-glow no-underline hover:underline font-bold transition-colors;
+  }
+
+  & strong {
+    @apply text-white font-black;
+  }
+
+  & code {
+    @apply text-memzent-glow bg-memzent-glow/5 px-1 rounded font-mono font-bold;
+  }
+
+  & ul {
+    @apply list-disc marker:text-memzent-purple;
+  }
+}
+
+@utility neural-bg {
+  /* Standard CSS values are fine with spaces, only @apply brackets are strict */
+  background: radial-gradient(circle at 50% 50%, #0a0a0a 0%, #050505 100%);
+}
+
+/* ─── Readable Text Utilities ──────────────────────────────────────────────
+   Use these instead of raw white/opacity classes to keep contrast consistent.
+   Minimum contrast target: 4.5:1 on #050505 background.
+   ─────────────────────────────────────────────────────────────────────── */
+
+@utility text-readable-primary {
+  /* Main body / value text — full white */
+  color: rgba(255, 255, 255, 1);
+}
+
+@utility text-readable-secondary {
+  /* Subtitles, descriptions — clearly visible */
+  color: rgba(255, 255, 255, 0.75);
+}
+
+@utility text-readable-label {
+  /* Small caps labels, table headers — legible */
+  color: rgba(255, 255, 255, 0.60);
+}
+
+@utility text-readable-muted {
+  /* Timestamps, IDs, fine print — minimum readable */
+  color: rgba(255, 255, 255, 0.50);
+}
+
+/* ─── Contrast Safety Net ──────────────────────────────────────────────────
+   Override dangerously low-contrast text globally.
+   Any text-white/10, text-white/15, text-white/20 gets bumped to minimum readable.
+   ─────────────────────────────────────────────────────────────────────── */
+
+@layer utilities {
+  .text-white\/10 { color: rgba(255, 255, 255, 0.40) !important; }
+  .text-white\/15 { color: rgba(255, 255, 255, 0.40) !important; }
+  .text-white\/20 { color: rgba(255, 255, 255, 0.45) !important; }
+}

@@ -1,0 +1,59 @@
+@import "tailwindcss";
+
+@theme {
+  --color-memzent-dark: #050505;
+  --color-memzent-matrix: #0a0a0a;
+  --color-memzent-glow: #00f3ff;
+  --color-memzent-purple: #9d00ff;
+  --color-memzent-accent: #00ff8e;
+
+  --font-outfit: "Outfit", sans-serif;
+  --font-mono: "Roboto Mono", monospace;
+
+  --animate-pulse-slow: pulse 4s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@source "./src/**/*.{ts,tsx}";
+@source "../index.html";
+
+:root {
+  background-color: #050505;
+  color: #ffffff;
+}
+
+@layer base {
+  body {
+    @apply font-outfit antialiased selection:bg-memzent-glow selection:text-black;
+  }
+}
+
+@utility glass {
+  @apply backdrop-blur-md bg-white/5 border border-white/10;
+}
+
+@utility glow-text {
+  @apply text-memzent-glow;
+  text-shadow: 0 0 10px rgba(0, 243, 255, 0.4);
+}
+
+@utility glow-border {
+  @apply border-memzent-glow/30;
+  box-shadow: 0 0 20px rgba(0, 243, 255, 0.1);
+}
+
+@utility matrix-bg {
+  background: radial-gradient(circle at center, #0a0a0a 0%, #050505 100%);
+}
+
+@utility bento-card {
+  @apply glass p-8 rounded-3xl transition-all duration-500 hover:scale-[1.02] hover:bg-white/10 hover:border-white/20;
+}
+
+/* Contrast safety: bump very low opacity text to readable minimum */
+@layer utilities {
+  .text-white\/10 { color: rgba(255, 255, 255, 0.40) !important; }
+  .text-white\/15 { color: rgba(255, 255, 255, 0.40) !important; }
+  .text-white\/20 { color: rgba(255, 255, 255, 0.45) !important; }
+  .opacity-60 { opacity: 0.70 !important; }
+  .opacity-50 { opacity: 0.65 !important; }
+}

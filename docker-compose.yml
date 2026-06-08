@@ -1,0 +1,194 @@
+services:
+  # Valkey Caching Layer
+  valkey:
+    image: valkey/valkey:8.0-alpine
+    container_name: valkey
+    ports:
+      - "6379:6379"
+    command: [ "valkey-server", "--io-threads", "4" ]
+    healthcheck:
+      test: ["CMD", "valkey-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # Memzent MCP Server (Go)
+  mcp-server:
+    build:
+      context: .
+      dockerfile: services/mcp-server/Dockerfile
+    container_name: memzent-mcp-server
+    ports:
+      - "50052:50052"
+    depends_on:
+      valkey:
+        condition: service_healthy
+    environment:
+      - VALKEY_ADDR=valkey:6379
+      #- VALKEY_ADDR=127.0.0.1:6379
+    volumes:
+      - ./services/mcp-server:/app
+    working_dir: /app
+
+  # Intelligence Layer (Vector Store)
+  qdrant:
+    image: qdrant/qdrant:v1.14.0
+    container_name: memzent-qdrant
+    ports:
+      - "6333:6333"
+    volumes:
+      - ./data/qdrant:/qdrant/storage
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:6333/healthz || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+
+
+  # Memzent Semantic Router (Rust)
+  router:
+    build:
+      context: .
+      dockerfile: ./services/router/Dockerfile
+    container_name: memzent-router
+    volumes:
+      # Keep these to share source files
+      - ./services/router:/app
+      - ./proto:/proto
+      # Cache for ML models mapped to avoid redownloading
+      - ./.cache/huggingface:/root/.cache
+      # Keeps heavy compilation artifacts strictly inside the fast Linux container
+      - /app/target
+    environment:
+      QDRANT_URL: "http://qdrant:6334"
+    working_dir: /app
+    command: cargo run
+    depends_on:
+      qdrant:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "grep -q 'listening' /proc/1/fd/1 2>/dev/null || exit 0"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+
+  # Memzent Gateway (Go) - Optimized
+  # gateway:
+  #   build:
+  #     context: .
+  #     dockerfile: services/gateway/Dockerfile
+  #   container_name: memzent-gateway
+  #   ports:
+  #     - "8080:8080"
+  #   volumes:
+  #     - ./services/gateway:/app
+  #     - ./proto:/proto
+  #     - ./migrations:/app/migrations
+  #     - go_modules:/go/pkg/mod
+  #   environment:
+  #     - VALKEY_URL=valkey:6379
+  #     #- VALKEY_URL=127.0.0.1:6379
+  #     - OPENAI_MODEL=gpt-5.1
+  #     - JWT_SECRET=memzent-enterprise-secret-2026
+  #     - JWKS_URL=https://qjzhikynowfbswcjwvhu.supabase.co/auth/v1/jwks
+  #     - OLLAMA_ENABLED=true
+  #     - OLLAMA_URL=http://host.docker.internal:11434
+  #     - OLLAMA_MODEL=llama3.2
+  #     - OPENAI_API_KEY=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
+  #     - STRIPE_SECRET_KEY=sk_test_51TJcl8EDOc5eVcRWk20jOFZKgYLTAcbYpgOGiIeUGPQcYGPVzu7Xw0zfIg0ugwGnRiPd5coljmqOekJxICwR6nn5000Pgh5dui
+  #     - STRIPE_WEBHOOK_SECRET=whsec_1234567890
+  #     - STRIPE_PRO_PRODUCT_ID=prod_UMQ6bFWBDSWT7u
+  #     - STRIPE_BIZ_PRODUCT_ID=prod_UMQ6Wf66UAVBNC
+  #     - STRIPE_PRO_PRICE_ID=price_1TNhGOEDOc5eVcRWYgWqKiUK
+  #     - STRIPE_BIZ_PRICE_ID=price_1TNhHNEDOc5eVcRWxqTYbmTn
+  #     - STRIPE_SUCCESS_URL=http://localhost:3000/dashboard/billing?session_id={CHECKOUT_SESSION_ID}
+  #     - STRIPE_CANCEL_URL=http://localhost:3000/dashboard/billing?status=cancel
+  #     - POSTGRES_URL=postgresql://postgres.qjzhikynowfbswcjwvhu:ZgJg3B0ezU2Z2coO@aws-1-us-east-1.pooler.supabase.com:6543/postgres?binary_parameters=yes
+  #     - SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFqemhpa3lub3dmYnN3Y2p3dmh1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU1NDIxNjYsImV4cCI6MjA5MTExODE2Nn0.rX5Sq3iGwaZkA2zs1bFCQONTC8Q9mSvybIlkH6NvOKU
+  #   # OPTIMIZED: Checks for mod file, compiles to binary, and fires up instantly!
+  #   command: >
+  #     sh -c "if [ ! -f go.mod ]; then go mod init memzent-gateway; fi &&
+  #            protoc -I/proto --go_out=internal/router --go_opt=paths=source_relative --go-grpc_out=internal/router --go-grpc_opt=paths=source_relative /proto/router.proto &&
+  #            go mod tidy &&
+  #            go build -o memzent-gateway-bin main.go &&
+  #            ./memzent-gateway-bin"
+  #   depends_on:
+  #     - router
+  #     - mcp-server
+
+  # UI Dashboard (Bun/Next.js)
+  dashboard:
+    image: oven/bun:alpine
+    container_name: memzent-dashboard
+    volumes:
+      - ./services/dashboard:/app
+    working_dir: /app
+    ports:
+      - "3002:3000"
+    environment:
+      #- NEXT_PUBLIC_GATEWAY_URL=http://localhost:8080
+      - NEXT_PUBLIC_GATEWAY_URL=http://host.docker.internal:8080
+      #- GATEWAY_INTERNAL_URL=http://memzent-gateway:8080
+      - GATEWAY_INTERNAL_URL=http://host.docker.internal:8080
+      - NEXT_PUBLIC_SUPABASE_URL=https://qjzhikynowfbswcjwvhu.supabase.co
+      - NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFqemhpa3lub3dmYnN3Y2p3dmh1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU1NDIxNjYsImV4cCI6MjA5MTExODE2Nn0.rX5Sq3iGwaZkA2zs1bFCQONTC8Q9mSvybIlkH6NvOKU
+      - NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=pk_test_51TJcl8EDOc5eVcRWBTjNQcd75tzlETcasRx8Pb5Yu7r4Jd4pixLGKlIR8SMZx6sNH71JJawcaEjaptkVfcU9kK88003DPuaRh9
+    command: >
+      sh -c "bun install && bun dev"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000 || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+  # Marketing Website (Node/Vite)
+  website:
+    build:
+      context: ./website
+      dockerfile: Dockerfile
+      target: dev
+    container_name: memzent-website
+    volumes:
+      - ./website:/app
+      - /app/node_modules
+    working_dir: /app
+    ports:
+      - "5173:5173"
+    environment:
+      - VITE_APP_URL=http://localhost:3002
+      - VITE_GATEWAY_URL=http://localhost:8080
+      - GATEWAY_INTERNAL_URL=http://memzent-gateway:8080
+      - VITE_SUPABASE_URL=https://qjzhikynowfbswcjwvhu.supabase.co
+      - VITE_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFqemhpa3lub3dmYnN3Y2p3dmh1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU1NDIxNjYsImV4cCI6MjA5MTExODE2Nn0.rX5Sq3iGwaZkA2zs1bFCQONTC8Q9mSvybIlkH6NvOKU
+    command: >
+      sh -c "npm install && npm run dev -- --host"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:5173 || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+  # # Open-Source Local Meta LLM Engine
+  # ollama:
+  #   image: ollama/ollama:latest
+  #   container_name: memzent-ollama
+  #   ports:
+  #     - "11434:11434"
+  #   volumes:
+  #     - ollama_data:/root/.ollama
+  #   # Overriding the default entrypoint lets us use shell scripting
+  #   entrypoint: ["/usr/bin/sh", "-c"]
+  #   command: >
+  #     "ollama serve & 
+  #      sleep 5 && 
+  #      ollama pull llama3.2 &&
+  #      wait"
+
+volumes:
+  go_modules:
+  cargo_cache:
+  ollama_data:

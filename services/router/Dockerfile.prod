@@ -1,0 +1,49 @@
+# ==========================================================
+# 🚀 Memzent Rust Router Production Multi-Stage Dockerfile
+# ==========================================================
+
+# --- Stage 1: Build & Compile ---
+FROM rustlang/rust:nightly-bookworm-slim AS builder
+
+RUN apt-get update && apt-get install -y \
+    protobuf-compiler \
+    libprotobuf-dev \
+    pkg-config \
+    libssl-dev \
+    g++ \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Copy cargo dependency specs first to leverage docker caching
+COPY services/router/Cargo.toml ./
+# Create dummy main to build dependencies
+RUN mkdir src && echo "fn main() {}" > src/main.rs
+RUN cargo build --release
+RUN rm -rf src
+
+# Copy proto files and actual source
+COPY proto/ ../proto/
+COPY services/router/src ./src
+COPY services/router/build.rs ./build.rs
+
+# Build the real production release binary
+RUN touch src/main.rs && cargo build --release
+
+# --- Stage 2: Minimal Runtime ---
+FROM debian:bookworm-slim AS runtime
+
+RUN apt-get update && apt-get install -y \
+    ca-certificates \
+    libssl-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Copy the compiled release binary from builder
+COPY --from=builder /app/target/release/memzent-router .
+
+EXPOSE 50051
+
+# Run the compiled release binary immediately
+ENTRYPOINT ["./memzent-router"]

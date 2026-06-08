@@ -1,0 +1,117 @@
+# ==========================================================
+# 🚀 Memzent Production Docker Compose Cluster (Zero Boot Installs)
+# ==========================================================
+
+services:
+  # Valkey Caching Layer (High-Performance Alpine)
+  valkey:
+    image: valkey/valkey:8.0-alpine
+    container_name: memzent-valkey-prod
+    ports:
+      - "6379:6379"
+    command: [ "valkey-server", "--io-threads", "4" ]
+    restart: always
+    healthcheck:
+      test: ["CMD", "valkey-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # Intelligence Layer (Vector Store)
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: memzent-qdrant-prod
+    ports:
+      - "6333:6333"
+    volumes:
+      - qdrant_data:/qdrant/storage
+    restart: always
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:6333/healthz || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # Memzent Semantic Router (Rust - Production Multi-Stage)
+  router:
+    build:
+      context: .
+      dockerfile: ./services/router/Dockerfile.prod
+    container_name: memzent-router-prod
+    environment:
+      QDRANT_URL: "http://qdrant:6334"
+    depends_on:
+      qdrant:
+        condition: service_healthy
+    restart: always
+    deploy:
+      replicas: 2
+
+  # Envoy gRPC Load Balancer (fronts Rust Router replicas)
+  envoy:
+    build:
+      context: ./infra/envoy
+    container_name: memzent-envoy-prod
+    ports:
+      - "9901:9901"
+    depends_on:
+      - router
+    restart: always
+
+  # Memzent Gateway (Go - Production Multi-Stage)
+  gateway:
+    build:
+      context: .
+      dockerfile: services/gateway/Dockerfile.prod
+    container_name: memzent-gateway-prod
+    ports:
+      - "8080:8080"
+    environment:
+      - VALKEY_URL=valkey:6379
+      - ROUTER_URL=envoy:50051
+      - JWT_SECRET=memzent-enterprise-secret-2026
+      - OLLAMA_ENABLED=false # Production leverages scalable OpenAI/Anthropic SaaS endpoints
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY}
+      - STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET}
+      - STRIPE_PRO_PRODUCT_ID=${STRIPE_PRO_PRODUCT_ID}
+      - STRIPE_BIZ_PRODUCT_ID=${STRIPE_BIZ_PRODUCT_ID}
+      - STRIPE_PRO_PRICE_ID=${STRIPE_PRO_PRICE_ID}
+      - STRIPE_BIZ_PRICE_ID=${STRIPE_BIZ_PRICE_ID}
+      - POSTGRES_URL=${POSTGRES_URL}
+    depends_on:
+      envoy:
+        condition: service_started
+      valkey:
+        condition: service_healthy
+    restart: always
+
+  # Next.js Dashboard (Bun/React - Production Multi-Stage)
+  dashboard:
+    build:
+      context: .
+      dockerfile: services/dashboard/Dockerfile.prod
+    container_name: memzent-dashboard-prod
+    ports:
+      - "3002:3000"
+    environment:
+      - NEXT_PUBLIC_GATEWAY_URL=http://localhost:8080
+      - GATEWAY_INTERNAL_URL=http://gateway:8080
+    depends_on:
+      - gateway
+    restart: always
+
+  # Marketing Website (Vite/Nginx - Production Multi-Stage)
+  website:
+    build:
+      context: .
+      dockerfile: website/Dockerfile.prod
+    container_name: memzent-website-prod
+    ports:
+      - "5173:80"
+    depends_on:
+      - dashboard
+    restart: always
+
+volumes:
+  qdrant_data:

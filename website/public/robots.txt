@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://memzent.ai/sitemap.xml

@@ -1,0 +1,124 @@
+// proto/router.proto
+syntax = "proto3";
+
+package router;
+
+// Ensure this matches your gateway's internal directory structure
+option go_package = "github.com/Opsylux/memzent/services/gateway/internal/router";
+
+service SemanticRouter {
+  // Selects the most relevant tools for a given user prompt
+  rpc SelectTools (ToolRequest) returns (ToolResponse);
+
+  // Registers or updates a tool in the vector database
+  rpc RegisterTool (RegisterToolRequest) returns (RegisterToolResponse);
+
+  // Computes a sequence/chain of tools required for complex multi-step prompt execution
+  rpc PlanToolChain (ToolChainRequest) returns (ToolChainResponse);
+
+  // Stores a memory fact in the semantic vector database
+  rpc StoreMemory (StoreMemoryRequest) returns (StoreMemoryResponse);
+
+  // Queries semantic memory facts for a prompt
+  rpc QueryMemory (QueryMemoryRequest) returns (QueryMemoryResponse);
+
+  // Flushes cached prompt vectors for an org from the prompts_collection
+  rpc FlushPromptCache (FlushPromptCacheRequest) returns (FlushPromptCacheResponse);
+}
+
+message RegisterToolRequest {
+  string id = 1;
+  string name = 2;
+  string description = 3;
+  string org_id = 4;
+}
+
+message RegisterToolResponse {
+  bool success = 1;
+  string error = 2;
+}
+
+
+message ToolRequest {
+  string prompt = 1;
+  string user_id = 2;
+  repeated string allowed_tool_ids = 3; // For RBAC-filtered searches
+  float score_threshold_override = 4;   // Override default relevance threshold
+  string org_id = 5;                    // Org isolation — required for cache partitioning
+  bool skip_cache = 6;                  // When true, skip semantic cache lookup AND suppress Qdrant prompt storage
+}
+
+message Tool {
+  string id = 1;
+  string name = 2;
+  float relevance_score = 3;
+  string description = 4; // Tool description from Qdrant
+}
+
+message ToolResponse {
+  repeated Tool tools = 1;
+  int32 total_tokens_saved = 2; 
+  string compressed_prompt = 3;
+  string similar_prompt_hash = 4; // Hash of a previously seen similar prompt (if any)
+  string current_prompt_hash = 5; // Canonical hash of the incoming prompt
+  map<string, string> entities = 6; // Extracted structured entities from the prompt
+}
+
+message ToolChainRequest {
+  string prompt = 1;
+  string user_id = 2;
+  repeated string allowed_tool_ids = 3;
+  float score_threshold_override = 4;
+  string org_id = 5;                    // Org isolation — required for RBAC-scoped chaining
+}
+
+message ToolStep {
+  int32 step_order = 1;
+  string tool_name = 2;
+  string parameters_json = 3;
+}
+
+message ToolChainResponse {
+  repeated ToolStep steps = 1;
+  float confidence_score = 2;
+}
+
+message StoreMemoryRequest {
+  string fact = 1;
+  string org_id = 2;
+  string user_id = 3;
+}
+
+message StoreMemoryResponse {
+  bool success = 1;
+  string error = 2;
+}
+
+message QueryMemoryRequest {
+  string prompt = 1;
+  string org_id = 2;
+  string user_id = 3;
+  float score_threshold_override = 4;
+}
+
+message MemoryHit {
+  string fact = 1;
+  float relevance_score = 2;
+}
+
+message QueryMemoryResponse {
+  repeated MemoryHit memories = 1;
+}
+
+message FlushPromptCacheRequest {
+  string org_id = 1;
+}
+
+message FlushPromptCacheResponse {
+  bool success = 1;
+  int64 deleted_count = 2;
+  string error = 3;
+}
+
+
+
