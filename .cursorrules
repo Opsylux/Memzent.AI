@@ -34,6 +34,6 @@ Every feature implementation MUST follow this sequence:
 - **Antigravity Instructions**: If you see a violation of `AGENTS.md`, stop and warn the user. Never mix service responsibilities (e.g., dont add DB queries to the Rust Router).
 
 ## 4. Pending Features Checkpoints
-Before implementing a Phase 2/3 item, check [PROJECT_STATUS.md](file:///c:/Users/nnaga/OneDrive/Documents/GitHub/MemzentMCP/PROJECT_STATUS.md).
+Before implementing a Phase 2/3 item, check [PROJECT_STATUS.md](./PROJECT_STATUS.md).
 - **Pop Question**: "Does this tool registration require a new Qdrant collection?"
 - **Pop Question**: "Is the connector type already registered in the Gateway's `connRegistry`?"
