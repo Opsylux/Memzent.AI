@@ -215,7 +215,7 @@ func (r *Registry) UpdateSimulationResults(ctx context.Context, candidateID stri
 		    replay_count = $3,
 		    status = $4,
 		    updated_at = now()
-		WHERE id = $1
+		WHERE id = $1 AND status IN ('discovered', 'simulated')
 	`, candidateID, accuracy, replayCount, newStatus)
 	if err != nil {
 		return fmt.Errorf("update workflow simulation results: %w", err)

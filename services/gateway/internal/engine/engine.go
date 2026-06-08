@@ -582,24 +582,24 @@ func (e *MemzentEngine) Process(ctx context.Context, req *PromptRequest) (*Promp
 		// Fast entity extraction via regex, then deterministic key lookup in Valkey.
 		// Only fires if we have a non-trivial prompt (entities can be extracted client-side).
 		if e.flags.L1bCache {
-		l1bEntities := extractEntitiesLocal(queryPrompt)
-		if len(l1bEntities) > 0 {
-			entityKey := e.buildEntityCacheKey(orgID, resolvedModel, l1bEntities)
-			if entityKey != "" {
-				cachedEntity, err := e.cache.GetSemanticResult(ctx, entityKey)
-				if err != nil || cachedEntity == "" {
-					cachedEntity, _ = e.getPersistentCache(ctx, entityKey)
-					if cachedEntity != "" {
-						go func() {
-							_ = e.cache.SetResult(context.Background(), entityKey, cachedEntity, e.cacheTTL)
-						}()
+			l1bEntities := extractEntitiesLocal(queryPrompt)
+			if len(l1bEntities) > 0 {
+				entityKey := e.buildEntityCacheKey(orgID, resolvedModel, l1bEntities)
+				if entityKey != "" {
+					cachedEntity, err := e.cache.GetSemanticResult(ctx, entityKey)
+					if err != nil || cachedEntity == "" {
+						cachedEntity, _ = e.getPersistentCache(ctx, entityKey)
+						if cachedEntity != "" {
+							go func() {
+								_ = e.cache.SetResult(context.Background(), entityKey, cachedEntity, e.cacheTTL)
+							}()
+						}
 					}
-				}
 
-				if cachedEntity != "" {
-					e.CacheHits.Add(1)
-					hitCounter, _ := e.orgHits.LoadOrStore(orgID, &atomic.Uint64{})
-					hitCounter.(*atomic.Uint64).Add(1)
+					if cachedEntity != "" {
+						e.CacheHits.Add(1)
+						hitCounter, _ := e.orgHits.LoadOrStore(orgID, &atomic.Uint64{})
+						hitCounter.(*atomic.Uint64).Add(1)
 						recordCacheLayerHit("L1b")
 						slog.Info("🎯 Stage 1b Cache HIT (Entity-Keyed)", "org_id", orgID, "entities", l1bEntities)
 						e.emitEvent(ctx, orgID, "cache_hit", map[string]any{"query": queryPrompt, "score": 1.0, "latency_ms": time.Since(processStart).Milliseconds(), "model": resolvedModel, "layer": "L1b"})
@@ -617,21 +617,21 @@ func (e *MemzentEngine) Process(ctx context.Context, req *PromptRequest) (*Promp
 						}
 						e.chargeCacheHit(ctx, orgID, req.Provider, req.Model, queryPrompt)
 
-					if req.SessionID != "" && e.sessionMgr != nil {
-						_ = e.sessionMgr.AppendMessage(ctx, req.SessionID, "user", queryPrompt)
-						_ = e.sessionMgr.AppendMessage(ctx, req.SessionID, "assistant", cachedEntity)
+						if req.SessionID != "" && e.sessionMgr != nil {
+							_ = e.sessionMgr.AppendMessage(ctx, req.SessionID, "user", queryPrompt)
+							_ = e.sessionMgr.AppendMessage(ctx, req.SessionID, "assistant", cachedEntity)
+						}
+						e.emitOffline(offline.OfflineEvent{
+							OrgID: orgID, UserID: req.UserID,
+							PromptHash: sha256Hex(queryPrompt), Entities: l1bEntities,
+							EntitySource: "regex", CacheLayer: "L1b",
+							LatencyMs: time.Since(processStart).Milliseconds(),
+							Provider: req.Provider, Model: resolvedModel, Success: true, Timestamp: time.Now(),
+						})
+						return &PromptResponse{Text: cachedEntity, Cached: true, SessionID: req.SessionID, Entities: l1bEntities}, nil
 					}
-					e.emitOffline(offline.OfflineEvent{
-						OrgID: orgID, UserID: req.UserID,
-						PromptHash: sha256Hex(queryPrompt), Entities: l1bEntities,
-						EntitySource: "regex", CacheLayer: "L1b",
-						LatencyMs: time.Since(processStart).Milliseconds(),
-						Provider: req.Provider, Model: resolvedModel, Success: true, Timestamp: time.Now(),
-					})
-					return &PromptResponse{Text: cachedEntity, Cached: true, SessionID: req.SessionID, Entities: l1bEntities}, nil
 				}
 			}
-		}
 		} // end L1b feature flag
 	}
 
@@ -711,22 +711,25 @@ func (e *MemzentEngine) Process(ctx context.Context, req *PromptRequest) (*Promp
 			slog.Info("⚡ Workflow shortcut activated — skipping LLM", "org_id", orgID, "workflow_id", workflowID, "tools", workflowToolIDs)
 			wfStart := time.Now()
 
-			// Execute the workflow's tools directly
-			var wfResults []string
-			for _, toolID := range workflowToolIDs {
-				var toolMeta *toolspkg.Tool
-				allTools, tErr := e.registry.ListTools(ctx, orgID)
-				if tErr == nil {
-					for _, t := range allTools {
+				// Pre-fetch all tools once (avoid N+1 query)
+				var orgTools []*toolspkg.Tool
+				if e.registry != nil {
+					orgTools, _ = e.registry.ListTools(ctx, orgID)
+				}
+
+				// Execute the workflow's tools directly
+				var wfResults []string
+				for _, toolID := range workflowToolIDs {
+					var toolMeta *toolspkg.Tool
+					for _, t := range orgTools {
 						if t.ID == toolID || t.Name == toolID {
 							toolMeta = t
 							break
 						}
+				}
+					if toolMeta == nil {
+						continue
 					}
-				}
-				if toolMeta == nil {
-					continue
-				}
 
 				var connector connectors.Connector
 				switch toolMeta.ConnectorType {
@@ -775,7 +778,9 @@ func (e *MemzentEngine) Process(ctx context.Context, req *PromptRequest) (*Promp
 			if wfSuccess {
 				wfResponse := strings.Join(wfResults, "\n")
 				recordCacheLayerHit("L1b") // Workflow shortcut counts as GPU avoidance
-				e.emitOffline(offline.OfflineEvent{
+					// Charge a reduced cost for workflow execution (tool invocation without LLM)
+					e.chargeCacheHit(ctx, orgID, req.Provider, req.Model, queryPrompt)
+					e.emitOffline(offline.OfflineEvent{
 					OrgID: orgID, UserID: req.UserID,
 					PromptHash: sha256Hex(queryPrompt), Entities: extractedEntities,
 					EntitySource: entitySource, CacheLayer: "workflow",
