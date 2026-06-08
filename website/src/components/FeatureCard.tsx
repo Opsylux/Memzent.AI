@@ -1,7 +1,14 @@
-import React from 'react';
 import { motion } from 'framer-motion';
+import type { LucideIcon } from 'lucide-react';
 
-const FeatureCard = ({ icon: Icon, title, desc, color }: any) => (
+interface FeatureCardProps {
+  icon: LucideIcon;
+  title: string;
+  desc: string;
+  color?: string;
+}
+
+const FeatureCard = ({ icon: Icon, title, desc, color }: FeatureCardProps) => (
   <motion.div 
     initial={{ opacity: 0, y: 20 }}
     whileInView={{ opacity: 1, y: 0 }}

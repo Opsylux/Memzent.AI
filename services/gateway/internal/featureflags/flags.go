@@ -9,12 +9,12 @@ import (
 // Flags holds the global feature flag state for evolution layers.
 // All flags default to true (enabled) unless explicitly set to "false" via env vars.
 type Flags struct {
-	L1bCache        bool // MEMZENT_L1B_ENABLED — entity-keyed hot path cache
-	OfflinePlane    bool // MEMZENT_OFFLINE_ENABLED — offline learning plane (O1/O2/O3 miners)
-	OfflineStreams  bool // MEMZENT_OFFLINE_STREAMS — use Valkey Streams instead of in-memory channels
-	WorkflowEngine  bool // MEMZENT_WORKFLOW_ENABLED — workflow registry + engine shortcut
-	EntityMetrics   bool // MEMZENT_ENTITY_METRICS_ENABLED — entity quality + GPU avoidance counters
-	PatternMining   bool // MEMZENT_PATTERN_MINING_ENABLED — E6 Markov chain agent pattern mining (experimental)
+	L1bCache       bool // MEMZENT_L1B_ENABLED — entity-keyed hot path cache
+	OfflinePlane   bool // MEMZENT_OFFLINE_ENABLED — offline learning plane (O1/O2/O3 miners)
+	OfflineStreams bool // MEMZENT_OFFLINE_STREAMS — use Valkey Streams instead of in-memory channels
+	WorkflowEngine bool // MEMZENT_WORKFLOW_ENABLED — workflow registry + engine shortcut
+	EntityMetrics  bool // MEMZENT_ENTITY_METRICS_ENABLED — entity quality + GPU avoidance counters
+	PatternMining  bool // MEMZENT_PATTERN_MINING_ENABLED — E6 Markov chain agent pattern mining (experimental)
 }
 
 var (

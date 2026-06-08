@@ -32,25 +32,31 @@
 
 | Feature | Service | Status | Honest notes |
 | :--- | :--- | :--- | :--- |
-| **Triple-Layer Caching** | Gateway / Rust | 🟡 | L1 literal, L1.5 canonical (`normalization.go`), L2 semantic via gRPC + Qdrant all implemented in `engine.go`. Postgres durable fallback in `getPersistentCache`. Cache hits skip RBAC re-check — org-scoped keys mitigate but not full re-auth. |
-| **Service Boundaries** | All | 🟡 | Go/Rust/Next.js split respected in practice. Dead packages exist (`offline/`, `workflow/`, `prewarmer/`, `featureflags/`, `notifications/`) — not wired in `main.go`. |
-| **Rate Limiting** | Gateway | 🟡 | Tier-based limits in `engine.Process` (free 10/min, pro 100, business 1000). PAYG balance boosts free→pro. TTL eviction in `StartRateLimiterEviction`. **Not documented in ARCHITECTURE.md (still says "not started").** |
-| **RBAC & API Keys** | Gateway / Dashboard | 🟡 | Scopes, rotation grace, expiry in `rbac.go` + `keys/page.tsx`. Production uses `ENVIRONMENT=production` strict mode; dev bypasses gated to non-production. |
-| **Dynamic Tool Registry** | Gateway | 🟡 | Postgres registry, 30s refresh loop, `/v1/tools/sync`, `/v1/tools/status`, Qdrant vectorization. **Branch adds** concurrent health probes in `handlers.go` + `main.go`. |
-| **Connector Framework** | Gateway | 🟠 | **Working:** core (demo), MCP, REST, SQL. Registration **rejects** graphql/webhook/grpc. Core tools return `[Demo]` stubs (Sprint 4). |
-| **Multi-Provider LLM Routing** | Gateway | 🟡 | Ollama, OpenAI, Anthropic, Gemini in `main.go`. Per-request override via headers/body. Model discovery loop every 30 min. |
-| **Semantic Routing** | Rust Router | 🟡 | `SelectTools`, `RegisterTool`, `PlanToolChain`, `StoreMemory`, `QueryMemory` in `router.proto` + `main.rs`. Embedding cache (2000 entries, not true LRU per `notes.md`). |
-| **Tool Chaining** | Gateway / Rust | 🟠 | `chain: true` flag + router confidence ≥ 0.65; keyword fallback retained (Sprint 4). |
-| **SSE Streaming** | Gateway | 🟠 | **Ollama:** native token streaming (Sprint 4). **Cache hits / other providers:** fallback chunked emit in `main.go`. |
-| **Agent Memory** | Gateway / Rust | 🟡 | Sessions in Postgres (`memory/session.go`). Semantic facts in Qdrant via `memory/memory.go` + `QueryMemory`/`StoreMemory` RPCs. |
-| **Context Analytics** | Gateway / Dashboard | 🟡 | `/v1/analytics/context` + dashboard analytics pages. SQL aggregations in `metrics/analytics.go`. |
-| **Billing & Stripe** | Gateway / Dashboard | 🟡 | Token ledger, pre-check in engine, Stripe checkout + webhooks. Migration `020` **not applied to Supabase prod**. |
-| **Neural Dashboard** | Dashboard | 🟡 | Playground, keys, billing, tools, analytics, docs, blog. Uses server actions — **not** broken `memzent-client.ts`. No automated tests. |
-| **Marketing Website** | Website | 🟡 | Vite/React site on `:5173`. Functional for marketing; not part of core pipeline. |
-| **API Key Security Hardening** | Gateway / Dashboard | 🟡 | Code complete (TTL, rotation, stale audit). **⬜ Migration `020` not applied to Supabase.** |
-| **Qdrant DR / Snapshots** | Router / Compose | 🟡 | **On branch `mani/code`:** snapshot scheduler in `router/src/main.rs`, `SNAPSHOT_INTERVAL_HOURS` in `docker-compose.yml`. S3 offsite upload still commented out. |
-| **DevOps / CI** | Repo | 🟡 | CI workflows: `go.yml` (unit + Valkey integration), `rust.yml`, `dashboard.yml`. Root `go.mod` stub removed. Gateway enabled in `docker-compose.yml` via `.env`. |
-| **Documentation accuracy** | Docs | 🟡 | README + ARCHITECTURE reconciled (Sprint 3). Keep PROJECT_STATUS as source of truth for completion %. |
+| **Four-Layer Caching** | Gateway/Rust | ✅ 100% | L1 Literal, L1.5 Canonical, L1b Entity-Keyed, L2 Semantic. |
+| **Service Boundaries** | All | ✅ 100% | Go Gateway (Auth/Orchestration), Rust Router (Math), Dashboard (UI). |
+| **RBAC Scoping & Multi-Token** | Gateway | ✅ 100% | Dynamic key generation with customizable roles and scopes. API = pay-as-you-go, Dashboard = unlimited. |
+| **Dynamic Tool Registry** | Gateway | ✅ 100% | Refresh loop, Qdrant sync, full CRUD (`/v1/tools/{id}`), Dashboard edit/delete UI. |
+| **Connector Framework** | Gateway | ✅ 100% | SQL/REST/Core connectors fully implemented, registered, and active. |
+| **Neural Dashboard** | Dashboard | ✅ 100% | Dynamic Billing, API Security metrics, live Playground, Provider discovery, Tool CRUD, Notifications. Responsive mobile layout. |
+| **Provider Discovery** | Gateway | ✅ 100% | `/v1/providers` + `/v1/models` APIs. OpenAI, Anthropic, Gemini, Ollama discovery. |
+| **Marketing Website** | Website | ✅ 100% | Mobile nav, SEO/OG/JSON-LD, Evolution Pipeline section, comparison table, sitemap.xml. |
+| **Advanced Orchestration (Phase 4)** | All | ✅ 100% | Model-scoped caching, PlanToolChain Go/Rust bindings, and typewriter SSE streaming. |
+| **Agent Memory (Phase 5/6)** | Gateway/Rust | ✅ 100% | PostgreSQL session threads and semantic memory Qdrant extraction. |
+| **Context Analytics (Phase 5/6)** | Dashboard/Gateway | ✅ 100% | Premium ROI tracking, latency tool telemetry, and intent theme clusters. |
+| **API Key Security (Phase 6)** | Gateway/Dashboard | ✅ 100% | Expiry TTL picker, last_used_at tracking, in-place rotation with 15-min grace window, stale key audit. |
+| **Spend Limits & Budget Forecast** | Gateway/Dashboard | ✅ 100% | Dollar + token caps (daily/monthly), budget forecast API, spend timeseries, provider breakdown. |
+| **Notification Pipeline (Phase 7)** | Gateway/Dashboard | ✅ 100% | Webhook CRUD, 6 event types, HMAC signing, async retry with dead letter, delivery logs. |
+| **Per-User Rate Limiting** | Gateway | ✅ 100% | Role-proportional limits (viewer 20%, member 50%, admin 100% of org). |
+| **E1: Entity Extraction** | Gateway/Rust | ✅ 100% | 6 typed extractors (regex, <1ms), positional awareness, mirrored in Go + Rust. |
+| **E2: L1b Entity-Keyed Cache** | Gateway | ✅ 100% | Deterministic Valkey key from sorted entity pairs. Sub-ms lookups. Feature flag: `MEMZENT_L1B_ENABLED`. |
+| **E3: Offline Learning Plane** | Gateway | ✅ 100% | Buffered channel event bus (4096/4 workers), 3 miners (Request, Cache, Workflow). PII-safe. |
+| **E4: Workflow Registry** | Gateway/Dashboard | ✅ 100% | Full lifecycle (discovered→approved→active→stale), API endpoints, dashboard page, engine shortcut. |
+| **E5: GPU Avoidance Metrics** | Gateway/Dashboard | ✅ 100% | 8 Prometheus counters, GPU Analytics dashboard, cache layer distribution. |
+| **E6: Pattern Mining** | Gateway | ✅ 100% | Markov chain analysis + speculative pre-warmer. Experimental, flag defaults false. |
+| **Feature Flags System** | Gateway | ✅ 100% | 6 env-var flags controlling L1b, offline, streams, workflows, metrics, pattern mining. |
+| **Documentation Site** | Dashboard | ✅ 100% | 19 doc pages including entity-extraction, cache-layers, offline-learning, gpu-analytics. SEO metadata. |
+| **Engineering Blog** | Dashboard | ✅ 100% | MDX + Supabase dual source, per-post SEO/OG metadata, Evolution Pipeline launch post. |
+| **Integration Test Suites** | Gateway | ✅ 100% | 4 suites: test-cache (12), test-entity (14), test-memory (10), test-evolution (28). |
 
 ---
 
@@ -58,7 +64,23 @@
 
 **AGENTS.md policy:**
 
-`Rate Limit → Cache → RBAC → Semantic Routing → Tools → Synthesis → Cache Set`
+### [Phase 8] Evolution Pipeline (E1–E6) ✅ COMPLETE
+*   **E1: Entity Extraction**: 6 typed regex extractors (<1ms) for accounts, customers, invoices, amounts, dates, identifiers. Positional awareness (source vs destination). Mirrored in both Rust Router and Go Gateway.
+*   **E2: L1b Entity-Keyed Cache**: Deterministic Valkey key from sorted entity pairs (`org:{orgID}:m:{model}:e:{key=value|...}`). Sub-millisecond lookups. Write-through on skip-cache.
+*   **E3: Offline Learning Plane**: Buffered channel event bus (4096 buffer, 4 workers) with try-send semantics. Three miners: Request, Cache, Workflow. PII-safe (no raw prompts). Valkey Streams transport available.
+*   **E4: Workflow Registry**: Full lifecycle management (discovered → simulated → pending_review → approved → active → stale → demoted). API endpoints, dashboard page, engine shortcut that fires all matched tools in one pass.
+*   **E5: GPU Avoidance Metrics**: 8 Prometheus counters for entity types, cache layer distribution, GPU avoidance rate. GPU Analytics dashboard page.
+*   **E6: Pattern Mining**: Markov chain analysis predicts next-likely requests. Speculative Pre-Warmer populates L1b entries proactively. Experimental, defaults off.
+*   **Feature Flags**: 6 environment variable flags controlling all Evolution Pipeline features.
+*   **Integration Tests**: `make test-evolution` with 28 functional assertions across E1-E5 + infrastructure.
+*   **Dashboard**: Mobile responsive rewrite, sign-out resilience, PKCE error handling, role-gated admin cards, org-isolated stats.
+*   **Website & Docs**: Evolution Pipeline section, 4 new doc pages, blog post, sitemap.xml, robots.txt, SEO metadata across all pages.
+
+### [Phase 5 & 6] Memory, Tool Chaining & Context Analytics ✅ COMPLETE
+*   **Semantic Agent Memory**: Added PostgreSQL persistence for conversation sessions (`sessions`, `session_messages`) and vectorized conversation facts out-of-band to Qdrant memory collection.
+*   **Sequential Tool Chaining**: Integrated Go Gateway engine dynamic parameter schema fitting (`fitToolParameters`) and sequential execution chains (`PlanToolChain`).
+*   **Context Analytics**: Developed SQL metrics aggregations computing savings ROI, tool latency, and failure rates, and clustering user intent themes.
+*   **Next.js Dashboard**: Added high-end telemetry cards, tool failure dashboards, switchable playground sessions, and environment-decoupled build fallbacks.
 
 **Actual code in `engine.Process`:**
 

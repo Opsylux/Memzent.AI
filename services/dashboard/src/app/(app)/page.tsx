@@ -32,12 +32,12 @@ export default async function Page() {
 
   const total = stats.total_requests || 0;
   const hits = stats.cache_hits || 0;
-  const cacheHitPercent = total > 0 ? (hits / total) * 100 : 0;
-  const semanticSavings = cacheHitPercent.toFixed(1);
-  const uptimeHours = Math.floor((stats.uptime_seconds || 0) / 3600);
+  const semanticSavings = total > 0 ? ((hits / total) * 100).toFixed(1) : "0.0";
+  const uptimeHours = stats.uptime_seconds ? Math.floor(stats.uptime_seconds / 3600) : null;
   const providerCount = stats.provider_count || 0;
-  const defaultProvider = stats.default_provider || "Ollama";
+  const defaultProvider = stats.default_provider || "";
   const activeProviders = Array.isArray(stats.active_providers) ? stats.active_providers : [];
+  const isAdmin = org?.role === 'admin' || org?.role === 'platform_staff';
 
   return (
     <div className="space-y-10 pb-20">
@@ -134,6 +134,7 @@ export default async function Page() {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {isAdmin && (
             <div className="stat-card glow-purple p-8 neural-bg border-white/5 flex flex-col justify-between min-h-[300px]">
               <div className="space-y-6">
                 <div className="flex items-center gap-4">
@@ -163,7 +164,9 @@ export default async function Page() {
                 </div>
               </div>
             </div>
+            )}
 
+            {isAdmin && (
             <div className="stat-card glow-cyan p-8 neural-bg border-white/5 flex flex-col justify-between min-h-[300px]">
               <div className="space-y-6">
                 <div className="flex items-center gap-4">
@@ -194,6 +197,7 @@ export default async function Page() {
                 <div className="w-2.5 h-2.5 rounded-full bg-memzent-accent shadow-[0_0_8px_#00ff8e]" />
               </div>
             </div>
+            )}
           </div>
         </section>
 

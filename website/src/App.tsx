@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Routes, Route, Link, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Shield,
@@ -16,12 +17,17 @@ import {
   Cpu,
   Menu,
   X,
-  Code as Github
+  Code as Github,
+  Scan,
+  Layers,
+  BarChart3
 } from 'lucide-react';
 
 
 
 import FeatureCard from './components/FeatureCard';
+import BlogListPage from './pages/BlogList';
+import BlogPostPage from './pages/BlogPost';
 
 const appUrl = import.meta.env.VITE_APP_URL || "http://localhost:3000"
 
@@ -30,17 +36,19 @@ const Navbar = () => {
 
   return (
     <nav className="fixed top-0 left-0 right-0 z-50 glass px-6 py-4 flex justify-between items-center m-4 rounded-2xl">
-      <div className="flex items-center gap-2">
+      <Link to="/" className="flex items-center gap-2">
         <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-memzent-glow to-memzent-purple flex items-center justify-center shadow-[0_0_15px_rgba(0,243,255,0.3)]">
           <span className="text-black font-black text-sm italic select-none">M</span>
         </div>
         <span className="text-2xl font-black tracking-tighter">MEMZENT</span>
-      </div>
+      </Link>
       <div className="hidden md:flex gap-8 text-sm font-medium opacity-80">
+        <a href={appUrl + "/docs"} className="hover:text-memzent-glow transition-colors">Docs</a>
         <a href="#payg" className="hover:text-memzent-glow transition-colors">Pricing</a>
         <a href="#why" className="hover:text-memzent-glow transition-colors">Why Memzent</a>
         <a href="#security" className="hover:text-memzent-glow transition-colors">Security</a>
         <a href="#observability" className="hover:text-memzent-glow transition-colors">Observability</a>
+        <Link to="/blog" className="hover:text-memzent-glow transition-colors">Blog</Link>
       </div>
       <div className="hidden md:flex gap-4">
         <a href="https://github.com/Opsylux/Memzent.AI" target="_blank" rel="noopener" className="text-sm font-bold opacity-75 hover:opacity-100 px-3 py-2 transition-all cursor-pointer flex items-center gap-2">
@@ -64,10 +72,12 @@ const Navbar = () => {
             exit={{ opacity: 0, y: -10 }}
             className="absolute top-full left-0 right-0 mt-2 mx-4 glass rounded-2xl p-6 flex flex-col gap-4 md:hidden"
           >
+            <a href={appUrl + "/docs"} onClick={() => setMobileOpen(false)} className="text-sm font-bold opacity-80 hover:text-memzent-glow py-2">Docs</a>
             <a href="#payg" onClick={() => setMobileOpen(false)} className="text-sm font-bold opacity-80 hover:text-memzent-glow py-2">Pricing</a>
             <a href="#why" onClick={() => setMobileOpen(false)} className="text-sm font-bold opacity-80 hover:text-memzent-glow py-2">Why Memzent</a>
             <a href="#security" onClick={() => setMobileOpen(false)} className="text-sm font-bold opacity-80 hover:text-memzent-glow py-2">Security</a>
             <a href="#observability" onClick={() => setMobileOpen(false)} className="text-sm font-bold opacity-80 hover:text-memzent-glow py-2">Observability</a>
+            <Link to="/blog" onClick={() => setMobileOpen(false)} className="text-sm font-bold opacity-80 hover:text-memzent-glow py-2">Blog</Link>
             <hr className="border-white/10" />
             <a href="https://github.com/Opsylux/Memzent.AI" target="_blank" rel="noopener" className="text-sm font-bold opacity-80 flex items-center gap-2"><Github size={16} /> GitHub</a>
             <a href={appUrl + "/login"} className="bg-memzent-glow text-black text-sm font-black px-6 py-3 rounded-xl text-center">Get Started Free</a>
@@ -141,8 +151,8 @@ const Hero = () => (
       className="flex flex-wrap justify-center gap-4 mt-16"
     >
       {[
-        { icon: <Zap size={12} />, label: "80% cache savings", color: "text-memzent-glow" },
-        { icon: <Shield size={12} />, label: "Zero-trust RBAC", color: "text-memzent-purple" },
+        { icon: <Zap size={12} />, label: "80%+ GPU avoidance", color: "text-memzent-glow" },
+        { icon: <Shield size={12} />, label: "Entity-aware caching", color: "text-memzent-purple" },
         { icon: <Brain size={12} />, label: "Semantic memory", color: "text-memzent-accent" },
         { icon: <Cpu size={12} />, label: "Multi-LLM routing", color: "text-white/80" },
       ].map(b => (
@@ -308,13 +318,17 @@ const WhyMemzent = () => (
         <tbody className="text-white/70 font-bold">
           {[
             { feature: "Semantic Cache (Vector)", memzent: true, litellm: false, helicone: false, portkey: false },
-            { feature: "Multi-LLM Routing", memzent: true, litellm: true, helicone: false, portkey: true },
-            { feature: "MCP Tool Registry", memzent: true, litellm: false, helicone: false, portkey: false },
-            { feature: "RBAC + Governance", memzent: true, litellm: false, helicone: false, portkey: true },
-            { feature: "Agent Memory (Persistent)", memzent: true, litellm: false, helicone: false, portkey: false },
-            { feature: "Real-time Observability", memzent: true, litellm: true, helicone: true, portkey: true },
-            { feature: "Pay-As-You-Go Billing", memzent: true, litellm: false, helicone: true, portkey: true },
-            { feature: "Open Source Core", memzent: true, litellm: true, helicone: false, portkey: false },
+                { feature: "Entity-Aware Cache Guard", memzent: true, litellm: false, helicone: false, portkey: false },
+                { feature: "Multi-LLM Routing", memzent: true, litellm: true, helicone: false, portkey: true },
+                { feature: "MCP Tool Registry", memzent: true, litellm: false, helicone: false, portkey: false },
+                { feature: "Workflow Discovery & Shortcuts", memzent: true, litellm: false, helicone: false, portkey: false },
+                { feature: "RBAC + Governance", memzent: true, litellm: false, helicone: false, portkey: true },
+                { feature: "Agent Memory (Persistent)", memzent: true, litellm: false, helicone: false, portkey: false },
+                { feature: "GPU Avoidance Analytics", memzent: true, litellm: false, helicone: false, portkey: false },
+                { feature: "Spend Limits & Budget Forecast", memzent: true, litellm: false, helicone: false, portkey: true },
+                { feature: "Real-time Observability", memzent: true, litellm: true, helicone: true, portkey: true },
+                { feature: "Pay-As-You-Go Billing", memzent: true, litellm: false, helicone: true, portkey: true },
+                { feature: "Open Source Core", memzent: true, litellm: true, helicone: false, portkey: false },
           ].map(row => (
             <tr key={row.feature} className="border-b border-white/5 hover:bg-white/[0.02] transition-colors">
               <td className="py-4 px-4">{row.feature}</td>
@@ -330,6 +344,95 @@ const WhyMemzent = () => (
 
     <div className="text-center mt-12">
       <p className="text-sm opacity-50 font-bold">Comparison based on public feature documentation as of 2026. All products are excellent — Memzent combines capabilities into one unified layer.</p>
+    </div>
+  </section>
+);
+
+const EvolutionPipeline = () => (
+  <section className="py-32 px-6 max-w-7xl mx-auto">
+    <div className="text-center mb-16">
+      <h2 className="text-5xl md:text-7xl font-black tracking-tighter mb-6">
+        EVOLUTION <span className="text-transparent bg-clip-text bg-gradient-to-r from-memzent-glow to-memzent-accent">PIPELINE</span>
+      </h2>
+      <p className="text-lg opacity-70 max-w-2xl mx-auto">
+        Six layers of intelligence that eliminate redundant GPU inference.
+        Every request is filtered through entity extraction, multi-layer caching, and
+        offline learning — before the LLM is ever invoked.
+      </p>
+    </div>
+
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+      {[
+        {
+          icon: <Scan size={28} />,
+          title: "Entity Extraction",
+          tag: "E1",
+          desc: "Regex-based typed entity extraction (<1ms) identifies accounts, customers, amounts, and dates — preventing false cache hits across similar prompts.",
+          color: "text-memzent-glow",
+          borderColor: "border-memzent-glow/20"
+        },
+        {
+          icon: <Layers size={28} />,
+          title: "L1b Hot Path Cache",
+          tag: "E2",
+          desc: "Entity-keyed deterministic cache in Valkey. Same entities = instant response, zero vector search. Resolves 20-30% of repeat requests sub-millisecond.",
+          color: "text-green-400",
+          borderColor: "border-green-500/20"
+        },
+        {
+          icon: <Activity size={28} />,
+          title: "Offline Learning Plane",
+          tag: "E3",
+          desc: "Asynchronous telemetry pipeline with request, cache, and workflow miners. Discovers patterns without adding latency. PII-safe by design.",
+          color: "text-purple-400",
+          borderColor: "border-purple-500/20"
+        },
+        {
+          icon: <Database size={28} />,
+          title: "Workflow Registry",
+          tag: "E4",
+          desc: "Automatically discovers and registers multi-step tool sequences. Approved workflows execute as single-shot shortcuts, skipping per-step routing.",
+          color: "text-blue-400",
+          borderColor: "border-blue-500/20"
+        },
+        {
+          icon: <BarChart3 size={28} />,
+          title: "GPU Avoidance Metrics",
+          tag: "E5",
+          desc: "Track the percentage of requests resolved without LLM inference. Prometheus counters for entity types, cache layers, and avoidance rates.",
+          color: "text-memzent-accent",
+          borderColor: "border-memzent-accent/20"
+        },
+        {
+          icon: <Brain size={28} />,
+          title: "Pattern Mining",
+          tag: "E6",
+          desc: "Experimental Markov chain analysis predicts next-likely requests and speculatively pre-warms the L1b cache for zero-latency first hits.",
+          color: "text-yellow-400",
+          borderColor: "border-yellow-500/20"
+        },
+      ].map(item => (
+        <motion.div
+          key={item.tag}
+          initial={{ opacity: 0, y: 20 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true }}
+          className={`glass p-8 rounded-3xl ${item.borderColor} hover:border-opacity-50 transition-all group`}
+        >
+          <div className="flex items-center gap-3 mb-4">
+            <span className={`text-[10px] font-black uppercase tracking-[0.2em] px-2 py-1 rounded bg-white/5 ${item.color}`}>{item.tag}</span>
+            <div className={item.color}>{item.icon}</div>
+          </div>
+          <h3 className="text-lg font-black tracking-tight mb-3 uppercase">{item.title}</h3>
+          <p className="text-sm opacity-60 leading-relaxed">{item.desc}</p>
+        </motion.div>
+      ))}
+    </div>
+
+    <div className="text-center mt-16">
+      <a href={appUrl + "/docs/entity-extraction"} className="inline-flex items-center gap-2 text-sm font-black text-memzent-glow hover:underline uppercase tracking-widest">
+        Read the Technical Docs <ArrowRight size={14} />
+      </a>
     </div>
   </section>
 );
@@ -422,16 +525,20 @@ const Footer = () => (
       <div className="space-y-3">
         <div className="font-black text-white mb-4">PLATFORM</div>
         <a href="#payg" className="block hover:text-memzent-glow">Pricing</a>
-        <a href="#security" className="block hover:text-memzent-glow">Gateway API</a>
+        <a href={appUrl + "/docs/architecture"} className="block hover:text-memzent-glow">Architecture</a>
         <a href={appUrl + "/docs/semantic-proxy"} className="block hover:text-memzent-glow">Semantic Router</a>
+        <a href={appUrl + "/docs/entity-extraction"} className="block hover:text-memzent-glow">Entity Extraction</a>
+        <a href={appUrl + "/docs/cache-layers"} className="block hover:text-memzent-glow">Cache Layers</a>
         <a href={appUrl + "/docs/tool-registry"} className="block hover:text-memzent-glow">MCP Tools</a>
       </div>
       <div className="space-y-3">
-        <div className="font-black text-white mb-4">COMPANY</div>
-        <a href={appUrl + "/login"} className="block hover:text-memzent-glow">Dashboard</a>
+        <div className="font-black text-white mb-4">RESOURCES</div>
         <a href={appUrl + "/docs"} className="block hover:text-memzent-glow">Documentation</a>
         <a href={appUrl + "/docs/quickstart"} className="block hover:text-memzent-glow">Quickstart</a>
-        <a href={appUrl + "/playground"} className="block hover:text-memzent-glow">Playground</a>
+        <a href={appUrl + "/docs/api-reference"} className="block hover:text-memzent-glow">API Reference</a>
+        <Link to="/blog" className="block hover:text-memzent-glow">Blog</Link>
+        <a href="https://github.com/Opsylux/Memzent.AI" target="_blank" rel="noopener" className="block hover:text-memzent-glow">GitHub</a>
+        <a href={appUrl + "/login"} className="block hover:text-memzent-glow">Dashboard</a>
       </div>
     </div>
     <div className="max-w-7xl mx-auto flex items-center justify-between text-[10px] font-black uppercase tracking-widest opacity-40">
@@ -441,14 +548,27 @@ const Footer = () => (
   </footer>
 );
 
+const LandingPage = () => (
+  <>
+    <Hero />
+    <PAYGSection />
+    <WhyMemzent />
+    <EvolutionPipeline />
+    <Pillars />
+  </>
+);
+
 export default function App() {
+  const location = useLocation();
+
   return (
     <div className="bg-memzent-dark text-white min-h-screen selection:bg-memzent-glow selection:text-black font-outfit">
       <Navbar />
-      <Hero />
-      <PAYGSection />
-      <WhyMemzent />
-      <Pillars />
+      <Routes location={location} key={location.pathname}>
+        <Route path="/" element={<LandingPage />} />
+        <Route path="/blog" element={<BlogListPage />} />
+        <Route path="/blog/:slug" element={<BlogPostPage />} />
+      </Routes>
       <Footer />
     </div>
   );

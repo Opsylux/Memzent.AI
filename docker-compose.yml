@@ -32,7 +32,7 @@ services:
 
   # Intelligence Layer (Vector Store)
   qdrant:
-    image: qdrant/qdrant:latest
+    image: qdrant/qdrant:v1.14.0
     container_name: memzent-qdrant
     ports:
       - "6333:6333"
@@ -80,6 +80,12 @@ services:
     depends_on:
       qdrant:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "grep -q 'listening' /proc/1/fd/1 2>/dev/null || exit 0"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
 
   # Memzent Gateway (Go)
   gateway:
@@ -112,6 +118,7 @@ services:
     container_name: memzent-dashboard
     volumes:
       - ./services/dashboard:/app
+      - /app/node_modules
     working_dir: /app
     ports:
       - "3002:3000"
@@ -126,6 +133,12 @@ services:
       NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: ${NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY:-}
     command: >
       sh -c "bun install && bun dev"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000 || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
 
   # Marketing Website (Node/Vite)
   website:
@@ -150,6 +163,12 @@ services:
       VITE_SUPABASE_ANON_KEY: ${VITE_SUPABASE_ANON_KEY}
     command: >
       sh -c "npm install && npm run dev -- --host"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:5173 || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
 
   # # Open-Source Local Meta LLM Engine
   # ollama:

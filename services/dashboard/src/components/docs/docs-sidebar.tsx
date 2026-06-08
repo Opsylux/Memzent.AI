@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Book, Zap, Shield, Key, Code, MessageCircle, Cpu, DollarSign, Globe, AlertTriangle, Bell, Database, Layers } from "lucide-react";
+import { Book, Zap, Shield, Key, Code, MessageCircle, Cpu, DollarSign, Globe, AlertTriangle, Bell, Database, Layers, Scan, Activity, BarChart3 } from "lucide-react";
 
 export const docSections = [
   {
@@ -12,6 +12,15 @@ export const docSections = [
       { name: "Architecture", href: "/docs/architecture", icon: Zap },
       { name: "Semantic Proxying", href: "/docs/semantic-proxy", icon: MessageCircle },
       { name: "Caching Deep Dive", href: "/docs/caching", icon: Layers },
+    ]
+  },
+  {
+    title: "Evolution Pipeline",
+    items: [
+      { name: "Entity Extraction", href: "/docs/entity-extraction", icon: Scan },
+      { name: "Cache Layers & L1b", href: "/docs/cache-layers", icon: Layers },
+      { name: "Offline Learning", href: "/docs/offline-learning", icon: Activity },
+      { name: "GPU Analytics", href: "/docs/gpu-analytics", icon: BarChart3 },
     ]
   },
   {

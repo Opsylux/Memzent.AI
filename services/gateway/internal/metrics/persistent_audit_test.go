@@ -85,11 +85,11 @@ func TestPersistentAuditLogger_GetLatest(t *testing.T) {
 	logger := NewPersistentAuditLogger(db)
 
 	now := time.Now()
-	rows := sqlmock.NewRows([]string{"org_id", "user_id", "action", "created_at"}).
-		AddRow("123e4567-e89b-12d3-a456-426614174000", "user1", "CACHE:hit", now).
-		AddRow("123e4567-e89b-12d3-a456-426614174000", "user2", "SYSTEM_BOOT", now)
+	rows := sqlmock.NewRows([]string{"org_id", "user_id", "action", "metadata", "created_at"}).
+		AddRow("123e4567-e89b-12d3-a456-426614174000", "user1", "CACHE:hit", `{"cache_layer":"L1"}`, now).
+		AddRow("123e4567-e89b-12d3-a456-426614174000", "user2", "SYSTEM_BOOT", nil, now)
 
-	mock.ExpectQuery("SELECT org_id, user_id, action, created_at FROM audit_logs").
+	mock.ExpectQuery("SELECT org_id, user_id, action, metadata, created_at FROM audit_logs").
 		WithArgs("123e4567-e89b-12d3-a456-426614174000", 10).
 		WillReturnRows(rows)
 
@@ -103,6 +103,9 @@ func TestPersistentAuditLogger_GetLatest(t *testing.T) {
 	}
 	if events[0].Type != "CACHE" || events[0].Detail != "hit" {
 		t.Errorf("expected CACHE:hit, got %s:%s", events[0].Type, events[0].Detail)
+	}
+	if events[0].CacheLayer != "L1" {
+		t.Errorf("expected cache_layer=L1, got %s", events[0].CacheLayer)
 	}
 	if events[1].Type != "SYSTEM" || events[1].Detail != "SYSTEM_BOOT" {
 		t.Errorf("expected SYSTEM:SYSTEM_BOOT, got %s:%s", events[1].Type, events[1].Detail)
@@ -123,10 +126,10 @@ func TestPersistentAuditLogger_GetLatest_AllOrgs(t *testing.T) {
 	logger := NewPersistentAuditLogger(db)
 
 	now := time.Now()
-	rows := sqlmock.NewRows([]string{"org_id", "user_id", "action", "created_at"}).
-		AddRow("123e4567-e89b-12d3-a456-426614174000", "user1", "CACHE:hit", now)
+	rows := sqlmock.NewRows([]string{"org_id", "user_id", "action", "metadata", "created_at"}).
+		AddRow("123e4567-e89b-12d3-a456-426614174000", "user1", "CACHE:hit", `{"cache_layer":"L5"}`, now)
 
-	mock.ExpectQuery("SELECT org_id, user_id, action, created_at FROM audit_logs ORDER BY created_at DESC LIMIT \\$1").
+	mock.ExpectQuery("SELECT org_id, user_id, action, metadata, created_at FROM audit_logs ORDER BY created_at DESC LIMIT \\$1").
 		WithArgs(5).
 		WillReturnRows(rows)
 

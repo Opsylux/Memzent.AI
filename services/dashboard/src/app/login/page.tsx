@@ -20,6 +20,16 @@ export default function LoginPage() {
   const router = useRouter()
 
   useEffect(() => {
+    // Show error from auth callback redirect
+    const params = new URLSearchParams(window.location.search)
+    const error = params.get('error')
+    if (error === 'session_expired') {
+      setMessage('Your login session expired. Please sign in again.')
+    } else if (error === 'auth_exchange_failed') {
+      setMessage('Authentication failed. Please try again.')
+    }
+
+    // Manually parse tokens in case Supabase drops us at /login directly
     const urlParams = new URLSearchParams(
       window.location.hash.replace('#', '?') + '&' + window.location.search.replace('?', '&')
     )
@@ -51,7 +61,7 @@ export default function LoginPage() {
     const { error } = await supabase.auth.signInWithOtp({
       email,
       options: {
-        emailRedirectTo: `${window.location.origin}/auth/callback`,
+        emailRedirectTo: `${process.env.NEXT_PUBLIC_APP_URL}/auth/callback`,
       },
     })
     if (error) {
@@ -66,56 +76,43 @@ export default function LoginPage() {
     await supabase.auth.signInWithOAuth({
       provider,
       options: {
-        redirectTo: `${window.location.origin}/auth/callback`,
+        redirectTo: `${process.env.NEXT_PUBLIC_APP_URL}/auth/callback`,
       },
     })
   }
 
   return (
-    <div className="min-h-screen neural-bg flex">
-      {/* Brand panel */}
-      <div className="hidden lg:flex lg:w-[52%] relative flex-col justify-between p-12 border-r border-white/5 overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-br from-memzent-glow/10 via-transparent to-memzent-purple/10 pointer-events-none" />
-        <div className="absolute top-1/4 -left-20 w-80 h-80 bg-memzent-glow/20 blur-[100px] rounded-full" />
-        <div className="absolute bottom-1/4 right-0 w-64 h-64 bg-memzent-purple/15 blur-[80px] rounded-full" />
-
-        <div className="relative z-10">
-          <div className="text-2xl font-black tracking-tight text-readable-primary">
-            Memzent<span className="text-memzent-glow">.ai</span>
+    <div className="flex items-center justify-center min-h-screen neural-bg">
+      <Card className="w-[400px] border-white/10 bg-white/[0.03] backdrop-blur-xl text-white">
+        <CardHeader className="text-center">
+          <CardTitle className="text-2xl font-bold tracking-tight text-white">Welcome to Memzent</CardTitle>
+          <CardDescription className="text-white/60">
+            Sign in to the memory of an agent
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-2 gap-3">
+            <Button
+              variant="outline"
+              className="border-white/20 bg-white/5 hover:bg-white/10 text-white transition-colors"
+              onClick={() => handleOAuthLogin('github')}
+            >
+              <Github className="mr-2 h-4 w-4" />
+              GitHub
+            </Button>
+            <Button
+              variant="outline"
+              className="border-white/20 bg-white/5 hover:bg-white/10 text-white transition-colors"
+              onClick={() => handleOAuthLogin('google')}
+            >
+              <Mail className="mr-2 h-4 w-4" />
+              Google
+            </Button>
           </div>
-          <p className="text-sm text-readable-muted mt-1">Command center for agent memory</p>
-        </div>
 
-        <div className="relative z-10 space-y-8 max-w-md">
-          <h1 className="text-4xl font-black tracking-tight text-readable-primary leading-tight">
-            The memory &amp; security layer for agentic AI
-          </h1>
-          <ul className="space-y-5">
-            {FEATURES.map((f) => (
-              <li key={f.title} className="flex gap-4">
-                <div className="shrink-0 w-10 h-10 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center text-memzent-glow">
-                  <f.icon size={18} />
-                </div>
-                <div>
-                  <div className="text-sm font-bold text-readable-primary">{f.title}</div>
-                  <p className="text-sm text-readable-muted mt-0.5 leading-snug">{f.desc}</p>
-                </div>
-              </li>
-            ))}
-          </ul>
-        </div>
-
-        <p className="relative z-10 text-xs text-readable-muted">
-          Built for teams shipping production agents — not just chat demos.
-        </p>
-      </div>
-
-      {/* Sign-in panel */}
-      <div className="flex-1 flex items-center justify-center p-6 sm:p-10">
-        <div className="w-full max-w-[400px] space-y-8">
-          <div className="lg:hidden text-center">
-            <div className="text-xl font-black text-readable-primary">
-              Memzent<span className="text-memzent-glow">.ai</span>
+          <div className="relative">
+            <div className="absolute inset-0 flex items-center">
+              <span className="w-full border-t border-white/10" />
             </div>
           </div>
 
@@ -180,11 +177,30 @@ export default function LoginPage() {
             )}
           </div>
 
-          <p className="text-center text-xs text-readable-muted leading-relaxed">
-            By signing in you agree to our Terms of Service and Privacy Policy.
-          </p>
-        </div>
-      </div>
+          <form onSubmit={handleEmailLogin} className="space-y-3">
+            <Input
+              type="email"
+              placeholder="name@company.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="border-white/20 bg-white/5 text-white placeholder:text-white/30 focus:ring-memzent-glow/50"
+              required
+            />
+            <Button
+              type="submit"
+              className="w-full bg-memzent-glow text-black font-bold hover:shadow-[0_0_20px_rgba(0,243,255,0.3)] transition-all"
+              disabled={loading}
+            >
+              {loading ? 'Sending...' : 'Sign in with Email'}
+            </Button>
+          </form>
+          {message && <p className="text-center text-sm text-blue-400">{message}</p>}
+        </CardContent>
+        <CardFooter className="flex flex-col text-center text-xs text-white/50">
+          <p>By signing in, you agree to our Terms of Service</p>
+          <p>and Privacy Policy.</p>
+        </CardFooter>
+      </Card>
     </div>
   )
 }
