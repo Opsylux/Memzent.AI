@@ -51,3 +51,4 @@ debug
 *.log
 *gateway-bin
 .next
+*.local.yml
