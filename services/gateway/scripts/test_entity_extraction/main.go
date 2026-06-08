@@ -31,7 +31,7 @@ type ChatResponse struct {
 
 var (
 	baseURL = envOr("MEMZENT_BASE_URL", "https://api.memzent.ai")
-	apiKey  = envOr("MEMZENT_API_KEY", "")
+	apiKey  = envOr("MEMZENT_API_KEY", "memzent_aef5299d4207cf9f180f237ebfb80a78fc92363cb7649b22")
 )
 
 func main() {
