@@ -302,8 +302,13 @@ type ToolResponse struct {
 	Tools             []*Tool                `protobuf:"bytes,1,rep,name=tools,proto3" json:"tools,omitempty"`
 	TotalTokensSaved  int32                  `protobuf:"varint,2,opt,name=total_tokens_saved,json=totalTokensSaved,proto3" json:"total_tokens_saved,omitempty"`
 	CompressedPrompt  string                 `protobuf:"bytes,3,opt,name=compressed_prompt,json=compressedPrompt,proto3" json:"compressed_prompt,omitempty"`
+<<<<<<< HEAD
 	SimilarPromptHash string                 `protobuf:"bytes,4,opt,name=similar_prompt_hash,json=similarPromptHash,proto3" json:"similar_prompt_hash,omitempty"` // Hash of a previously seen similar prompt (if any)
 	CurrentPromptHash string                 `protobuf:"bytes,5,opt,name=current_prompt_hash,json=currentPromptHash,proto3" json:"current_prompt_hash,omitempty"` // Canonical hash of the incoming prompt
+=======
+	SimilarPromptHash string                 `protobuf:"bytes,4,opt,name=similar_prompt_hash,json=similarPromptHash,proto3" json:"similar_prompt_hash,omitempty"`                              // Hash of a previously seen similar prompt (if any)
+	CurrentPromptHash string                 `protobuf:"bytes,5,opt,name=current_prompt_hash,json=currentPromptHash,proto3" json:"current_prompt_hash,omitempty"`                              // Canonical hash of the incoming prompt
+>>>>>>> 03c7735346afcd49479a70decd24cb5e5b40d8c1
 	Entities          map[string]string      `protobuf:"bytes,6,rep,name=entities,proto3" json:"entities,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"` // Extracted structured entities from the prompt
 	unknownFields     protoimpl.UnknownFields
 	sizeCache         protoimpl.SizeCache
@@ -845,7 +850,10 @@ func (x *QueryMemoryResponse) GetMemories() []*MemoryHit {
 	return nil
 }
 
+<<<<<<< HEAD
 // FlushPromptCacheRequest — hand-maintained stub until protoc regeneration
+=======
+>>>>>>> 03c7735346afcd49479a70decd24cb5e5b40d8c1
 type FlushPromptCacheRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	OrgId         string                 `protobuf:"bytes,1,opt,name=org_id,json=orgId,proto3" json:"org_id,omitempty"`
@@ -853,10 +861,42 @@ type FlushPromptCacheRequest struct {
 	sizeCache     protoimpl.SizeCache
 }
 
+<<<<<<< HEAD
 func (x *FlushPromptCacheRequest) Reset()         {}
 func (x *FlushPromptCacheRequest) String() string { return fmt.Sprintf("FlushPromptCacheRequest{OrgId: %s}", x.OrgId) }
 func (x *FlushPromptCacheRequest) ProtoMessage()  {}
 func (x *FlushPromptCacheRequest) ProtoReflect() protoreflect.Message { return nil }
+=======
+func (x *FlushPromptCacheRequest) Reset() {
+	*x = FlushPromptCacheRequest{}
+	mi := &file_router_proto_msgTypes[13]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *FlushPromptCacheRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*FlushPromptCacheRequest) ProtoMessage() {}
+
+func (x *FlushPromptCacheRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_router_proto_msgTypes[13]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use FlushPromptCacheRequest.ProtoReflect.Descriptor instead.
+func (*FlushPromptCacheRequest) Descriptor() ([]byte, []int) {
+	return file_router_proto_rawDescGZIP(), []int{13}
+}
+>>>>>>> 03c7735346afcd49479a70decd24cb5e5b40d8c1
 
 func (x *FlushPromptCacheRequest) GetOrgId() string {
 	if x != nil {
@@ -865,7 +905,10 @@ func (x *FlushPromptCacheRequest) GetOrgId() string {
 	return ""
 }
 
+<<<<<<< HEAD
 // FlushPromptCacheResponse — hand-maintained stub until protoc regeneration
+=======
+>>>>>>> 03c7735346afcd49479a70decd24cb5e5b40d8c1
 type FlushPromptCacheResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Success       bool                   `protobuf:"varint,1,opt,name=success,proto3" json:"success,omitempty"`
@@ -875,10 +918,42 @@ type FlushPromptCacheResponse struct {
 	sizeCache     protoimpl.SizeCache
 }
 
+<<<<<<< HEAD
 func (x *FlushPromptCacheResponse) Reset()         {}
 func (x *FlushPromptCacheResponse) String() string { return "FlushPromptCacheResponse{}" }
 func (x *FlushPromptCacheResponse) ProtoMessage()  {}
 func (x *FlushPromptCacheResponse) ProtoReflect() protoreflect.Message { return nil }
+=======
+func (x *FlushPromptCacheResponse) Reset() {
+	*x = FlushPromptCacheResponse{}
+	mi := &file_router_proto_msgTypes[14]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *FlushPromptCacheResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*FlushPromptCacheResponse) ProtoMessage() {}
+
+func (x *FlushPromptCacheResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_router_proto_msgTypes[14]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use FlushPromptCacheResponse.ProtoReflect.Descriptor instead.
+func (*FlushPromptCacheResponse) Descriptor() ([]byte, []int) {
+	return file_router_proto_rawDescGZIP(), []int{14}
+}
+>>>>>>> 03c7735346afcd49479a70decd24cb5e5b40d8c1
 
 func (x *FlushPromptCacheResponse) GetSuccess() bool {
 	if x != nil {
@@ -926,13 +1001,17 @@ const file_router_proto_rawDesc = "" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12'\n" +
 	"\x0frelevance_score\x18\x03 \x01(\x02R\x0erelevanceScore\x12 \n" +
-	"\vdescription\x18\x04 \x01(\tR\vdescription\"\xed\x01\n" +
+	"\vdescription\x18\x04 \x01(\tR\vdescription\"\xea\x02\n" +
 	"\fToolResponse\x12\"\n" +
 	"\x05tools\x18\x01 \x03(\v2\f.router.ToolR\x05tools\x12,\n" +
 	"\x12total_tokens_saved\x18\x02 \x01(\x05R\x10totalTokensSaved\x12+\n" +
 	"\x11compressed_prompt\x18\x03 \x01(\tR\x10compressedPrompt\x12.\n" +
 	"\x13similar_prompt_hash\x18\x04 \x01(\tR\x11similarPromptHash\x12.\n" +
-	"\x13current_prompt_hash\x18\x05 \x01(\tR\x11currentPromptHash\"\xbe\x01\n" +
+	"\x13current_prompt_hash\x18\x05 \x01(\tR\x11currentPromptHash\x12>\n" +
+	"\bentities\x18\x06 \x03(\v2\".router.ToolResponse.EntitiesEntryR\bentities\x1a;\n" +
+	"\rEntitiesEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xbe\x01\n" +
 	"\x10ToolChainRequest\x12\x16\n" +
 	"\x06prompt\x18\x01 \x01(\tR\x06prompt\x12\x17\n" +
 	"\auser_id\x18\x02 \x01(\tR\x06userId\x12(\n" +
@@ -963,13 +1042,20 @@ const file_router_proto_rawDesc = "" +
 	"\x04fact\x18\x01 \x01(\tR\x04fact\x12'\n" +
 	"\x0frelevance_score\x18\x02 \x01(\x02R\x0erelevanceScore\"D\n" +
 	"\x13QueryMemoryResponse\x12-\n" +
-	"\bmemories\x18\x01 \x03(\v2\x11.router.MemoryHitR\bmemories2\xeb\x02\n" +
+	"\bmemories\x18\x01 \x03(\v2\x11.router.MemoryHitR\bmemories\"0\n" +
+	"\x17FlushPromptCacheRequest\x12\x15\n" +
+	"\x06org_id\x18\x01 \x01(\tR\x05orgId\"o\n" +
+	"\x18FlushPromptCacheResponse\x12\x18\n" +
+	"\asuccess\x18\x01 \x01(\bR\asuccess\x12#\n" +
+	"\rdeleted_count\x18\x02 \x01(\x03R\fdeletedCount\x12\x14\n" +
+	"\x05error\x18\x03 \x01(\tR\x05error2\xc2\x03\n" +
 	"\x0eSemanticRouter\x128\n" +
 	"\vSelectTools\x12\x13.router.ToolRequest\x1a\x14.router.ToolResponse\x12I\n" +
 	"\fRegisterTool\x12\x1b.router.RegisterToolRequest\x1a\x1c.router.RegisterToolResponse\x12D\n" +
 	"\rPlanToolChain\x12\x18.router.ToolChainRequest\x1a\x19.router.ToolChainResponse\x12F\n" +
 	"\vStoreMemory\x12\x1a.router.StoreMemoryRequest\x1a\x1b.router.StoreMemoryResponse\x12F\n" +
-	"\vQueryMemory\x12\x1a.router.QueryMemoryRequest\x1a\x1b.router.QueryMemoryResponseB=Z;github.com/Opsylux/memzent/services/gateway/internal/routerb\x06proto3"
+	"\vQueryMemory\x12\x1a.router.QueryMemoryRequest\x1a\x1b.router.QueryMemoryResponse\x12U\n" +
+	"\x10FlushPromptCache\x12\x1f.router.FlushPromptCacheRequest\x1a .router.FlushPromptCacheResponseB=Z;github.com/Opsylux/memzent/services/gateway/internal/routerb\x06proto3"
 
 var (
 	file_router_proto_rawDescOnce sync.Once
@@ -983,41 +1069,47 @@ func file_router_proto_rawDescGZIP() []byte {
 	return file_router_proto_rawDescData
 }
 
-var file_router_proto_msgTypes = make([]protoimpl.MessageInfo, 13)
+var file_router_proto_msgTypes = make([]protoimpl.MessageInfo, 16)
 var file_router_proto_goTypes = []any{
-	(*RegisterToolRequest)(nil),  // 0: router.RegisterToolRequest
-	(*RegisterToolResponse)(nil), // 1: router.RegisterToolResponse
-	(*ToolRequest)(nil),          // 2: router.ToolRequest
-	(*Tool)(nil),                 // 3: router.Tool
-	(*ToolResponse)(nil),         // 4: router.ToolResponse
-	(*ToolChainRequest)(nil),     // 5: router.ToolChainRequest
-	(*ToolStep)(nil),             // 6: router.ToolStep
-	(*ToolChainResponse)(nil),    // 7: router.ToolChainResponse
-	(*StoreMemoryRequest)(nil),   // 8: router.StoreMemoryRequest
-	(*StoreMemoryResponse)(nil),  // 9: router.StoreMemoryResponse
-	(*QueryMemoryRequest)(nil),   // 10: router.QueryMemoryRequest
-	(*MemoryHit)(nil),            // 11: router.MemoryHit
-	(*QueryMemoryResponse)(nil),  // 12: router.QueryMemoryResponse
+	(*RegisterToolRequest)(nil),      // 0: router.RegisterToolRequest
+	(*RegisterToolResponse)(nil),     // 1: router.RegisterToolResponse
+	(*ToolRequest)(nil),              // 2: router.ToolRequest
+	(*Tool)(nil),                     // 3: router.Tool
+	(*ToolResponse)(nil),             // 4: router.ToolResponse
+	(*ToolChainRequest)(nil),         // 5: router.ToolChainRequest
+	(*ToolStep)(nil),                 // 6: router.ToolStep
+	(*ToolChainResponse)(nil),        // 7: router.ToolChainResponse
+	(*StoreMemoryRequest)(nil),       // 8: router.StoreMemoryRequest
+	(*StoreMemoryResponse)(nil),      // 9: router.StoreMemoryResponse
+	(*QueryMemoryRequest)(nil),       // 10: router.QueryMemoryRequest
+	(*MemoryHit)(nil),                // 11: router.MemoryHit
+	(*QueryMemoryResponse)(nil),      // 12: router.QueryMemoryResponse
+	(*FlushPromptCacheRequest)(nil),  // 13: router.FlushPromptCacheRequest
+	(*FlushPromptCacheResponse)(nil), // 14: router.FlushPromptCacheResponse
+	nil,                              // 15: router.ToolResponse.EntitiesEntry
 }
 var file_router_proto_depIdxs = []int32{
 	3,  // 0: router.ToolResponse.tools:type_name -> router.Tool
-	6,  // 1: router.ToolChainResponse.steps:type_name -> router.ToolStep
-	11, // 2: router.QueryMemoryResponse.memories:type_name -> router.MemoryHit
-	2,  // 3: router.SemanticRouter.SelectTools:input_type -> router.ToolRequest
-	0,  // 4: router.SemanticRouter.RegisterTool:input_type -> router.RegisterToolRequest
-	5,  // 5: router.SemanticRouter.PlanToolChain:input_type -> router.ToolChainRequest
-	8,  // 6: router.SemanticRouter.StoreMemory:input_type -> router.StoreMemoryRequest
-	10, // 7: router.SemanticRouter.QueryMemory:input_type -> router.QueryMemoryRequest
-	4,  // 8: router.SemanticRouter.SelectTools:output_type -> router.ToolResponse
-	1,  // 9: router.SemanticRouter.RegisterTool:output_type -> router.RegisterToolResponse
-	7,  // 10: router.SemanticRouter.PlanToolChain:output_type -> router.ToolChainResponse
-	9,  // 11: router.SemanticRouter.StoreMemory:output_type -> router.StoreMemoryResponse
-	12, // 12: router.SemanticRouter.QueryMemory:output_type -> router.QueryMemoryResponse
-	8,  // [8:13] is the sub-list for method output_type
-	3,  // [3:8] is the sub-list for method input_type
-	3,  // [3:3] is the sub-list for extension type_name
-	3,  // [3:3] is the sub-list for extension extendee
-	0,  // [0:3] is the sub-list for field type_name
+	15, // 1: router.ToolResponse.entities:type_name -> router.ToolResponse.EntitiesEntry
+	6,  // 2: router.ToolChainResponse.steps:type_name -> router.ToolStep
+	11, // 3: router.QueryMemoryResponse.memories:type_name -> router.MemoryHit
+	2,  // 4: router.SemanticRouter.SelectTools:input_type -> router.ToolRequest
+	0,  // 5: router.SemanticRouter.RegisterTool:input_type -> router.RegisterToolRequest
+	5,  // 6: router.SemanticRouter.PlanToolChain:input_type -> router.ToolChainRequest
+	8,  // 7: router.SemanticRouter.StoreMemory:input_type -> router.StoreMemoryRequest
+	10, // 8: router.SemanticRouter.QueryMemory:input_type -> router.QueryMemoryRequest
+	13, // 9: router.SemanticRouter.FlushPromptCache:input_type -> router.FlushPromptCacheRequest
+	4,  // 10: router.SemanticRouter.SelectTools:output_type -> router.ToolResponse
+	1,  // 11: router.SemanticRouter.RegisterTool:output_type -> router.RegisterToolResponse
+	7,  // 12: router.SemanticRouter.PlanToolChain:output_type -> router.ToolChainResponse
+	9,  // 13: router.SemanticRouter.StoreMemory:output_type -> router.StoreMemoryResponse
+	12, // 14: router.SemanticRouter.QueryMemory:output_type -> router.QueryMemoryResponse
+	14, // 15: router.SemanticRouter.FlushPromptCache:output_type -> router.FlushPromptCacheResponse
+	10, // [10:16] is the sub-list for method output_type
+	4,  // [4:10] is the sub-list for method input_type
+	4,  // [4:4] is the sub-list for extension type_name
+	4,  // [4:4] is the sub-list for extension extendee
+	0,  // [0:4] is the sub-list for field type_name
 }
 
 func init() { file_router_proto_init() }
@@ -1031,7 +1123,7 @@ func file_router_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_router_proto_rawDesc), len(file_router_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   13,
+			NumMessages:   16,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
