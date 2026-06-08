@@ -43,6 +43,7 @@ const Navbar = () => {
         <span className="text-2xl font-black tracking-tighter">MEMZENT</span>
       </Link>
       <div className="hidden md:flex gap-8 text-sm font-medium opacity-80">
+        <a href={appUrl + "/docs"} className="hover:text-memzent-glow transition-colors">Docs</a>
         <a href="#payg" className="hover:text-memzent-glow transition-colors">Pricing</a>
         <a href="#why" className="hover:text-memzent-glow transition-colors">Why Memzent</a>
         <a href="#security" className="hover:text-memzent-glow transition-colors">Security</a>
@@ -71,6 +72,7 @@ const Navbar = () => {
             exit={{ opacity: 0, y: -10 }}
             className="absolute top-full left-0 right-0 mt-2 mx-4 glass rounded-2xl p-6 flex flex-col gap-4 md:hidden"
           >
+            <a href={appUrl + "/docs"} onClick={() => setMobileOpen(false)} className="text-sm font-bold opacity-80 hover:text-memzent-glow py-2">Docs</a>
             <a href="#payg" onClick={() => setMobileOpen(false)} className="text-sm font-bold opacity-80 hover:text-memzent-glow py-2">Pricing</a>
             <a href="#why" onClick={() => setMobileOpen(false)} className="text-sm font-bold opacity-80 hover:text-memzent-glow py-2">Why Memzent</a>
             <a href="#security" onClick={() => setMobileOpen(false)} className="text-sm font-bold opacity-80 hover:text-memzent-glow py-2">Security</a>
@@ -319,9 +321,11 @@ const WhyMemzent = () => (
                 { feature: "Entity-Aware Cache Guard", memzent: true, litellm: false, helicone: false, portkey: false },
                 { feature: "Multi-LLM Routing", memzent: true, litellm: true, helicone: false, portkey: true },
                 { feature: "MCP Tool Registry", memzent: true, litellm: false, helicone: false, portkey: false },
+                { feature: "Workflow Discovery & Shortcuts", memzent: true, litellm: false, helicone: false, portkey: false },
                 { feature: "RBAC + Governance", memzent: true, litellm: false, helicone: false, portkey: true },
                 { feature: "Agent Memory (Persistent)", memzent: true, litellm: false, helicone: false, portkey: false },
                 { feature: "GPU Avoidance Analytics", memzent: true, litellm: false, helicone: false, portkey: false },
+                { feature: "Spend Limits & Budget Forecast", memzent: true, litellm: false, helicone: false, portkey: true },
                 { feature: "Real-time Observability", memzent: true, litellm: true, helicone: true, portkey: true },
                 { feature: "Pay-As-You-Go Billing", memzent: true, litellm: false, helicone: true, portkey: true },
                 { feature: "Open Source Core", memzent: true, litellm: true, helicone: false, portkey: false },
@@ -521,17 +525,20 @@ const Footer = () => (
       <div className="space-y-3">
         <div className="font-black text-white mb-4">PLATFORM</div>
         <a href="#payg" className="block hover:text-memzent-glow">Pricing</a>
-        <a href="#security" className="block hover:text-memzent-glow">Gateway API</a>
+        <a href={appUrl + "/docs/architecture"} className="block hover:text-memzent-glow">Architecture</a>
         <a href={appUrl + "/docs/semantic-proxy"} className="block hover:text-memzent-glow">Semantic Router</a>
+        <a href={appUrl + "/docs/entity-extraction"} className="block hover:text-memzent-glow">Entity Extraction</a>
+        <a href={appUrl + "/docs/cache-layers"} className="block hover:text-memzent-glow">Cache Layers</a>
         <a href={appUrl + "/docs/tool-registry"} className="block hover:text-memzent-glow">MCP Tools</a>
       </div>
       <div className="space-y-3">
-        <div className="font-black text-white mb-4">COMPANY</div>
-        <a href={appUrl + "/login"} className="block hover:text-memzent-glow">Dashboard</a>
+        <div className="font-black text-white mb-4">RESOURCES</div>
         <a href={appUrl + "/docs"} className="block hover:text-memzent-glow">Documentation</a>
-        <Link to="/blog" className="block hover:text-memzent-glow">Blog</Link>
         <a href={appUrl + "/docs/quickstart"} className="block hover:text-memzent-glow">Quickstart</a>
-        <a href={appUrl + "/playground"} className="block hover:text-memzent-glow">Playground</a>
+        <a href={appUrl + "/docs/api-reference"} className="block hover:text-memzent-glow">API Reference</a>
+        <Link to="/blog" className="block hover:text-memzent-glow">Blog</Link>
+        <a href="https://github.com/Opsylux/Memzent.AI" target="_blank" rel="noopener" className="block hover:text-memzent-glow">GitHub</a>
+        <a href={appUrl + "/login"} className="block hover:text-memzent-glow">Dashboard</a>
       </div>
     </div>
     <div className="max-w-7xl mx-auto flex items-center justify-between text-[10px] font-black uppercase tracking-widest opacity-40">

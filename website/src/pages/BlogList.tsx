@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
 import { Calendar, Clock, ArrowRight, BookOpen } from "lucide-react";
 import { motion } from "framer-motion";
+import { Helmet } from "react-helmet-async";
 import { getAllPosts } from "../lib/blog";
 import { BLOG_CATEGORIES } from "../lib/blog-types";
 
@@ -9,6 +10,16 @@ export default function BlogListPage() {
 
   return (
     <div className="min-h-screen bg-memzent-dark pt-24">
+      <Helmet>
+        <title>Blog | Memzent — AI Agent Infrastructure Engineering</title>
+        <meta name="description" content="Engineering deep-dives, tutorials, and product updates on semantic caching, entity extraction, GPU avoidance, and agentic AI infrastructure from the Memzent team." />
+        <meta property="og:title" content="Memzent Blog — AI Agent Infrastructure" />
+        <meta property="og:description" content="Technical posts on semantic caching, entity-aware cache guards, multi-LLM routing, and AI cost optimization." />
+        <meta property="og:url" content="https://memzent.ai/blog" />
+        <meta name="twitter:card" content="summary" />
+        <link rel="canonical" href="https://memzent.ai/blog" />
+      </Helmet>
+
       {/* Header */}
       <div className="border-b border-white/5 bg-black/40">
         <div className="max-w-6xl mx-auto px-6 py-16">

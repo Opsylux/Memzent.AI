@@ -1,6 +1,7 @@
 import { useParams, Link } from "react-router-dom";
 import { ArrowLeft, Calendar, Clock, User } from "lucide-react";
 import { motion } from "framer-motion";
+import { Helmet } from "react-helmet-async";
 import { getPostBySlug, getAllPosts, renderMarkdown } from "../lib/blog";
 import { BLOG_CATEGORIES } from "../lib/blog-types";
 
@@ -39,6 +40,23 @@ export default function BlogPostPage() {
 
   return (
     <div className="min-h-screen bg-memzent-dark pt-24">
+      <Helmet>
+        <title>{post.title} | Memzent Blog</title>
+        <meta name="description" content={post.description || `${post.title} — technical deep-dive from the Memzent engineering team.`} />
+        <meta property="og:title" content={post.title} />
+        <meta property="og:description" content={post.description} />
+        <meta property="og:type" content="article" />
+        <meta property="og:url" content={`https://memzent.ai/blog/${post.slug}`} />
+        {post.cover_image && <meta property="og:image" content={post.cover_image} />}
+        <meta name="twitter:card" content="summary_large_image" />
+        <meta name="twitter:title" content={post.title} />
+        <meta name="twitter:description" content={post.description} />
+        <meta property="article:published_time" content={post.published_at} />
+        <meta property="article:author" content={post.author} />
+        <meta name="keywords" content={post.tags.join(", ")} />
+        <link rel="canonical" href={`https://memzent.ai/blog/${post.slug}`} />
+      </Helmet>
+
       {/* Navigation */}
       <div className="border-b border-white/5 bg-black/40">
         <div className="max-w-4xl mx-auto px-6 py-4">
