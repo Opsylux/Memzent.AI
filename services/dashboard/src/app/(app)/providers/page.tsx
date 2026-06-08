@@ -201,7 +201,7 @@ export default async function ProvidersPage() {
               Memzent's semantic cache intercepts repeat intents across your organization. Cache hits are charged at an 80% discount — your infra cost only. The gateway automatically routes identical semantic intents to the cache before touching the LLM.
             </p>
           </div>
-          <div className="grid grid-cols-3 gap-6 text-center">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 text-center">
             {[
               { label: "LLM Cost", value: "$2.50", sub: "per 1M tokens", color: "text-white/60" },
               { label: "Cache Cost", value: "$0.50", sub: "80% savings", color: "text-memzent-accent" },

@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
+import { useState, useEffect } from 'react'
 import {
   LayoutDashboard,
   Database,
@@ -18,7 +19,9 @@ import {
   FlaskConical,
   Bell,
   GitBranch,
-  Gauge
+  Gauge,
+  Menu,
+  X
 } from 'lucide-react'
 import { signOutAction } from '@/app/actions'
 
@@ -59,6 +62,22 @@ interface SidebarProps {
 
 export function Sidebar({ orgName, tier, initials, role }: SidebarProps) {
   const pathname = usePathname()
+  const [mobileOpen, setMobileOpen] = useState(false)
+
+  // Close mobile menu on route change
+  useEffect(() => {
+    setMobileOpen(false)
+  }, [pathname])
+
+  // Prevent body scroll when mobile menu is open
+  useEffect(() => {
+    if (mobileOpen) {
+      document.body.style.overflow = 'hidden'
+    } else {
+      document.body.style.overflow = ''
+    }
+    return () => { document.body.style.overflow = '' }
+  }, [mobileOpen])
 
   const handleSignOut = async () => {
     await signOutAction()
@@ -70,18 +89,34 @@ export function Sidebar({ orgName, tier, initials, role }: SidebarProps) {
     business: 'text-memzent-glow bg-memzent-glow/10 border-memzent-glow/20',
   }
 
-  return (
-    <aside className="w-64 border-r border-white/5 bg-slate-950/50 backdrop-blur-xl h-screen sticky top-0 flex flex-col p-6">
+  const filteredNavItems = navItems.filter((item) => {
+    if (role === 'viewer') {
+      return !adminItems.some(ai => ai.href === item.href)
+    }
+    return true
+  })
+
+  const sidebarContent = (
+    <>
       {/* Brand */}
-      <div className="flex items-center gap-3 mb-8 px-2">
-        <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-memzent-glow to-memzent-purple flex items-center justify-center shadow-[0_0_15px_rgba(0,243,255,0.3)]">
-          <Shield size={18} className="text-black" strokeWidth={3} />
+      <div className="flex items-center justify-between mb-6 lg:mb-8 px-2">
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-memzent-glow to-memzent-purple flex items-center justify-center shadow-[0_0_15px_rgba(0,243,255,0.3)]">
+            <Shield size={18} className="text-black" strokeWidth={3} />
+          </div>
+          <span className="text-xl font-black tracking-tighter text-white">MEMZENT</span>
         </div>
-        <span className="text-xl font-black tracking-tighter text-white">MEMZENT</span>
+        {/* Close button — mobile only */}
+        <button
+          onClick={() => setMobileOpen(false)}
+          className="lg:hidden p-2 rounded-lg hover:bg-white/5 text-white/60"
+        >
+          <X size={20} />
+        </button>
       </div>
 
       {/* Organization Switcher */}
-      <div className="mb-8 px-2">
+      <div className="mb-6 lg:mb-8 px-2">
         <button className="w-full flex items-center gap-3 p-3 rounded-xl bg-white/[0.03] border border-white/5 hover:border-memzent-glow/20 transition-all group">
           <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-memzent-glow/20 to-memzent-purple/20 flex items-center justify-center text-[10px] font-black text-memzent-glow border border-memzent-glow/10">
             {initials}
@@ -97,23 +132,15 @@ export function Sidebar({ orgName, tier, initials, role }: SidebarProps) {
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 space-y-2">
-        <div className="text-[10px] font-black uppercase text-white/20 tracking-[0.2em] mb-4 px-4 italic">Navigation</div>
-        {navItems
-          .filter((item) => {
-            // Hide admin-only items from viewer role
-            if (role === 'viewer') {
-              return !adminItems.some(ai => ai.href === item.href)
-            }
-            return true
-          })
-          .map((item) => {
+      <nav className="flex-1 space-y-1 overflow-y-auto">
+        <div className="text-[10px] font-black uppercase text-white/20 tracking-[0.2em] mb-3 px-4 italic">Navigation</div>
+        {filteredNavItems.map((item) => {
           const isActive = pathname === item.href
           return (
             <Link
               key={item.name}
               href={item.href}
-              className={`flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition-all ${isActive
+              className={`flex items-center gap-3 px-4 py-2.5 lg:py-3 rounded-xl text-sm font-bold transition-all ${isActive
                 ? 'bg-memzent-glow/10 text-memzent-glow border border-memzent-glow/20 shadow-[0_0_20px_rgba(0,243,255,0.05)]'
                 : 'text-white/40 hover:text-white hover:bg-white/5'
                 }`}
@@ -125,15 +152,15 @@ export function Sidebar({ orgName, tier, initials, role }: SidebarProps) {
         })}
 
         {role === 'platform_staff' && (
-          <div className="pt-8 space-y-2">
-            <div className="text-[10px] font-black uppercase text-memzent-purple/40 tracking-[0.2em] mb-4 px-4 italic">Admin_Ops</div>
+          <div className="pt-6 space-y-1">
+            <div className="text-[10px] font-black uppercase text-memzent-purple/40 tracking-[0.2em] mb-3 px-4 italic">Admin_Ops</div>
             {staffItems.map((item) => {
               const isActive = pathname === item.href
               return (
                 <Link
                   key={item.name}
                   href={item.href}
-                  className={`flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition-all ${isActive
+                  className={`flex items-center gap-3 px-4 py-2.5 lg:py-3 rounded-xl text-sm font-bold transition-all ${isActive
                     ? 'bg-memzent-purple/10 text-memzent-purple border border-memzent-purple/20 shadow-[0_0_20px_rgba(151,71,255,0.05)]'
                     : 'text-white/40 hover:text-memzent-purple hover:bg-white/5'
                     }`}
@@ -147,8 +174,8 @@ export function Sidebar({ orgName, tier, initials, role }: SidebarProps) {
         )}
       </nav>
 
-      {/* Footer */}
-      <div className="pt-6 border-t border-white/5 space-y-2">
+      {/* Footer with Sign Out */}
+      <div className="pt-4 border-t border-white/5 space-y-2 mt-4">
         <div className="flex items-center gap-3 px-4 py-2">
           <Building2 size={14} className="text-white/20" />
           <span className="text-[10px] font-bold text-white/20 uppercase tracking-widest truncate">
@@ -163,6 +190,41 @@ export function Sidebar({ orgName, tier, initials, role }: SidebarProps) {
           Sign Out
         </button>
       </div>
-    </aside>
+    </>
+  )
+
+  return (
+    <>
+      {/* Mobile hamburger trigger */}
+      <button
+        onClick={() => setMobileOpen(true)}
+        className="lg:hidden fixed top-4 left-4 z-50 p-3 rounded-xl bg-slate-900/90 border border-white/10 backdrop-blur-xl shadow-lg"
+        aria-label="Open menu"
+      >
+        <Menu size={20} className="text-white" />
+      </button>
+
+      {/* Mobile overlay */}
+      {mobileOpen && (
+        <div
+          className="lg:hidden fixed inset-0 bg-black/60 backdrop-blur-sm z-40"
+          onClick={() => setMobileOpen(false)}
+        />
+      )}
+
+      {/* Mobile sidebar (slide-in) */}
+      <aside
+        className={`lg:hidden fixed inset-y-0 left-0 z-50 w-72 bg-slate-950/95 backdrop-blur-xl border-r border-white/5 flex flex-col p-5 transform transition-transform duration-300 ease-in-out ${
+          mobileOpen ? 'translate-x-0' : '-translate-x-full'
+        }`}
+      >
+        {sidebarContent}
+      </aside>
+
+      {/* Desktop sidebar (always visible) */}
+      <aside className="hidden lg:flex w-64 border-r border-white/5 bg-slate-950/50 backdrop-blur-xl h-screen sticky top-0 flex-col p-6">
+        {sidebarContent}
+      </aside>
+    </>
   )
 }
