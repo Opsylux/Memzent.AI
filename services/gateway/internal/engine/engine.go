@@ -17,6 +17,7 @@ import (
 	"memzent-gateway/internal/billing"
 	cch "memzent-gateway/internal/cache"
 	"memzent-gateway/internal/connectors"
+	"memzent-gateway/internal/featureflags"
 	lp "memzent-gateway/internal/llm"
 	mc "memzent-gateway/internal/mcp"
 	"memzent-gateway/internal/memory"
@@ -88,6 +89,9 @@ type MemzentEngine struct {
 	// Workflow Registry (E4)
 	workflowRegistry WorkflowRegistry
 
+	// Feature flags for evolution layers
+	flags *featureflags.Flags
+
 	TotalRequests atomic.Uint64
 	CacheHits     atomic.Uint64
 	orgRequests   sync.Map // Tracks requests per org (map[string]*atomic.Uint64)
@@ -122,7 +126,7 @@ func (e *MemzentEngine) SetWorkflowRegistry(registry WorkflowRegistry) {
 
 // emitOffline sends an event to the offline learning plane (non-blocking).
 func (e *MemzentEngine) emitOffline(event offline.OfflineEvent) {
-	if e.offlinePlane != nil {
+	if e.flags.OfflinePlane && e.offlinePlane != nil {
 		e.offlinePlane.Emit(event)
 	}
 }
@@ -162,7 +166,22 @@ func NewMemzentEngine(
 		sessionMgr:        sessionMgr,
 		memoryMgr:         memoryMgr,
 		telemetry:         telemetry,
+		flags:             loadOrDefaultFlags(),
 	}
+}
+
+// loadOrDefaultFlags returns the loaded feature flags, or all-enabled defaults if Load() hasn't been called.
+func loadOrDefaultFlags() *featureflags.Flags {
+	f := featureflags.Get()
+	if f == nil {
+		return &featureflags.Flags{
+			L1bCache:       true,
+			OfflinePlane:   true,
+			WorkflowEngine: true,
+			EntityMetrics:  true,
+		}
+	}
+	return f
 }
 
 // StartRateLimiterEviction runs a background goroutine that removes stale rate limiter
@@ -309,6 +328,11 @@ Extract the parameters and output a JSON object containing ONLY the keys and val
 
 func (e *MemzentEngine) Process(ctx context.Context, req *PromptRequest) (*PromptResponse, error) {
 	e.TotalRequests.Add(1)
+
+	// Ensure flags are always available (handles test engines created without NewMemzentEngine)
+	if e.flags == nil {
+		e.flags = &featureflags.Flags{L1bCache: true, OfflinePlane: true, WorkflowEngine: true, EntityMetrics: true}
+	}
 
 	if req == nil {
 		return nil, fmt.Errorf("invalid request")
@@ -550,6 +574,7 @@ func (e *MemzentEngine) Process(ctx context.Context, req *PromptRequest) (*Promp
 		// Stage 1b: Entity-Keyed Hot Path Cache (L1b)
 		// Fast entity extraction via regex, then deterministic key lookup in Valkey.
 		// Only fires if we have a non-trivial prompt (entities can be extracted client-side).
+		if e.flags.L1bCache {
 		l1bEntities := extractEntitiesLocal(queryPrompt)
 		if len(l1bEntities) > 0 {
 			entityKey := e.buildEntityCacheKey(orgID, resolvedModel, l1bEntities)
@@ -600,6 +625,7 @@ func (e *MemzentEngine) Process(ctx context.Context, req *PromptRequest) (*Promp
 				}
 			}
 		}
+		} // end L1b feature flag
 	}
 
 	// 1. Short-term Memory: Load previous messages if SessionID is provided
@@ -664,6 +690,107 @@ func (e *MemzentEngine) Process(ctx context.Context, req *PromptRequest) (*Promp
 		entitySource = "regex" // from Rust router's regex extractors
 	}
 	recordEntityExtraction(entitySource, len(extractedEntities) > 0)
+
+	// E4 Workflow Engine Shortcut: If an active workflow matches the tool pattern, execute directly — skip LLM.
+	if e.flags.WorkflowEngine && e.workflowRegistry != nil && len(tools) > 0 {
+		// Build a tool pattern string from matched tools for workflow lookup
+		var toolNames []string
+		for _, t := range tools {
+			toolNames = append(toolNames, t.GetId())
+		}
+		toolPattern := strings.Join(toolNames, "→")
+		matched, workflowToolIDs, workflowID, wfErr := e.workflowRegistry.MatchWorkflow(ctx, orgID, toolPattern)
+		if wfErr == nil && matched && len(workflowToolIDs) > 0 {
+			slog.Info("⚡ Workflow shortcut activated — skipping LLM", "org_id", orgID, "workflow_id", workflowID, "tools", workflowToolIDs)
+			wfStart := time.Now()
+
+			// Execute the workflow's tools directly
+			var wfResults []string
+			for _, toolID := range workflowToolIDs {
+				var toolMeta *toolspkg.Tool
+				allTools, tErr := e.registry.ListTools(ctx, orgID)
+				if tErr == nil {
+					for _, t := range allTools {
+						if t.ID == toolID || t.Name == toolID {
+							toolMeta = t
+							break
+						}
+					}
+				}
+				if toolMeta == nil {
+					continue
+				}
+
+				var connector connectors.Connector
+				switch toolMeta.ConnectorType {
+				case "rest":
+					connector = connectors.NewRESTConnector(toolMeta.Endpoint)
+				case "sql":
+					connector = connectors.NewSQLConnector(toolMeta.Endpoint)
+				case "mcp":
+					if reg, ok := e.connectorRegistry.Get(connectors.TypeMCP); ok {
+						connector = reg
+					}
+				default:
+					if reg, ok := e.connectorRegistry.Get(connectors.TypeCore); ok {
+						if cc, ok := reg.(*connectors.CoreConnector); ok && cc.HasTool(toolMeta.ID) {
+							connector = reg
+						}
+					}
+				}
+				if connector == nil {
+					continue
+				}
+
+				execReq := &connectors.ExecutionRequest{
+					ToolID:  toolMeta.ID,
+					UserID:  req.UserID,
+					Inputs:  map[string]interface{}{"query": queryPrompt},
+					Timeout: toolMeta.TimeoutSeconds,
+				}
+				result, execErr := connector.Execute(ctx, execReq)
+				if execErr == nil && result != nil {
+					if dataStr, ok := result.Data.(string); ok {
+						wfResults = append(wfResults, dataStr)
+					} else {
+						dataJSON, _ := json.Marshal(result.Data)
+						wfResults = append(wfResults, string(dataJSON))
+					}
+				}
+			}
+
+			wfLatency := int(time.Since(wfStart).Milliseconds())
+			wfSuccess := len(wfResults) > 0
+
+			// Record execution for demotion tracking
+			_ = e.workflowRegistry.RecordExecution(ctx, workflowID, orgID, sha256Hex(queryPrompt), extractedEntities, wfSuccess, wfLatency)
+
+			if wfSuccess {
+				wfResponse := strings.Join(wfResults, "\n")
+				recordCacheLayerHit("L1b") // Workflow shortcut counts as GPU avoidance
+				e.emitOffline(offline.OfflineEvent{
+					OrgID: orgID, UserID: req.UserID,
+					PromptHash: sha256Hex(queryPrompt), Entities: extractedEntities,
+					EntitySource: entitySource, CacheLayer: "workflow",
+					ToolIDs: workflowToolIDs, WorkflowID: workflowID,
+					LatencyMs: int64(wfLatency),
+					Provider: "none", Model: "none", Success: true, Timestamp: time.Now(),
+				})
+				if req.SessionID != "" && e.sessionMgr != nil {
+					_ = e.sessionMgr.AppendMessage(ctx, req.SessionID, "assistant", wfResponse)
+				}
+				return &PromptResponse{
+					Text:      wfResponse,
+					Cached:    false,
+					Provider:  "workflow",
+					SessionID: req.SessionID,
+					Entities:  extractedEntities,
+				}, nil
+			}
+			// If workflow execution failed, fall through to normal LLM path
+			slog.Warn("Workflow shortcut execution failed, falling back to LLM", "workflow_id", workflowID)
+		}
+	}
 
 	// NEW: Stage 2 Cache Check (Fuzzy Vector Semantic Match) — Org-Isolated & Model-Scoped
 	if similarPromptHash != "" && e.cache != nil && !req.SkipCache {
@@ -1196,6 +1323,9 @@ func (e *MemzentEngine) emitEvent(ctx context.Context, orgID, eventType string, 
 
 // recordCacheLayerHit updates Prometheus metrics for cache layer distribution and GPU avoidance.
 func recordCacheLayerHit(layer string) {
+	if !featureflags.Get().EntityMetrics {
+		return
+	}
 	metrics.CacheLayerHits.WithLabelValues(layer).Inc()
 	if layer != "L5" {
 		metrics.GPUAvoidanceTotal.Inc()
@@ -1206,6 +1336,9 @@ func recordCacheLayerHit(layer string) {
 
 // recordEntityExtraction updates Prometheus metrics for entity extraction quality.
 func recordEntityExtraction(source string, entitiesFound bool) {
+	if !featureflags.Get().EntityMetrics {
+		return
+	}
 	switch {
 	case source == "regex" && entitiesFound:
 		metrics.EntityRegexSuccess.Inc()

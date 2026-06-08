@@ -12,8 +12,10 @@ type OfflineEvent struct {
 	CanonicalHash string            `json:"canonical_hash"` // SHA-256 of normalized prompt
 	Entities      map[string]string `json:"entities"`       // extracted entity map (may be nil)
 	EntitySource  string            `json:"entity_source"`  // "regex" | "llm" | "none"
+	ToolIDs       []string          `json:"tool_ids"`       // ordered list of tool IDs from workflow or routing
 	ToolsUsed     []string          `json:"tools_used"`     // ordered list of tool IDs that were invoked
-	CacheLayer    string            `json:"cache_layer"`    // L1, L1b, L2, L5
+	WorkflowID    string            `json:"workflow_id"`    // matched workflow ID (if any)
+	CacheLayer    string            `json:"cache_layer"`    // L1, L1b, L2, L5, workflow
 	LatencyMs     int64             `json:"latency_ms"`
 	TokensUsed    int               `json:"tokens_used"`
 	Provider      string            `json:"provider"`

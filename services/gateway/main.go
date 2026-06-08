@@ -21,6 +21,7 @@ import (
 	"memzent-gateway/internal/connectors"
 	"memzent-gateway/internal/db"
 	"memzent-gateway/internal/engine"
+	"memzent-gateway/internal/featureflags"
 	"memzent-gateway/internal/llm"
 	"memzent-gateway/internal/mcp"
 	"memzent-gateway/internal/memory"
@@ -373,20 +374,36 @@ func main() {
 		memzentEngine.SetEventEmitter(webhookDispatcher)
 	}
 
-	// 8.0b Initialize Offline Learning Plane (E3)
-	requestMiner := miners.NewRequestMiner(50)
-	cacheMiner := miners.NewCacheMiner(10, 100)
-	workflowMiner := miners.NewWorkflowMiner(100, 0.90)
-	offlinePlane := offline.NewPlane(
-		offline.DefaultConfig(),
-		requestMiner, cacheMiner, workflowMiner,
+	// Load feature flags from environment
+	flags := featureflags.Load()
+	slog.Info("🚩 Feature flags loaded",
+		"l1b_cache", flags.L1bCache,
+		"offline_plane", flags.OfflinePlane,
+		"workflow_engine", flags.WorkflowEngine,
+		"entity_metrics", flags.EntityMetrics,
 	)
-	offlinePlane.Start(ctx)
-	memzentEngine.SetOfflinePlane(offlinePlane)
+
+	// 8.0b Initialize Offline Learning Plane (E3)
+	var offlinePlane *offline.Plane
+	var requestMiner *miners.RequestMiner
+	var cacheMiner *miners.CacheMiner
+	var workflowMiner *miners.WorkflowMiner
+	if flags.OfflinePlane {
+		requestMiner = miners.NewRequestMiner(50)
+		cacheMiner = miners.NewCacheMiner(10, 100)
+		workflowMiner = miners.NewWorkflowMiner(100, 0.90)
+		offlinePlane = offline.NewPlane(
+			offline.DefaultConfig(),
+			requestMiner, cacheMiner, workflowMiner,
+		)
+		offlinePlane.Start(ctx)
+		memzentEngine.SetOfflinePlane(offlinePlane)
+		slog.Info("🧠 Offline Learning Plane started")
+	}
 
 	// 8.0c Initialize Workflow Registry (E4)
 	var workflowRegistry *workflow.Registry
-	if rbacClient != nil && rbacClient.GetDB() != nil {
+	if flags.WorkflowEngine && rbacClient != nil && rbacClient.GetDB() != nil {
 		workflowRegistry = workflow.NewRegistry(rbacClient.GetDB())
 		workflowRegistry.StartDemotionLoop(ctx, 1*time.Hour)
 		memzentEngine.SetWorkflowRegistry(workflow.NewEngineAdapter(workflowRegistry))
@@ -947,7 +964,13 @@ func main() {
 			http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
 			return
 		}
+		if offlinePlane == nil {
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]interface{}{"enabled": false})
+			return
+		}
 		stats := map[string]interface{}{
+			"enabled":             true,
 			"plane":              offlinePlane.Stats(),
 			"hot_patterns":       requestMiner.GetHotPatterns(),
 			"cache_misses":       cacheMiner.GetTopMisses(),
@@ -1084,6 +1107,29 @@ func main() {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(stats)
+	})))
+
+	// Feature flags status endpoint (E1-E5 layer toggles)
+	mux.Handle("/v1/features", middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		f := featureflags.Get()
+		response := map[string]interface{}{
+			"l1b_cache":       f.L1bCache,
+			"offline_plane":   f.OfflinePlane,
+			"workflow_engine": f.WorkflowEngine,
+			"entity_metrics":  f.EntityMetrics,
+			"env_vars": map[string]string{
+				"MEMZENT_L1B_ENABLED":            "controls L1b entity-keyed hot path cache",
+				"MEMZENT_OFFLINE_ENABLED":        "controls offline learning plane (O1/O2/O3 miners)",
+				"MEMZENT_WORKFLOW_ENABLED":       "controls workflow registry + engine shortcut",
+				"MEMZENT_ENTITY_METRICS_ENABLED": "controls entity quality + GPU avoidance counters",
+			},
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(response)
 	})))
 		json.NewEncoder(w).Encode(metadata)
 	})))
