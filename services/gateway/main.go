@@ -410,6 +410,34 @@ func main() {
 		slog.Info("📋 Workflow Registry initialized with hourly demotion checks")
 	}
 
+	// 8.0d O3 → Registry Bridge: auto-populate workflow candidates from miner output
+	if workflowMiner != nil && workflowRegistry != nil {
+		go func() {
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case output := <-workflowMiner.Output():
+					for _, seq := range output.PromotionReady {
+						_, err := workflowRegistry.UpsertCandidate(
+							ctx, seq.OrgID, seq.Pattern,
+							int(seq.Frequency), seq.Tools, nil,
+						)
+						if err != nil {
+							slog.Warn("O3→Registry bridge: failed to upsert candidate",
+								"pattern", seq.Pattern, "org_id", seq.OrgID, "error", err)
+						} else {
+							slog.Info("🔗 O3→Registry: workflow candidate upserted",
+								"pattern", seq.Pattern, "frequency", seq.Frequency,
+								"success_rate", seq.SuccessRate)
+						}
+					}
+				}
+			}
+		}()
+		slog.Info("🔗 O3→Registry bridge started")
+	}
+
 	// Start background model discovery for all registered LLM providers
 	memzentEngine.StartModelDiscovery(ctx)
 
