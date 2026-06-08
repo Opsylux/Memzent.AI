@@ -18,7 +18,7 @@ down:
 logs:
 	docker-compose logs -f gateway router
 
-# Run the end-to-end neural integration test client
+# Run the load/integration test client (requires JWT_SECRET, MEMZENT_ORG_ID, MEMZENT_API_KEY)
 test-flow:
 	cd services/gateway && go run scripts/test_flow.go
 
@@ -38,4 +38,4 @@ test-entity:
 test-evolution:
 	cd services/gateway && go run scripts/test_evolution/main.go
 
-.PHONY: gen-proto up down test-flow test-cache test-memory test-entity test-evolution
+.PHONY: gen-proto up down logs test-flow test-cache test-memory test-entity test-evolution
