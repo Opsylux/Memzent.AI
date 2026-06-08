@@ -11,7 +11,7 @@
   ],
   "conditions": {
     "ref_name": {
-      "include": ["v*"],
+      "include": ["refs/tags/v*"],
       "exclude": []
     }
   },
