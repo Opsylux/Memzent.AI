@@ -124,6 +124,7 @@ services:
     container_name: memzent-dashboard
     volumes:
       - ./services/dashboard:/app
+      - /app/node_modules
     working_dir: /app
     ports:
       - "3002:3000"

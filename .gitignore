@@ -52,3 +52,6 @@ debug
 *.log
 *gateway-bin
 .next
+
+
+docker-compose.local.yml
