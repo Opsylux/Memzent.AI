@@ -1,1 +1,0 @@
-The only thing worth noting is the eviction strategy (remove first key found) is not true LRU. For 2000 entries on a gateway with repeating prompts it's fine. If you ever wanted true LRU you'd swap HashMap for an IndexMap with manual tracking, but that's over-engineering for this use case. /services/router/src/main.rs

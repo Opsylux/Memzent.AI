@@ -1,6 +1,64 @@
-# Memzent.ai: Memory of Agent
+# Memzent.ai — The Open-Source Semantic Proxy for LLMs
 
-**Memzent (memzent.ai)** delivers the critical memory and security layer for autonomous workflows. Operating as an Intelligent Semantic Proxy, it intercepts and optimizes traffic between clients, MCP tools, and LLM providers. By combining semantic search and caching with enterprise-grade routing and RBAC, Memzent transforms stateless LLM calls into secure, context-aware agentic systems.
+<p align="center">
+  <a href="https://memzent.ai"><img src="https://img.shields.io/badge/Website-memzent.ai-blue?style=flat-square" /></a>
+  <a href="https://github.com/Opsylux/Memzent.AI/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-Apache_2.0-green?style=flat-square" /></a>
+  <a href="https://github.com/Opsylux/Memzent.AI/stargazers"><img src="https://img.shields.io/github/stars/Opsylux/Memzent.AI?style=flat-square" /></a>
+  <a href="https://github.com/Opsylux/Memzent.AI/issues"><img src="https://img.shields.io/github/issues/Opsylux/Memzent.AI?style=flat-square" /></a>
+  <a href="https://discord.gg/memzent"><img src="https://img.shields.io/discord/placeholder?label=Discord&style=flat-square" /></a>
+</p>
+
+<p align="center">
+  <strong>Intelligent memory, caching, and security layer for autonomous AI agents.</strong><br/>
+  Intercepts traffic between clients, MCP tools, and LLM providers. Minimizes latency. Maximizes token ROI.
+</p>
+
+<p align="center">
+  <a href="#-quick-start-self-hosted">Self-Host</a> ·
+  <a href="https://app.memzent.ai">Memzent Cloud</a> ·
+  <a href="https://memzent.ai/blog">Blog</a> ·
+  <a href="#-contributing">Contributing</a> ·
+  <a href="https://discord.gg/memzent">Discord</a>
+</p>
+
+---
+
+## Memzent Cloud vs Self-Hosted
+
+|  | Self-Hosted (This Repo) | Memzent Cloud |
+|--|-------------------------|---------------|
+| **Infrastructure** | You manage | We manage |
+| **Pricing** | Free forever | Pay-as-you-go |
+| **Code** | Apache 2.0 | Same codebase |
+| **Support** | Community (GitHub + Discord) | Priority support + SLA |
+| **Updates** | Pull from `main` | Auto-deployed |
+| **Scale** | Your hardware | Auto-scaling infra |
+| **Features** | Everything | Everything + managed backups, monitoring, team SSO |
+
+> **All code in this repository is open source under Apache 2.0.** The managed cloud is the same code — we just run it for you.
+
+---
+
+## 🚀 Quick Start (Self-Hosted)
+
+```bash
+# Clone the repo
+git clone https://github.com/Opsylux/Memzent.AI.git
+cd Memzent.AI
+
+# Start the full stack (Gateway + Router + Qdrant + Valkey)
+docker-compose up -d
+
+# Verify it's running
+curl http://localhost:8080/health
+
+# Send your first request
+curl -X POST http://localhost:8080/v1/chat \
+  -H "Content-Type: application/json" \
+  -d '{"messages": [{"role": "user", "content": "Hello, Memzent!"}]}'
+```
+
+> Requires Docker and Docker Compose. See [SELF_HOSTING.md](SELF_HOSTING.md) for detailed configuration.
 
 ---
 
@@ -221,4 +279,34 @@ JWT secret configurable via `JWT_SECRET` env var. Production uses API keys (`X-A
 
 ---
 
-**Built by the Memzent Engineering Team.** *Securing the future of Agentic Intelligence.*
+## 🤝 Contributing
+
+We love contributions! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+
+```bash
+# Fork → Clone → Branch → Code → Test → PR
+git checkout -b feat/my-feature
+go test ./... && cargo test
+# Open a PR targeting main
+```
+
+Good first issues are labelled [`good-first-issue`](https://github.com/Opsylux/Memzent.AI/labels/good-first-issue).
+
+---
+
+## 📜 License
+
+[Apache 2.0](LICENSE) — use it, modify it, deploy it, sell services on top of it. Just give attribution.
+
+---
+
+## ⭐ Star History
+
+If Memzent helps your team, consider giving us a star. It helps others discover the project.
+
+---
+
+<p align="center">
+  <strong>Built in the open by <a href="https://github.com/Opsylux">Opsylux</a></strong><br/>
+  <em>Securing the future of Agentic Intelligence.</em>
+</p>

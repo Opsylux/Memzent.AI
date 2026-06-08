@@ -1,29 +1,24 @@
-# Contributing to Memzent Gateway
+# Contributing to Memzent
 
-Thank you for your interest in contributing to the Memzent Gateway Core.
-This document explains what you can contribute to, how to set up your
-development environment, and the rules you must follow.
+Thank you for your interest in contributing to Memzent! This is an
+open-source project licensed under Apache 2.0, and we welcome
+contributions from the community.
 
 ---
 
 ## What You Can Contribute To
 
-Only the open-source components listed in
-[OPEN_SOURCE_COMPONENTS.md](OPEN_SOURCE_COMPONENTS.md) are open for
-contributions. This includes:
+**Everything in this repository is open source.** All services, all code:
 
-- `services/gateway/` — Go gateway core
-- `services/mcp-server/` — MCP protocol adapter
+- `services/gateway/` — Go gateway (HTTP, auth, caching, orchestration)
+- `services/router/` — Rust semantic router (embeddings, vector search, tool matching)
 - `services/dashboard/` — Next.js admin dashboard
-- `services/website/` — Marketing site
+- `services/mcp-server/` — MCP protocol adapter
+- `website/` — Marketing site
 - `proto/router.proto` — gRPC contract
+- `migrations/` — Database schemas
 - `docker-compose.yml` — Local stack configuration
-- Documentation and tests
-
-**Do not submit PRs that touch:**
-- `services/router/` — Rust semantic router (commercial)
-- `internal/billing/` — Billing and Stripe (commercial)
-- Any file referencing Qdrant L2 semantic search logic
+- Documentation, tests, and scripts
 
 ---
 
@@ -114,6 +109,7 @@ the dependency footprint minimal.
 ### Prerequisites
 
 - Go 1.25+
+- Rust (stable toolchain) + `cargo`
 - Node.js 22+ and Bun (for the dashboard)
 - Docker and Docker Compose
 - `golangci-lint` (Go linter)
@@ -227,7 +223,6 @@ Every PR is reviewed against this checklist:
 - [ ] New functionality has unit tests
 - [ ] `go test -race ./...` passes
 - [ ] `golangci-lint run ./...` passes with no new errors
-- [ ] OPEN_SOURCE_COMPONENTS.md updated if new component added
 
 ---
 
@@ -284,7 +279,7 @@ if cfg.MyProviderAPIKey != "" {
 }
 ```
 
-4. Add env var documentation to `OPEN_SOURCE_COMPONENTS.md`
+4. Add env var documentation to the README
 
 5. Write tests in `internal/llm/myprovider_test.go`
 
@@ -300,7 +295,7 @@ To add a new tool execution protocol:
    implementing the `Connector` interface
 2. Add `TypeMyConnector` to the `ConnectorType` constants in `connector.go`
 3. Register in `main.go`
-4. Document in `OPEN_SOURCE_COMPONENTS.md`
+4. Document in the README
 5. Write tests
 
 ---

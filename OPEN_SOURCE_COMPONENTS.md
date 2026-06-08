@@ -1,44 +1,24 @@
-# Memzent Gateway — Open Source Components
+# Memzent — Open Source Components
 
-> This document defines exactly which components of the Memzent Gateway are
-> open-sourced under Apache 2.0, what each component does, and how to use them.
+> **Everything in this repository is open source under [Apache 2.0](LICENSE).**
 
----
-
-## What Is Open Source
-
-The **Memzent Gateway Core** is the open-source foundation of the Memzent
-Agentic Infrastructure Platform. It provides the HTTP entry point, multi-provider
-LLM routing, MCP protocol integration, L1 literal caching, connector framework,
-and observability layer — everything you need to run a production-ready AI
-gateway today.
+Memzent is fully open-core: all code is open source. The managed cloud
+([app.memzent.ai](https://app.memzent.ai)) runs the same codebase — we just
+host and scale it for you.
 
 ```
-memzent/                          ← public repo (Apache 2.0)
+Memzent.AI/                       ← public repo (Apache 2.0)
 ├── services/
-│   ├── gateway/                  ← Go gateway core  ✅ open
-│   │   ├── main.go
-│   │   ├── internal/
-│   │   │   ├── auth/             ← JWT + JWKS middleware  ✅ open
-│   │   │   ├── cache/            ← L1 Valkey cache  ✅ open
-│   │   │   ├── config/           ← Config loader  ✅ open
-│   │   │   ├── connectors/       ← MCP, REST, SQL, Core  ✅ open
-│   │   │   ├── engine/           ← Orchestration engine  ✅ open
-│   │   │   │   ├── engine.go
-│   │   │   │   └── normalization.go  ← L1.5 canonical cache  ✅ open
-│   │   │   ├── llm/              ← OpenAI, Anthropic, Gemini, Ollama  ✅ open
-│   │   │   ├── mcp/              ← MCP client + compressor  ✅ open
-│   │   │   ├── metrics/          ← Prometheus + audit log  ✅ open
-│   │   │   ├── router/           ← gRPC client stub  ✅ open
-│   │   │   └── tools/            ← Tool registry  ✅ open
-│   │   └── migrations/           ← Core DB schema  ✅ open
-│   ├── mcp-server/               ← MCP protocol adapter  ✅ open
-│   ├── dashboard/                ← Next.js admin UI  ✅ open
-│   └── website/                  ← Marketing site  ✅ open
+│   ├── gateway/                  ← Go gateway: HTTP, auth, caching, orchestration
+│   ├── router/                   ← Rust router: embeddings, vector search, tool matching
+│   ├── mcp-server/               ← MCP protocol adapter
+│   ├── dashboard/                ← Next.js admin UI
+│   └── website/                  ← Marketing site (Vite + React)
 ├── proto/
-│   └── router.proto              ← gRPC contract  ✅ open
-├── docker-compose.yml            ← One-command local stack  ✅ open
-└── README.md
+│   └── router.proto              ← gRPC service contract
+├── migrations/                   ← Database schemas (001-026+)
+├── docker-compose.yml            ← One-command local stack
+└── LICENSE                       ← Apache 2.0
 ```
 
 ---
@@ -337,9 +317,8 @@ curl -X POST http://localhost:8080/v1/tools \
 
 Client stub connecting the Go gateway to the Rust semantic router.
 
-The open-source version includes the gRPC stubs and proto-generated code.
-The **Rust router service itself** is a commercial component. You can
-implement `RouterService` yourself using `proto/router.proto`:
+The full Rust router implementation is at `services/router/`. The gRPC
+contract is defined in `proto/router.proto`:
 
 ```protobuf
 service RouterService {
@@ -349,133 +328,15 @@ service RouterService {
 }
 ```
 
-Without a router, the gateway falls back to injecting all registered tools
-into the LLM context.
+Without a running router, the gateway falls back to injecting all registered
+tools into the LLM context.
 
 ---
 
-## Quick Start
-
-### Prerequisites
-- Docker and Docker Compose
-- Go 1.25+ (for local development)
-- An API key for at least one LLM provider, or Ollama running locally
-
-### One-Command Stack
-
-```bash
-git clone https://github.com/Opsylux/memzent
-cd memzent
-docker-compose up
-```
-
-Services started:
-- Gateway → `http://localhost:8080`
-- Dashboard → `http://localhost:3000`
-- Valkey → `localhost:6379`
-- PostgreSQL 16 → `localhost:5432`
-- Ollama → `http://localhost:11434`
-
-### Generate a Token
-
-```bash
-curl http://localhost:8080/generate-token
-# {"token": "eyJ..."}
-```
-
-### First Request
-
-```bash
-curl -X POST http://localhost:8080/v1/chat \
-  -H "Authorization: Bearer <token>" \
-  -H "Content-Type: application/json" \
-  -d '{"messages": [{"role": "user", "content": "Hello, Memzent!"}]}'
-```
-
-### Verify Cache Behaviour
-
-```bash
-# Run the same query twice
-for i in 1 2; do
-  curl -si -X POST http://localhost:8080/v1/chat \
-    -H "Authorization: Bearer <token>" \
-    -H "Content-Type: application/json" \
-    -d '{"messages": [{"role": "user", "content": "What is the capital of France?"}]}' \
-    | grep X-Cache
-done
-# X-Cache: MISS   ← first call hits LLM
-# X-Cache: HIT    ← second call served in <5ms
-```
-
----
-
-## Environment Variables
-
-| Variable | Default | Description |
-|---|---|---|
-| `PORT` | `:8080` | Gateway listen port |
-| `VALKEY_URL` | `localhost:6379` | Valkey/Redis address |
-| `POSTGRES_URL` | — | PostgreSQL connection string |
-| `ROUTER_URL` | `localhost:50051` | Rust router gRPC address |
-| `MCP_SERVER_URL` | `localhost:50052` | MCP server address |
-| `JWT_SECRET` | — | HS256 JWT signing secret |
-| `JWKS_URL` | — | JWKS endpoint (Supabase / Auth0) |
-| `OLLAMA_URL` | `http://localhost:11434` | Ollama base URL |
-| `OLLAMA_MODEL` | `llama3.2` | Default Ollama model |
-| `OPENAI_API_KEY` | — | Enables OpenAI provider |
-| `OPENAI_MODEL` | `gpt-4o` | Default OpenAI model |
-| `ANTHROPIC_API_KEY` | — | Enables Anthropic provider |
-| `GEMINI_API_KEY` | — | Enables Gemini provider |
-| `LLM_CACHE_TTL` | `1h` | Cache TTL for LLM responses |
-| `TOOL_RELEVANCE_THRESHOLD` | `0.88` | Cosine similarity threshold |
-| `ENVIRONMENT` | `development` | `production` enables JSON logging |
-
----
-
-## Architecture
-
-```
-Client Request
-      │
-      ▼
-┌──────────────────────────────────────────┐
-│        Memzent Gateway  (Go :8080)       │
-│                                          │
-│  1. Rate Limit  → per-user token bucket  │
-│  2. L1 Cache    → Valkey exact hash      │
-│  3. L1.5 Cache  → Valkey canonical hash  │
-│  4. RBAC        → Postgres + JWT scopes  │
-│  5. Tool Route  → gRPC → [Rust Router*]  │
-│  6. Execute     → MCP / REST / SQL / Go  │
-│  7. LLM Call    → Ollama/OpenAI/Anthropic│
-│  8. Cache Write → Valkey + Postgres      │
-│  9. Response    → JSON or SSE stream     │
-└──────────────────────────────────────────┘
-
-* Rust Router = commercial component
-  Gateway operates without it — tool
-  selection falls back to all tools.
-```
-
----
-
-## What Is NOT Open Source
-
-| Component | Description |
-|---|---|
-| `services/router/` | Rust gRPC semantic router — vector math, HNSW, cosine similarity, PlanToolChain |
-| L2 Semantic Cache | Qdrant vector similarity search (requires the Rust router) |
-| `internal/billing/` | Ledger, CostCalculator, Stripe integration |
-| Enterprise RBAC | Fine-grained multi-tenant governance |
-| Persistent cache fallback | Postgres write-through for Valkey crash recovery |
-
-Commercial licensing: [memzent.ai/enterprise](https://memzent.ai/enterprise)
-
----
-
-## Licence
-
-Apache License 2.0 — see [LICENSE](LICENSE)
+For full documentation, see:
+- [README.md](README.md) — Architecture, API reference, quick start
+- [CONTRIBUTING.md](CONTRIBUTING.md) — How to contribute
+- [SELF_HOSTING.md](SELF_HOSTING.md) — Production deployment guide
 
 ---
 
