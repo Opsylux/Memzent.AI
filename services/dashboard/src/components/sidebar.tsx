@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import {
   LayoutDashboard,
   Database,
@@ -68,11 +68,13 @@ export function Sidebar({ orgName, tier, initials, role }: SidebarProps) {
   const pathname = usePathname()
   const router = useRouter()
   const [mobileOpen, setMobileOpen] = useState(false)
+  const prevPathname = useRef(pathname)
 
-  // Close mobile menu on route change
-  useEffect(() => {
-    setMobileOpen(false)
-  }, [pathname])
+  // Close mobile menu on route change (avoid setState directly in effect)
+  if (prevPathname.current !== pathname) {
+    prevPathname.current = pathname
+    if (mobileOpen) setMobileOpen(false)
+  }
 
   // Prevent body scroll when mobile menu is open
   useEffect(() => {
@@ -102,7 +104,7 @@ export function Sidebar({ orgName, tier, initials, role }: SidebarProps) {
   }
 
   const filteredNavItems = navItems.filter((item) => {
-    if (role === 'viewer') {
+    if (role === 'viewer' || role === 'member') {
       return !adminItems.some(ai => ai.href === item.href)
     }
     return true

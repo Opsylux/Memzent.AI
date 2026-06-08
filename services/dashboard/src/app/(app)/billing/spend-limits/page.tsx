@@ -75,12 +75,22 @@ export default function SpendLimitsPage() {
   const handleSave = async () => {
     setSaving(true)
     setMessage(null)
+    const dVal = dailyLimit ? parseFloat(dailyLimit) : null
+    const mVal = monthlyLimit ? parseFloat(monthlyLimit) : null
+    const dtVal = dailyTokenLimit ? parseInt(dailyTokenLimit) : null
+    const mtVal = monthlyTokenLimit ? parseInt(monthlyTokenLimit) : null
+    if ((dVal !== null && dVal < 0) || (mVal !== null && mVal < 0) ||
+        (dtVal !== null && dtVal < 0) || (mtVal !== null && mtVal < 0)) {
+      setMessage({ type: 'error', text: 'Limits cannot be negative' })
+      setSaving(false)
+      return
+    }
     try {
       await setSpendLimits({
-        daily_limit: dailyLimit ? parseFloat(dailyLimit) : null,
-        monthly_limit: monthlyLimit ? parseFloat(monthlyLimit) : null,
-        daily_token_limit: dailyTokenLimit ? parseInt(dailyTokenLimit) : null,
-        monthly_token_limit: monthlyTokenLimit ? parseInt(monthlyTokenLimit) : null,
+        daily_limit: dVal,
+        monthly_limit: mVal,
+        daily_token_limit: dtVal,
+        monthly_token_limit: mtVal,
       })
       setMessage({ type: 'success', text: 'Spend limits updated successfully' })
       await loadData()
@@ -297,6 +307,7 @@ export default function SpendLimitsPage() {
               <span className="absolute left-3 top-1/2 -translate-y-1/2 text-white/30 text-sm">$</span>
               <input
                 type="number"
+                min="0"
                 step="0.01"
                 value={dailyLimit}
                 onChange={(e) => setDailyLimit(e.target.value)}
@@ -314,6 +325,7 @@ export default function SpendLimitsPage() {
               <span className="absolute left-3 top-1/2 -translate-y-1/2 text-white/30 text-sm">$</span>
               <input
                 type="number"
+                min="0"
                 step="0.01"
                 value={monthlyLimit}
                 onChange={(e) => setMonthlyLimit(e.target.value)}
@@ -329,6 +341,7 @@ export default function SpendLimitsPage() {
             </label>
             <input
               type="number"
+              min="0"
               step="1000"
               value={dailyTokenLimit}
               onChange={(e) => setDailyTokenLimit(e.target.value)}
@@ -343,6 +356,7 @@ export default function SpendLimitsPage() {
             </label>
             <input
               type="number"
+              min="0"
               step="10000"
               value={monthlyTokenLimit}
               onChange={(e) => setMonthlyTokenLimit(e.target.value)}
