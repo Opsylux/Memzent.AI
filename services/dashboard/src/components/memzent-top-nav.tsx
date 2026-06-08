@@ -3,6 +3,8 @@
 import { Search, Bell, Cpu, Cloud, Database, LogOut } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { signOutAction } from "@/app/actions";
+import { supabase } from "@/lib/supabase";
+import { useRouter } from "next/navigation";
 
 interface MemzentTopNavProps {
   orgName: string
@@ -13,8 +15,18 @@ interface MemzentTopNavProps {
 }
 
 export function MemzentTopNav({ orgName, email, initials, tier, role }: MemzentTopNavProps) {
+  const router = useRouter()
+
   const handleSignOut = async () => {
-    await signOutAction()
+    try {
+      await signOutAction()
+    } catch {
+      // Server action may fail after redeploy (stale action ID)
+      // Fallback: sign out via client-side Supabase
+      await supabase.auth.signOut()
+      router.push('/login')
+      router.refresh()
+    }
   }
 
   return (

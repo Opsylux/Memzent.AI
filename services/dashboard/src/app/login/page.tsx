@@ -15,6 +15,15 @@ export default function LoginPage() {
   const router = useRouter()
 
   useEffect(() => {
+    // Show error from auth callback redirect
+    const params = new URLSearchParams(window.location.search)
+    const error = params.get('error')
+    if (error === 'session_expired') {
+      setMessage('Your login session expired. Please sign in again.')
+    } else if (error === 'auth_exchange_failed') {
+      setMessage('Authentication failed. Please try again.')
+    }
+
     // Manually parse tokens in case Supabase drops us at /login directly
     const urlParams = new URLSearchParams(
       window.location.hash.replace('#', '?') + '&' + window.location.search.replace('?', '&')

@@ -15,7 +15,12 @@ export async function GET(request: Request) {
     const { data: { user }, error } = await supabase.auth.exchangeCodeForSession(code)
     if (error || !user) {
       console.error('Auth code exchange failed:', error)
-      return NextResponse.redirect(`${origin}/login?error=auth_exchange_failed`)
+      // PKCE verifier missing = user opened callback in different browser/tab
+      // or cookies were cleared. Redirect to login with helpful message.
+      const errorParam = error?.code === 'pkce_code_verifier_not_found'
+        ? 'session_expired'
+        : 'auth_exchange_failed'
+      return NextResponse.redirect(`${origin}/login?error=${errorParam}`)
     }
 
     // Provisioning Logic: Ensure user has a default organization

@@ -24,6 +24,8 @@ import {
   X
 } from 'lucide-react'
 import { signOutAction } from '@/app/actions'
+import { supabase } from '@/lib/supabase'
+import { useRouter } from 'next/navigation'
 
 const navItems = [
   { name: 'Overview', href: '/', icon: LayoutDashboard },
@@ -62,6 +64,7 @@ interface SidebarProps {
 
 export function Sidebar({ orgName, tier, initials, role }: SidebarProps) {
   const pathname = usePathname()
+  const router = useRouter()
   const [mobileOpen, setMobileOpen] = useState(false)
 
   // Close mobile menu on route change
@@ -80,7 +83,14 @@ export function Sidebar({ orgName, tier, initials, role }: SidebarProps) {
   }, [mobileOpen])
 
   const handleSignOut = async () => {
-    await signOutAction()
+    try {
+      await signOutAction()
+    } catch {
+      // Server action may fail after redeploy (stale action ID)
+      await supabase.auth.signOut()
+      router.push('/login')
+      router.refresh()
+    }
   }
 
   const tierColors: Record<string, string> = {
