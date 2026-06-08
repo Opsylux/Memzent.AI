@@ -39,10 +39,11 @@ services:
     volumes:
       - ./data/qdrant:/qdrant/storage
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:6333/healthz || exit 1"]
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/127.0.0.1/6333'"]
       interval: 5s
       timeout: 3s
       retries: 5
+      start_period: 30s
     # S3 snapshot storage (disaster recovery). The router triggers snapshots on a
     # schedule (see SNAPSHOT_INTERVAL_HOURS); Qdrant uploads them to this bucket
     # automatically. Uncomment and fill in real credentials to enable offsite DR.
@@ -117,6 +118,7 @@ services:
     env_file:
       - .env
     environment:
+      PORT: "3000"
       NEXT_PUBLIC_GATEWAY_URL: ${NEXT_PUBLIC_GATEWAY_URL:-http://localhost:8080}
       GATEWAY_INTERNAL_URL: ${GATEWAY_INTERNAL_URL:-http://memzent-gateway:8080}
       NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL}

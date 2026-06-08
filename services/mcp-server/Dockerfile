@@ -1,12 +1,12 @@
-FROM golang:1.24-alpine
+FROM golang:1.25-alpine
 
-# Install build essentials
 RUN apk add --no-cache git gcc musl-dev
 
 WORKDIR /app
 
-COPY . .
+COPY services/mcp-server/go.mod services/mcp-server/go.sum ./
 RUN go mod download
 
-# We use standard go build/run
+COPY services/mcp-server/ .
+
 CMD ["go", "run", "main.go"]

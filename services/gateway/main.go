@@ -521,14 +521,17 @@ func main() {
 	go memzentEngine.WarmCache(ctx)
 
 	// 8.1 Initialize Stripe Handler (SaaS Billing)
-	stripeHandler := billing.NewStripeHandler(
-		rbacClient.GetDB(),
-		billingLedger,
-		os.Getenv("STRIPE_WEBHOOK_SECRET"),
-		os.Getenv("STRIPE_PRO_PRODUCT_ID"),
-		os.Getenv("STRIPE_BIZ_PRODUCT_ID"),
-		auditLogger,
-	)
+	var stripeHandler *billing.StripeHandler
+	if rbacClient != nil {
+		stripeHandler = billing.NewStripeHandler(
+			rbacClient.GetDB(),
+			billingLedger,
+			os.Getenv("STRIPE_WEBHOOK_SECRET"),
+			os.Getenv("STRIPE_PRO_PRODUCT_ID"),
+			os.Getenv("STRIPE_BIZ_PRODUCT_ID"),
+			auditLogger,
+		)
+	}
 
 	mux := http.NewServeMux()
 
@@ -874,7 +877,9 @@ func main() {
 		json.NewEncoder(w).Encode(stats)
 	})))
 
-	mux.Handle("/v1/billing/checkout", middleware(http.HandlerFunc(stripeHandler.CreateCheckoutSession)))
+	if stripeHandler != nil {
+		mux.Handle("/v1/billing/checkout", middleware(http.HandlerFunc(stripeHandler.CreateCheckoutSession)))
+	}
 
 	// Budget & Spend API (for planning tools / external integrations)
 	mux.Handle("/v1/billing/budget", middleware(requireScope("audit:read", func(w http.ResponseWriter, r *http.Request) {
@@ -1460,7 +1465,9 @@ func main() {
 
 	// Separate mux for endpoints that skip JWT middleware (or handle it manually)
 	publicMux := http.NewServeMux()
-	publicMux.HandleFunc("POST /v1/webhooks/stripe", stripeHandler.HandleWebhook)
+	if stripeHandler != nil {
+		publicMux.HandleFunc("POST /v1/webhooks/stripe", stripeHandler.HandleWebhook)
+	}
 
 	// Checkout session handler is already registered on 'mux' above
 

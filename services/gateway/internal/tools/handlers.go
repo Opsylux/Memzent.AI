@@ -31,7 +31,7 @@ type RegisterRequest struct {
 }
 
 // HandleRegisterTool registers a new tool (admin-only) and notifies the semantic router.
-func HandleRegisterTool(registry *Registry, routerClient router.SemanticRouter, auditLogger *metrics.PersistentAuditLogger) http.HandlerFunc {
+func HandleRegisterTool(registry *Registry, routerClient router.SemanticRouterInterface, auditLogger *metrics.PersistentAuditLogger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
@@ -324,7 +324,7 @@ func HandleDisableTool(registry *Registry) http.HandlerFunc {
 // HandleSyncTools triggers a real re-sync: polls Postgres for drifted tools and
 // pushes each one to the Rust Router for vectorization in Qdrant.
 // Admin-only. Returns a summary of what was synced.
-func HandleSyncTools(registry *Registry, routerClient router.SemanticRouter, auditLogger *metrics.PersistentAuditLogger) http.HandlerFunc {
+func HandleSyncTools(registry *Registry, routerClient router.SemanticRouterInterface, auditLogger *metrics.PersistentAuditLogger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)

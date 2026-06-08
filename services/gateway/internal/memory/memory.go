@@ -14,13 +14,13 @@ import (
 
 // MemoryManager orchestrates long-term semantic facts extraction and retrieval
 type MemoryManager struct {
-	routerClient router.SemanticRouter
+	routerClient router.SemanticRouterInterface
 	providers    map[string]llm.Provider
 	defProvider  string
 }
 
 // NewMemoryManager instantiates a long-term memory orchestrator
-func NewMemoryManager(rc router.SemanticRouter, providers map[string]llm.Provider, defaultProvider string) *MemoryManager {
+func NewMemoryManager(rc router.SemanticRouterInterface, providers map[string]llm.Provider, defaultProvider string) *MemoryManager {
 	return &MemoryManager{
 		routerClient: rc,
 		providers:    providers,
