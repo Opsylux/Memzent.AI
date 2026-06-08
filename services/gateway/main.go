@@ -28,6 +28,8 @@ import (
 	"memzent-gateway/internal/notifications"
 	"memzent-gateway/internal/router"
 	"memzent-gateway/internal/tools"
+	"memzent-gateway/internal/offline"
+	"memzent-gateway/internal/offline/miners"
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
@@ -357,6 +359,17 @@ func main() {
 	if webhookDispatcher != nil {
 		memzentEngine.SetEventEmitter(webhookDispatcher)
 	}
+
+	// 8.0b Initialize Offline Learning Plane (E3)
+	requestMiner := miners.NewRequestMiner(50)
+	cacheMiner := miners.NewCacheMiner(10, 100)
+	workflowMiner := miners.NewWorkflowMiner(100, 0.90)
+	offlinePlane := offline.NewPlane(
+		offline.DefaultConfig(),
+		requestMiner, cacheMiner, workflowMiner,
+	)
+	offlinePlane.Start(ctx)
+	memzentEngine.SetOfflinePlane(offlinePlane)
 
 	// Start background model discovery for all registered LLM providers
 	memzentEngine.StartModelDiscovery(ctx)
@@ -905,6 +918,23 @@ func main() {
 	mux.Handle("/v1/providers", middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		metadata := memzentEngine.GetProviderMetadata()
 		w.Header().Set("Content-Type", "application/json")
+
+	// Offline Learning Plane Stats API (E3)
+	mux.Handle("/v1/offline/stats", middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		stats := map[string]interface{}{
+			"plane":              offlinePlane.Stats(),
+			"hot_patterns":       requestMiner.GetHotPatterns(),
+			"cache_misses":       cacheMiner.GetTopMisses(),
+			"workflow_sequences": workflowMiner.GetDetectedSequences(),
+			"prediction_accuracy": cacheMiner.PredictionAccuracy(),
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(stats)
+	})))
 		json.NewEncoder(w).Encode(metadata)
 	})))
 
@@ -1075,6 +1105,9 @@ func main() {
 	// 10. Graceful Shutdown
 	<-ctx.Done()
 	slog.Info("Shutting down Memzent Gateway...")
+
+	// Stop offline learning plane (drain events, flush miners)
+	offlinePlane.Stop()
 
 	// Stop webhook dispatcher (drain queue)
 	if webhookDispatcher != nil {

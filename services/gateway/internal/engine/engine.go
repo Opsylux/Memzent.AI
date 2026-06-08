@@ -2,7 +2,9 @@ package engine
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -19,6 +21,7 @@ import (
 	mc "memzent-gateway/internal/mcp"
 	"memzent-gateway/internal/memory"
 	"memzent-gateway/internal/metrics"
+	"memzent-gateway/internal/offline"
 	rtr "memzent-gateway/internal/router"
 	toolspkg "memzent-gateway/internal/tools"
 
@@ -79,6 +82,9 @@ type MemzentEngine struct {
 	// Webhook event emitter (Phase 7)
 	eventEmitter EventEmitter
 
+	// Offline Learning Plane (E3)
+	offlinePlane *offline.Plane
+
 	TotalRequests atomic.Uint64
 	CacheHits     atomic.Uint64
 	orgRequests   sync.Map // Tracks requests per org (map[string]*atomic.Uint64)
@@ -93,6 +99,18 @@ type EventEmitter interface {
 // SetEventEmitter attaches a webhook dispatcher to the engine
 func (e *MemzentEngine) SetEventEmitter(emitter EventEmitter) {
 	e.eventEmitter = emitter
+}
+
+// SetOfflinePlane attaches the offline learning plane to the engine.
+func (e *MemzentEngine) SetOfflinePlane(plane *offline.Plane) {
+	e.offlinePlane = plane
+}
+
+// emitOffline sends an event to the offline learning plane (non-blocking).
+func (e *MemzentEngine) emitOffline(event offline.OfflineEvent) {
+	if e.offlinePlane != nil {
+		e.offlinePlane.Emit(event)
+	}
 }
 
 func NewMemzentEngine(
@@ -471,6 +489,12 @@ func (e *MemzentEngine) Process(ctx context.Context, req *PromptRequest) (*Promp
 				_ = e.sessionMgr.AppendMessage(ctx, req.SessionID, "user", queryPrompt)
 				_ = e.sessionMgr.AppendMessage(ctx, req.SessionID, "assistant", cachedResp)
 			}
+			e.emitOffline(offline.OfflineEvent{
+				OrgID: orgID, UserID: req.UserID,
+				PromptHash: sha256Hex(queryPrompt),
+				CacheLayer: "L1", LatencyMs: time.Since(processStart).Milliseconds(),
+				Provider: req.Provider, Model: resolvedModel, Success: true, Timestamp: time.Now(),
+			})
 			return &PromptResponse{Text: cachedResp, Cached: true, SessionID: req.SessionID}, nil
 		}
 
@@ -549,6 +573,13 @@ func (e *MemzentEngine) Process(ctx context.Context, req *PromptRequest) (*Promp
 						_ = e.sessionMgr.AppendMessage(ctx, req.SessionID, "user", queryPrompt)
 						_ = e.sessionMgr.AppendMessage(ctx, req.SessionID, "assistant", cachedEntity)
 					}
+					e.emitOffline(offline.OfflineEvent{
+						OrgID: orgID, UserID: req.UserID,
+						PromptHash: sha256Hex(queryPrompt), Entities: l1bEntities,
+						EntitySource: "regex", CacheLayer: "L1b",
+						LatencyMs: time.Since(processStart).Milliseconds(),
+						Provider: req.Provider, Model: resolvedModel, Success: true, Timestamp: time.Now(),
+					})
 					return &PromptResponse{Text: cachedEntity, Cached: true, SessionID: req.SessionID, Entities: l1bEntities}, nil
 				}
 			}
@@ -611,6 +642,10 @@ func (e *MemzentEngine) Process(ctx context.Context, req *PromptRequest) (*Promp
 	}
 	if len(extractedEntities) > 0 {
 		slog.Info("🏷️ Entities extracted", "org_id", orgID, "entities", extractedEntities)
+	}
+	entitySource := "none"
+	if len(extractedEntities) > 0 {
+		entitySource = "regex" // from Rust router's regex extractors
 	}
 
 	// NEW: Stage 2 Cache Check (Fuzzy Vector Semantic Match) — Org-Isolated & Model-Scoped
@@ -946,6 +981,26 @@ func (e *MemzentEngine) Process(ctx context.Context, req *PromptRequest) (*Promp
 		}, map[string]interface{}{"provider": selectedProvider.GetProviderName(), "tools_count": len(llmTools)})
 	}
 
+	// Emit offline learning event for L5 resolution
+	var toolNames []string
+	for _, t := range llmTools {
+		if tm, ok := t.(map[string]any); ok {
+			if name, ok := tm["name"].(string); ok {
+				toolNames = append(toolNames, name)
+			}
+		}
+	}
+	_, offlineCHash := NormalizePrompt(queryPrompt)
+	e.emitOffline(offline.OfflineEvent{
+		OrgID: orgID, UserID: req.UserID,
+		PromptHash: sha256Hex(queryPrompt), CanonicalHash: offlineCHash,
+		Entities: extractedEntities, EntitySource: entitySource,
+		ToolsUsed: toolNames, CacheLayer: "L5",
+		LatencyMs: time.Since(processStart).Milliseconds(),
+		Provider: selectedProvider.GetProviderName(), Model: resolvedModel,
+		Success: true, Timestamp: time.Now(),
+	})
+
 	return &PromptResponse{
 		Text:      aiResp,
 		Cached:    false,
@@ -1119,4 +1174,10 @@ func (e *MemzentEngine) emitEvent(ctx context.Context, orgID, eventType string, 
 	if e.eventEmitter != nil {
 		go e.eventEmitter.Emit(ctx, orgID, eventType, data)
 	}
+}
+
+// sha256Hex returns the hex-encoded SHA-256 hash of a string.
+func sha256Hex(s string) string {
+	h := sha256.Sum256([]byte(s))
+	return hex.EncodeToString(h[:])
 }
