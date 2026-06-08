@@ -317,18 +317,20 @@ const WhyMemzent = () => (
         </thead>
         <tbody className="text-white/70 font-bold">
           {[
-            { feature: "Semantic Cache (Vector)", memzent: true, litellm: false, helicone: false, portkey: false },
+            { feature: "4-Layer Semantic Cache (L1/L1.5/L1b/L2)", memzent: true, litellm: false, helicone: false, portkey: false },
                 { feature: "Entity-Aware Cache Guard", memzent: true, litellm: false, helicone: false, portkey: false },
-                { feature: "Multi-LLM Routing", memzent: true, litellm: true, helicone: false, portkey: true },
-                { feature: "MCP Tool Registry", memzent: true, litellm: false, helicone: false, portkey: false },
-                { feature: "Workflow Discovery & Shortcuts", memzent: true, litellm: false, helicone: false, portkey: false },
-                { feature: "RBAC + Governance", memzent: true, litellm: false, helicone: false, portkey: true },
-                { feature: "Agent Memory (Persistent)", memzent: true, litellm: false, helicone: false, portkey: false },
+                { feature: "Canonical Prompt Normalization (L1.5)", memzent: true, litellm: false, helicone: false, portkey: false },
+                { feature: "Multi-LLM Routing", memzent: true, litellm: true, helicone: true, portkey: true },
+                { feature: "MCP Tool Registry + Execution", memzent: true, litellm: false, helicone: false, portkey: true },
+                { feature: "Workflow Discovery & Auto-Shortcuts", memzent: true, litellm: false, helicone: false, portkey: false },
+                { feature: "RBAC + Multi-Tenant Governance", memzent: true, litellm: true, helicone: true, portkey: true },
+                { feature: "Agent Memory (Session + Semantic)", memzent: true, litellm: true, helicone: false, portkey: true },
+                { feature: "Offline Learning & Pattern Mining", memzent: true, litellm: false, helicone: false, portkey: false },
                 { feature: "GPU Avoidance Analytics", memzent: true, litellm: false, helicone: false, portkey: false },
                 { feature: "Spend Limits & Budget Forecast", memzent: true, litellm: false, helicone: false, portkey: true },
                 { feature: "Real-time Observability", memzent: true, litellm: true, helicone: true, portkey: true },
-                { feature: "Pay-As-You-Go Billing", memzent: true, litellm: false, helicone: true, portkey: true },
-                { feature: "Open Source Core", memzent: true, litellm: true, helicone: false, portkey: false },
+                { feature: "Open Source (Apache 2.0)", memzent: true, litellm: true, helicone: true, portkey: true },
+                { feature: "Self-Hosted (One Command)", memzent: true, litellm: true, helicone: true, portkey: true },
           ].map(row => (
             <tr key={row.feature} className="border-b border-white/5 hover:bg-white/[0.02] transition-colors">
               <td className="py-4 px-4">{row.feature}</td>
@@ -343,7 +345,7 @@ const WhyMemzent = () => (
     </div>
 
     <div className="text-center mt-12">
-      <p className="text-sm opacity-50 font-bold">Comparison based on public feature documentation as of 2026. All products are excellent — Memzent combines capabilities into one unified layer.</p>
+      <p className="text-sm opacity-50 font-bold">Comparison based on public documentation as of June 2026. All products are excellent — Memzent's edge is the 4-layer cache architecture with entity-aware guards that no competitor replicates.</p>
     </div>
   </section>
 );
