@@ -8,7 +8,7 @@ This document tracks the current completion state of Memzent features and provid
 | :--- | :--- | :--- | :--- |
 | **Four-Layer Caching** | Gateway/Rust | ✅ 100% | L1 Literal, L1.5 Canonical, L1b Entity-Keyed, L2 Semantic. |
 | **Service Boundaries** | All | ✅ 100% | Go Gateway (Auth/Orchestration), Rust Router (Math), Dashboard (UI). |
-| **RBAC Scoping & Multi-Token** | Gateway | ✅ 100% | Dynamic key generation with customizable roles and scopes. Seeded with a $10 welcome balance to unblock trials. |
+| **RBAC Scoping & Multi-Token** | Gateway | ✅ 100% | Dynamic key generation with customizable roles and scopes. API = pay-as-you-go, Dashboard = unlimited. |
 | **Dynamic Tool Registry** | Gateway | ✅ 100% | Refresh loop, Qdrant sync, full CRUD (`/v1/tools/{id}`), Dashboard edit/delete UI. |
 | **Connector Framework** | Gateway | ✅ 100% | SQL/REST/Core connectors fully implemented, registered, and active. |
 | **Neural Dashboard** | Dashboard | ✅ 100% | Dynamic Billing, API Security metrics, live Playground, Provider discovery, Tool CRUD, Notifications. Responsive mobile layout. |
