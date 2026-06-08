@@ -33,6 +33,10 @@ func (m *mockCache) SetResult(_ context.Context, key, value string, _ time.Durat
 	return nil
 }
 
+func (m *mockCache) RateLimit(_ context.Context, _ string, _ int64) (bool, error) {
+	return true, nil
+}
+
 type mockRouter struct{}
 
 func (m *mockRouter) GetBestTools(_ context.Context, _, _ string, _ []string, _ bool) ([]*router.Tool, string, string, string, map[string]string, error) {

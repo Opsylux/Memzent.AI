@@ -38,6 +38,7 @@ type PromptRequest struct {
 	Model     string       `json:"model,omitempty"`      // optional per-request model override
 	SkipCache bool         `json:"skip_cache,omitempty"` // set by X-Skip-Cache header
 	Stream    bool         `json:"stream,omitempty"`
+	Chain     bool         `json:"chain,omitempty"` // force PlanToolChain sequential execution
 }
 
 // PromptResponse defines the gateway's response to the client
@@ -60,7 +61,7 @@ type rateLimiterEntry struct {
 
 // MemzentEngine orchestrates the flow between Cache, RBAC, Router, MCP, and LLM
 type MemzentEngine struct {
-	cache             *cch.MemzentCache
+	cache             cch.Store
 	router            rtr.SemanticRouterInterface
 	rbac              *auth.RBACClient
 	ledger            *billing.Ledger
@@ -139,7 +140,7 @@ func (e *MemzentEngine) emitOffline(event offline.OfflineEvent) {
 }
 
 func NewMemzentEngine(
-	cache *cch.MemzentCache,
+	cache cch.Store,
 	rtrClient rtr.SemanticRouterInterface,
 	rbacClient *auth.RBACClient,
 	ledger *billing.Ledger,
@@ -333,7 +334,9 @@ Extract the parameters and output a JSON object containing ONLY the keys and val
 	return parsedParams, nil
 }
 
-func (e *MemzentEngine) Process(ctx context.Context, req *PromptRequest) (*PromptResponse, error) {
+// Process runs the gateway pipeline. Pass onStreamToken to receive provider-native LLM
+// tokens during generation (Ollama). Ignored on cache hits and unsupported providers.
+func (e *MemzentEngine) Process(ctx context.Context, req *PromptRequest, onStreamToken func(string) error) (*PromptResponse, error) {
 	e.TotalRequests.Add(1)
 
 	// Ensure flags are always available (handles test engines created without NewMemzentEngine)
@@ -496,6 +499,12 @@ func (e *MemzentEngine) Process(ctx context.Context, req *PromptRequest) (*Promp
 	}
 
 	// B. Stage 1-2 Cache Lookup (Org-Isolated & Model-Scoped)
+	//
+	// Security model (Option A — org-scoped cache hits):
+	// Cache keys include org_id and resolved model, so a cache HIT is only returned
+	// for the same tenant that stored the entry. RBAC runs on MISS paths before tool
+	// execution and LLM synthesis. We intentionally skip re-running RBAC on HIT to
+	// preserve sub-5ms latency; orgs must have been authorized when the entry was written.
 	if e.cache != nil && !req.SkipCache {
 		cacheKey := e.buildCacheKey(orgID, "p", resolvedModel, queryPrompt)
 		cachedResp, err := e.cache.GetSemanticResult(ctx, cacheKey)
@@ -836,19 +845,35 @@ func (e *MemzentEngine) Process(ctx context.Context, req *PromptRequest) (*Promp
 
 	// E. Tool Execution (Multi-Connector: Universal Provisioning & Chaining support)
 	var toolResults []string
-	useChaining := false
-	if len(tools) > 1 && (strings.Contains(strings.ToLower(queryPrompt), "then") ||
-		strings.Contains(strings.ToLower(queryPrompt), "after") ||
-		strings.Contains(strings.ToLower(queryPrompt), "sequence") ||
-		strings.Contains(strings.ToLower(queryPrompt), "chain") ||
-		strings.Contains(strings.ToLower(queryPrompt), "first")) {
+	useChaining := req.Chain
+	var chainSteps []*rtr.ToolStep
+	var chainConfidence float32
+
+	if !useChaining && len(tools) > 1 && e.router != nil {
+		steps, confidence, err := e.router.PlanToolChain(ctx, queryPrompt, orgID, allowedTools)
+		if err == nil && len(steps) > 1 && confidence >= 0.65 {
+			useChaining = true
+			chainSteps = steps
+			chainConfidence = confidence
+		}
+	}
+	if !useChaining && len(tools) > 1 && chainKeywords(queryPrompt) {
 		useChaining = true
 	}
 
 	if useChaining && e.router != nil {
-		steps, confidence, err := e.router.PlanToolChain(ctx, queryPrompt, orgID, allowedTools)
-		if err == nil && len(steps) > 1 && confidence > 0.5 {
-			slog.Info("⛓️ Sequential tool chaining activated", "steps_count", len(steps), "confidence", confidence)
+		steps := chainSteps
+		confidence := chainConfidence
+		if len(steps) == 0 {
+			var err error
+			steps, confidence, err = e.router.PlanToolChain(ctx, queryPrompt, orgID, allowedTools)
+			if err != nil {
+				steps = nil
+			}
+		}
+		// req.Chain forces execution even when router confidence is low.
+		if len(steps) > 1 && (req.Chain || confidence > 0.5) {
+			slog.Info("⛓️ Sequential tool chaining activated", "steps_count", len(steps), "confidence", confidence, "forced", req.Chain)
 
 			var lastOutput string
 			for _, step := range steps {
@@ -1064,7 +1089,22 @@ func (e *MemzentEngine) Process(ctx context.Context, req *PromptRequest) (*Promp
 
 	slog.Info("🤖 LLM Provider selected", "provider", selectedProvider.GetProviderName(), "model_override", req.Model, "skip_cache", req.SkipCache)
 
-	aiResp, tokenUsage, err := selectedProvider.Generate(ctx, messagesToLLM, llmTools, req.Model)
+	var aiResp string
+	var tokenUsage *lp.TokenUsage
+	if onStreamToken != nil {
+		if sp, ok := selectedProvider.(lp.StreamingProvider); ok {
+			aiResp, tokenUsage, err = sp.GenerateStream(ctx, messagesToLLM, llmTools, req.Model, onStreamToken)
+		} else {
+			aiResp, tokenUsage, err = selectedProvider.Generate(ctx, messagesToLLM, llmTools, req.Model)
+			if err == nil && aiResp != "" {
+				if emitErr := onStreamToken(aiResp); emitErr != nil {
+					return nil, emitErr
+				}
+			}
+		}
+	} else {
+		aiResp, tokenUsage, err = selectedProvider.Generate(ctx, messagesToLLM, llmTools, req.Model)
+	}
 	if err != nil {
 		slog.Error("LLM generation failed", "error", err, "provider", selectedProvider.GetProviderName())
 		return nil, err
@@ -1308,6 +1348,17 @@ func (e *MemzentEngine) WarmCache(ctx context.Context) {
 	}
 
 	slog.Info("🔥 Memory cache pre-warming completed successfully!", "records_warmed", warmedCount)
+}
+
+func chainKeywords(prompt string) bool {
+	lower := " " + strings.ToLower(prompt) + " "
+	keywords := []string{" then ", " after ", " sequence", " chain ", " first "}
+	for _, kw := range keywords {
+		if strings.Contains(lower, kw) {
+			return true
+		}
+	}
+	return false
 }
 
 func isBillingQuery(prompt string) bool {

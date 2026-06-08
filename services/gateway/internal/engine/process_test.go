@@ -24,7 +24,7 @@ func TestMemzentEngine_Process_RateLimit(t *testing.T) {
 
 	// Rate limiting requires Valkey (distributed via cache.RateLimit).
 	// Without a cache, rate limiting is skipped and the request proceeds.
-	_, err := e.Process(ctx, req)
+	_, err := e.Process(ctx, req, nil)
 	if err != nil && err.Error() == "rate limit exceeded for organization org1 (tier: free)" {
 		t.Errorf("Rate limit should not fire without Valkey cache configured")
 	}
@@ -48,7 +48,7 @@ func TestMemzentEngine_Process_BillingFailure(t *testing.T) {
 
 	req := &PromptRequest{UserID: "user1", Messages: []llm.Message{{Role: "user", Content: "test"}}}
 
-	_, err := e.Process(ctx, req)
+	_, err := e.Process(ctx, req, nil)
 	if err == nil {
 		t.Errorf("Expected billing error")
 	} else if err.Error() != "payment required: token balance depleted" {
@@ -68,7 +68,7 @@ func TestMemzentEngine_Process_CacheHit(t *testing.T) {
 	ctx = context.WithValue(ctx, "org_id", "org1")
 	req := &PromptRequest{UserID: "user1", Messages: []llm.Message{{Role: "user", Content: prompt}}}
 
-	resp, err := e.Process(ctx, req)
+	resp, err := e.Process(ctx, req, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -100,7 +100,7 @@ func TestMemzentEngine_Process_RBACDeny(t *testing.T) {
 	ctx = context.WithValue(ctx, "org_id", "denied-org")
 	req := &PromptRequest{UserID: "user1", Messages: []llm.Message{{Role: "user", Content: "hello"}}}
 
-	_, err = e.Process(ctx, req)
+	_, err = e.Process(ctx, req, nil)
 	if err == nil {
 		t.Fatal("expected RBAC deny error")
 	}
@@ -119,7 +119,7 @@ func TestMemzentEngine_Process_CacheMissWithMockRouter(t *testing.T) {
 	ctx = context.WithValue(ctx, "org_id", "org1")
 	req := &PromptRequest{UserID: "user1", Messages: []llm.Message{{Role: "user", Content: "generate this"}}}
 
-	resp, err := e.Process(ctx, req)
+	resp, err := e.Process(ctx, req, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -130,7 +130,7 @@ func TestMemzentEngine_Process_CacheMissWithMockRouter(t *testing.T) {
 		t.Errorf("expected mock LLM response, got %q", resp.Text)
 	}
 
-	resp2, err := e.Process(ctx, req)
+	resp2, err := e.Process(ctx, req, nil)
 	if err != nil {
 		t.Fatalf("second request error: %v", err)
 	}

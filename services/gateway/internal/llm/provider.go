@@ -20,6 +20,12 @@ type Provider interface {
 	GetMetadata() ProviderMetadata
 }
 
+// StreamingProvider emits tokens as they arrive from the upstream LLM (Ollama today).
+type StreamingProvider interface {
+	Provider
+	GenerateStream(ctx context.Context, messages []Message, tools []any, model string, onToken func(string) error) (string, *TokenUsage, error)
+}
+
 type ModelDiscoverer interface {
 	DiscoverModels(ctx context.Context) ([]string, error)
 }

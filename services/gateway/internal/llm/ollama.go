@@ -1,11 +1,14 @@
 package llm
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
+	"strings"
 	"sync"
 )
 
@@ -160,4 +163,94 @@ func (o *OllamaProvider) Generate(ctx context.Context, messages []Message, tools
 	}
 
 	return result.Message.Content, usage, nil
+}
+
+// GenerateStream uses Ollama's NDJSON streaming API and invokes onToken per delta.
+func (o *OllamaProvider) GenerateStream(ctx context.Context, messages []Message, tools []any, model string, onToken func(string) error) (string, *TokenUsage, error) {
+	url := fmt.Sprintf("%s/api/chat", o.BaseURL)
+
+	activeModel := o.Model
+	if model != "" {
+		activeModel = model
+	}
+
+	system := BuildSystemPrompt(tools)
+	apiMessages := []map[string]string{{"role": "system", "content": system}}
+	for _, m := range messages {
+		apiMessages = append(apiMessages, map[string]string{"role": m.Role, "content": m.Content})
+	}
+
+	reqBody := map[string]interface{}{
+		"model":      activeModel,
+		"messages":   apiMessages,
+		"stream":     true,
+		"keep_alive": -1,
+	}
+
+	jsonBody, err := json.Marshal(reqBody)
+	if err != nil {
+		return "", nil, err
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(jsonBody))
+	if err != nil {
+		return "", nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return "", nil, fmt.Errorf("failed to connect to Ollama at %s: %w", o.BaseURL, err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return "", nil, fmt.Errorf("ollama API error: received status %d", resp.StatusCode)
+	}
+
+	var full strings.Builder
+	usage := &TokenUsage{}
+	scanner := bufio.NewScanner(resp.Body)
+	// Ollama NDJSON lines can exceed the default 64 KB scanner token limit.
+	scanner.Buffer(make([]byte, 1<<20), 1<<20)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" {
+			continue
+		}
+		var chunk struct {
+			Message struct {
+				Content string `json:"content"`
+			} `json:"message"`
+			Done              bool `json:"done"`
+			PromptEvalCount   int  `json:"prompt_eval_count"`
+			EvalCount         int  `json:"eval_count"`
+		}
+		if err := json.Unmarshal([]byte(line), &chunk); err != nil {
+			continue
+		}
+		if chunk.Message.Content != "" {
+			full.WriteString(chunk.Message.Content)
+			if onToken != nil {
+				if err := onToken(chunk.Message.Content); err != nil {
+					return full.String(), usage, err
+				}
+			}
+		}
+		if chunk.Done {
+			usage.PromptTokens = chunk.PromptEvalCount
+			usage.CompletionTokens = chunk.EvalCount
+			usage.TotalTokens = chunk.PromptEvalCount + chunk.EvalCount
+			break
+		}
+	}
+	if err := scanner.Err(); err != nil && err != io.EOF {
+		return full.String(), usage, err
+	}
+
+	text := full.String()
+	if text == "" {
+		return "", nil, fmt.Errorf("ollama stream returned empty response")
+	}
+	return text, usage, nil
 }

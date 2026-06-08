@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/signal"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -77,32 +78,45 @@ func (rw *statusResponseWriter) WriteHeader(code int) {
 
 func corsMiddleware(allowedOrigins []string) func(http.Handler) http.Handler {
 	allowAll := len(allowedOrigins) == 1 && allowedOrigins[0] == "*"
-	originSet := make(map[string]struct{}, len(allowedOrigins))
-	for _, o := range allowedOrigins {
-		originSet[o] = struct{}{}
-	}
 
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			origin := r.Header.Get("Origin")
-			if allowAll {
+			if origin != "" {
+				if allowAll {
+					w.Header().Set("Access-Control-Allow-Origin", "*")
+				} else if originAllowed(origin, allowedOrigins) {
+					w.Header().Set("Access-Control-Allow-Origin", origin)
+					w.Header().Set("Vary", "Origin")
+				} else if r.Method == http.MethodOptions {
+					http.Error(w, "CORS origin not allowed", http.StatusForbidden)
+					return
+				}
+			} else if allowAll {
 				w.Header().Set("Access-Control-Allow-Origin", "*")
-			} else if _, ok := originSet[origin]; ok {
-				w.Header().Set("Access-Control-Allow-Origin", origin)
-				w.Header().Set("Vary", "Origin")
 			}
+
 			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
 			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-API-Key, X-Memzent-Provider, X-Memzent-Model, X-Skip-Cache, X-Org-ID, X-Request-ID")
 			w.Header().Set("Access-Control-Expose-Headers", "X-Cache, X-Request-ID, X-RateLimit-Remaining")
 			w.Header().Set("Access-Control-Max-Age", "86400")
 
-			if r.Method == "OPTIONS" {
-				w.WriteHeader(http.StatusOK)
+			if r.Method == http.MethodOptions {
+				w.WriteHeader(http.StatusNoContent)
 				return
 			}
 			next.ServeHTTP(w, r)
 		})
 	}
+}
+
+func originAllowed(origin string, allowed []string) bool {
+	for _, o := range allowed {
+		if o == origin {
+			return true
+		}
+	}
+	return false
 }
 
 func main() {
@@ -142,7 +156,7 @@ func main() {
 	slog.Info("Connected to Rust Router")
 
 	// 5. Initialize RBAC Client
-	rbacClient, err := auth.NewRBACClient(cfg.PostgresURL, cfg.DevAdminBypass)
+	rbacClient, err := auth.NewRBACClient(cfg.PostgresURL, cfg.Environment)
 	if err != nil {
 		slog.Warn("Postgres RBAC unavailable, starting with limited permissions", "error", err)
 	} else {
@@ -162,20 +176,20 @@ func main() {
 		jwksProvider = auth.NewJWKSProvider(cfg.JWKSURL, cfg.SupabaseKey)
 		slog.Info("JWKS Provider initialized", "url", cfg.JWKSURL)
 
-		// Seed the known Supabase EC public key (ES256 / P-256) so that
-		// JWT verification works immediately, even when the JWKS endpoint
-		// returns 401 due to network policy.
-		//
-		// The literal JWK can be overridden via SUPABASE_STATIC_JWK env var.
-		// Default is the key retrieved from the Supabase project dashboard.
+		// Production: JWKS fetch only. Development: optional static JWK seed via env.
 		staticJWK := os.Getenv("SUPABASE_STATIC_JWK")
-		if staticJWK == "" {
+		if staticJWK == "" && cfg.Environment != "production" {
 			staticJWK = `{"x":"UTI4xiBSLxHQs5oiBAsa-kpdkrkU0c-ZLQ05RajACOw","y":"b0Fgsaxo33a4HCdADuLLJu1XFXqTDRwXQYEkQVEvOGQ","alg":"ES256","crv":"P-256","kid":"ab27c078-c304-4414-87f2-9ca0622a565e","kty":"EC"}`
 		}
-		if kid, ecKey, keyErr := auth.ParseECJWKLiteral(staticJWK); keyErr != nil {
-			slog.Warn("JWKS: failed to parse static JWK, remote fetch only", "error", keyErr)
-		} else {
-			jwksProvider.SeedKey(kid, ecKey)
+		if staticJWK != "" {
+			if kid, ecKey, keyErr := auth.ParseECJWKLiteral(staticJWK); keyErr != nil {
+				slog.Warn("JWKS: failed to parse static JWK, remote fetch only", "error", keyErr)
+			} else {
+				jwksProvider.SeedKey(kid, ecKey)
+				if cfg.IsProduction() {
+					slog.Warn("JWKS: static JWK seed active in production via SUPABASE_STATIC_JWK")
+				}
+			}
 		}
 	}
 
@@ -227,16 +241,15 @@ func main() {
 	// 7.4 Initialize Core Connector (Hybrid Approach: Native Go Tools)
 	coreConnector := connectors.NewCoreConnector()
 
-	// Register: read_database (Native Implementation)
+	// Demo core tools — stubs for local development; register real REST/SQL/MCP tools for production.
 	coreConnector.RegisterTool("read_database", func(ctx context.Context, userID string, inputs map[string]interface{}) (string, error) {
-		slog.Info("Executing CORE tool: read_database", "user_id", userID)
-		return "Mock Database Trace: Successfully indexed 1,241 cluster metrics via Memzent Core (Native Connector).", nil
+		slog.Info("Executing CORE demo tool: read_database", "user_id", userID)
+		return "[Demo] read_database stub — no live database attached. Register a SQL or MCP tool for real metrics.", nil
 	})
 
-	// Register: memzent_search (Native Implementation)
 	coreConnector.RegisterTool("memzent_search", func(ctx context.Context, userID string, inputs map[string]interface{}) (string, error) {
-		slog.Info("Executing CORE tool: memzent_search", "user_id", userID)
-		return "Semantic Search Results: No direct matches found in local index. Proceeding with neural expansion.", nil
+		slog.Info("Executing CORE demo tool: memzent_search", "user_id", userID)
+		return "[Demo] memzent_search stub — no vector index queried. Semantic routing still runs via the Rust router.", nil
 	})
 
 	// Register: store_memory (Native Implementation)
@@ -594,7 +607,40 @@ func main() {
 
 		w.Header().Set("X-Request-ID", reqID)
 
-		resp, err := memzentEngine.Process(r.Context(), &req)
+		wantStream := req.Stream || r.Header.Get("Accept") == "text/event-stream"
+		var (
+			streamHeadersSent bool
+			streamedNative    bool
+			streamFlusher     http.Flusher
+		)
+
+		var onStreamToken func(string) error
+		if wantStream {
+			onStreamToken = func(token string) error {
+				if !streamHeadersSent {
+					w.Header().Set("Content-Type", "text/event-stream")
+					w.Header().Set("Cache-Control", "no-cache")
+					w.Header().Set("Connection", "keep-alive")
+					w.Header().Set("Transfer-Encoding", "chunked")
+					fl, ok := w.(http.Flusher)
+					if !ok {
+						return fmt.Errorf("streaming unsupported")
+					}
+					streamFlusher = fl
+					streamHeadersSent = true
+				}
+				streamedNative = true
+				data, _ := json.Marshal(map[string]any{
+					"text":       token,
+					"request_id": reqID,
+				})
+				fmt.Fprintf(w, "data: %s\n\n", data)
+				streamFlusher.Flush()
+				return nil
+			}
+		}
+
+		resp, err := memzentEngine.Process(r.Context(), &req, onStreamToken)
 		if err != nil {
 			slog.Error("Engine Processing Error", "error", err, "user", req.UserID)
 			w.Header().Set("Content-Type", "application/json")
@@ -621,29 +667,27 @@ func main() {
 			return
 		}
 
-		// Support Server-Sent Events (SSE) streaming if requested
-		if req.Stream || r.Header.Get("Accept") == "text/event-stream" {
-			w.Header().Set("Content-Type", "text/event-stream")
-			w.Header().Set("Cache-Control", "no-cache")
-			w.Header().Set("Connection", "keep-alive")
-			w.Header().Set("Transfer-Encoding", "chunked")
+		if wantStream {
+			if !streamHeadersSent {
+				w.Header().Set("Content-Type", "text/event-stream")
+				w.Header().Set("Cache-Control", "no-cache")
+				w.Header().Set("Connection", "keep-alive")
+				var ok bool
+				streamFlusher, ok = w.(http.Flusher)
+				if !ok {
+					http.Error(w, "Streaming unsupported", http.StatusInternalServerError)
+					return
+				}
+				streamHeadersSent = true
+			}
 			if resp.Cached {
 				w.Header().Set("X-Cache", "HIT")
 			}
 
-			flusher, ok := w.(http.Flusher)
-			if !ok {
-				http.Error(w, "Streaming unsupported", http.StatusInternalServerError)
-				return
-			}
-
-			// Split the final generated response into words to simulate smooth premium SSE stream
-			words := strings.Fields(resp.Text)
-			for idx, word := range words {
-				select {
-				case <-r.Context().Done():
-					return
-				default:
+			// Cache hits and non-Ollama providers: emit completed text (word-chunked for UX)
+			if !streamedNative && resp.Text != "" {
+				words := strings.Fields(resp.Text)
+				for idx, word := range words {
 					chunk := word
 					if idx < len(words)-1 {
 						chunk += " "
@@ -655,13 +699,21 @@ func main() {
 						"request_id": reqID,
 					})
 					fmt.Fprintf(w, "data: %s\n\n", data)
-					flusher.Flush()
-					time.Sleep(20 * time.Millisecond) // Premium smooth typewriter delay
+					streamFlusher.Flush()
 				}
+			} else if streamedNative {
+				// Final metadata frame after native token stream
+				data, _ := json.Marshal(map[string]any{
+					"cached":     resp.Cached,
+					"provider":   resp.Provider,
+					"request_id": reqID,
+				})
+				fmt.Fprintf(w, "data: %s\n\n", data)
+				streamFlusher.Flush()
 			}
-			// Write termination packet
+
 			fmt.Fprint(w, "data: [DONE]\n\n")
-			flusher.Flush()
+			streamFlusher.Flush()
 			return
 		}
 
@@ -698,9 +750,19 @@ func main() {
 		var allTools []tools.ToolWithProvider
 		if toolRegistry != nil {
 			dbTools, _ := toolRegistry.ListTools(r.Context(), orgID)
-			for _, t := range dbTools {
-				allTools = append(allTools, tools.ToolToAPI(t))
+			// Probe each tool's health concurrently so one slow backend
+			// doesn't serialize the whole list response.
+			apiTools := make([]tools.ToolWithProvider, len(dbTools))
+			var wg sync.WaitGroup
+			for i, t := range dbTools {
+				wg.Add(1)
+				go func(i int, t *tools.Tool) {
+					defer wg.Done()
+					apiTools[i] = tools.ToolToAPI(r.Context(), t, connRegistry)
+				}(i, t)
 			}
+			wg.Wait()
+			allTools = append(allTools, apiTools...)
 		}
 
 		if mcpClient != nil {
@@ -1402,7 +1464,7 @@ func main() {
 
 	// Checkout session handler is already registered on 'mux' above
 
-	publicMux.Handle("/", auth.UnifiedAuthMiddleware(cfg.JWTSecret, jwksProvider, rbacClient)(metricsMiddleware(corsMiddleware(cfg.AllowedOrigins)(mux))))
+	publicMux.Handle("/", auth.UnifiedAuthMiddleware(cfg.JWTSecret, jwksProvider, rbacClient)(metricsMiddleware(corsMiddleware(cfg.CORSAllowedOrigins)(mux))))
 
 	srv := &http.Server{
 		Addr:    cfg.Port,

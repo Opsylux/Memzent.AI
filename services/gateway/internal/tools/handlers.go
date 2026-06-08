@@ -1,6 +1,7 @@
 package tools
 
 import (
+	"memzent-gateway/internal/connectors"
 	"memzent-gateway/internal/metrics"
 	"memzent-gateway/internal/router"
 	"context"
@@ -11,6 +12,10 @@ import (
 	"strings"
 	"time"
 )
+
+// healthCheckTimeout bounds how long a single tool health probe may take
+// when serving the tools list endpoint.
+const healthCheckTimeout = 2 * time.Second
 
 // RegisterRequest is the payload for registering a new tool
 type RegisterRequest struct {
@@ -26,7 +31,7 @@ type RegisterRequest struct {
 }
 
 // HandleRegisterTool registers a new tool (admin-only) and notifies the semantic router.
-func HandleRegisterTool(registry *Registry, routerClient *router.RouterClient, auditLogger *metrics.PersistentAuditLogger) http.HandlerFunc {
+func HandleRegisterTool(registry *Registry, routerClient router.SemanticRouter, auditLogger *metrics.PersistentAuditLogger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
@@ -55,6 +60,11 @@ func HandleRegisterTool(registry *Registry, routerClient *router.RouterClient, a
 
 		if req.ConnectorType == "" {
 			req.ConnectorType = "mcp" // Default to MCP for backward compatibility
+		}
+
+		if !IsSupportedConnectorType(req.ConnectorType) {
+			http.Error(w, UnsupportedConnectorError(req.ConnectorType).Error(), http.StatusBadRequest)
+			return
 		}
 
 		if req.TimeoutSeconds == 0 {
@@ -314,7 +324,7 @@ func HandleDisableTool(registry *Registry) http.HandlerFunc {
 // HandleSyncTools triggers a real re-sync: polls Postgres for drifted tools and
 // pushes each one to the Rust Router for vectorization in Qdrant.
 // Admin-only. Returns a summary of what was synced.
-func HandleSyncTools(registry *Registry, routerClient *router.RouterClient, auditLogger *metrics.PersistentAuditLogger) http.HandlerFunc {
+func HandleSyncTools(registry *Registry, routerClient router.SemanticRouter, auditLogger *metrics.PersistentAuditLogger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
@@ -426,8 +436,55 @@ type ToolWithProvider struct {
 	OutputSchema   map[string]interface{} `json:"output_schema,omitempty"`
 }
 
-// Utility function to convert Tool to API response format
-func ToolToAPI(t *Tool) ToolWithProvider {
+// resolveConnector returns the connector capable of serving the given tool, or
+// nil if none is available. It mirrors the connector selection used by the
+// engine during execution: REST connectors are stateless and built per-endpoint,
+// while SQL/MCP/Core reuse the shared, already-initialized registry instances.
+func resolveConnector(t *Tool, connReg *connectors.ConnectorRegistry) connectors.Connector {
+	switch t.ConnectorType {
+	case ConnectorREST:
+		return connectors.NewRESTConnector(t.Endpoint)
+	case ConnectorSQL:
+		if c, ok := connReg.Get(connectors.TypeSQL); ok {
+			return c
+		}
+	case ConnectorMCP:
+		if c, ok := connReg.Get(connectors.TypeMCP); ok {
+			return c
+		}
+	default:
+		if c, ok := connReg.Get(connectors.TypeCore); ok {
+			if cc, ok := c.(*connectors.CoreConnector); ok && cc.HasTool(t.ID) {
+				return c
+			}
+		}
+	}
+	return nil
+}
+
+// toolStatus probes a tool's backing connector and returns "online" when the
+// health check passes, "offline" otherwise. A nil registry (or unresolved
+// connector) yields "unknown" rather than a misleading status.
+func toolStatus(ctx context.Context, t *Tool, connReg *connectors.ConnectorRegistry) string {
+	if connReg == nil {
+		return "unknown"
+	}
+	connector := resolveConnector(t, connReg)
+	if connector == nil {
+		return "unknown"
+	}
+
+	hcCtx, cancel := context.WithTimeout(ctx, healthCheckTimeout)
+	defer cancel()
+	if err := connector.HealthCheck(hcCtx); err != nil {
+		return "offline"
+	}
+	return "online"
+}
+
+// ToolToAPI converts a Tool to its API response format, probing the tool's
+// connector for a live health status. Pass a nil registry to skip the probe.
+func ToolToAPI(ctx context.Context, t *Tool, connReg *connectors.ConnectorRegistry) ToolWithProvider {
 	provider := "Memzent-" + strings.ToUpper(string(t.ConnectorType))
 	return ToolWithProvider{
 		ID:             t.ID,
@@ -435,7 +492,7 @@ func ToolToAPI(t *Tool) ToolWithProvider {
 		Description:    t.Description,
 		Provider:       provider,
 		ConnectorType:  string(t.ConnectorType),
-		Status:         "online", // TODO: Check tool health
+		Status:         toolStatus(ctx, t, connReg),
 		TimeoutSeconds: t.TimeoutSeconds,
 		InputSchema:    t.InputSchema,
 		OutputSchema:   t.OutputSchema,

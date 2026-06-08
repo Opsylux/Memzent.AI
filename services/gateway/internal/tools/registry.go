@@ -13,12 +13,13 @@ import (
 type ToolConnectorType string
 
 const (
-	ConnectorMCP    ToolConnectorType = "mcp"       // Model Context Protocol (current)
-	ConnectorREST   ToolConnectorType = "rest"      // REST API (to be implemented)
-	ConnectorSQL    ToolConnectorType = "sql"       // Direct SQL (to be implemented)
-	ConnectorGraphQL ToolConnectorType = "graphql"  // GraphQL (to be implemented)
-	ConnectorGRPC   ToolConnectorType = "grpc"      // gRPC service (to be implemented)
-	ConnectorWebhook ToolConnectorType = "webhook"  // Async webhook (to be implemented)
+	ConnectorCore   ToolConnectorType = "core"      // Native demo tools (read_database, memzent_search)
+	ConnectorMCP    ToolConnectorType = "mcp"       // Model Context Protocol
+	ConnectorREST    ToolConnectorType = "rest"     // REST API
+	ConnectorSQL     ToolConnectorType = "sql"      // Direct SQL
+	ConnectorGraphQL ToolConnectorType = "graphql"  // Planned — registration rejected until implemented
+	ConnectorGRPC    ToolConnectorType = "grpc"     // Planned — registration rejected until implemented
+	ConnectorWebhook ToolConnectorType = "webhook"  // Planned — registration rejected until implemented
 )
 
 // Tool represents a registered AI tool/agent capability
