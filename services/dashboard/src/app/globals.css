@@ -158,3 +158,22 @@
   .text-white\/15 { color: rgba(255, 255, 255, 0.40) !important; }
   .text-white\/20 { color: rgba(255, 255, 255, 0.45) !important; }
 }
+
+/* Scrollbars for chat / session panels */
+.custom-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0, 243, 255, 0.25) transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(0, 243, 255, 0.2);
+  border-radius: 999px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 243, 255, 0.35);
+}

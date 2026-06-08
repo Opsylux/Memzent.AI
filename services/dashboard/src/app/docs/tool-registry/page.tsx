@@ -92,15 +92,15 @@ curl https://${DOCS_CONFIG.domain}/v1/tools/status \\
         </p>
         <div className="space-y-2">
           {[
-            { label: "REST API", desc: "Any HTTP/JSON API. Provide the URL and Memzent handles authentication and request formatting." },
-            { label: "Database", desc: "Query your database directly using a secure, read-only connection string stored in the tool config." },
-            { label: "GraphQL", desc: "Run queries and mutations against GraphQL endpoints." },
-            { label: "Webhook", desc: "Fire-and-wait for async tools — Memzent sends the request and waits for a response callback." },
-            { label: "Internal Service", desc: "High-speed binary protocol for calling internal microservices." },
-            { label: "Native Tool", desc: "Built-in Memzent tools like semantic search, available to all organizations automatically." },
+            { label: "REST API", desc: "Any HTTP/JSON API. Provide the URL and Memzent handles request formatting.", supported: true },
+            { label: "Database", desc: "Query your database via a connection string in the tool config.", supported: true },
+            { label: "MCP", desc: "Model Context Protocol tools registered through the gateway MCP client.", supported: true },
+            { label: "Native (core)", desc: "Built-in demo tools (read_database, memzent_search). Responses are labeled [Demo] — register REST/SQL/MCP for production.", supported: true },
+            { label: "GraphQL", desc: "Planned — registration is rejected until the connector ships.", supported: false },
+            { label: "Webhook", desc: "Planned — registration is rejected until the connector ships.", supported: false },
           ].map((c) => (
             <div key={c.label} className="flex items-start gap-4 p-3 rounded-xl hover:bg-white/[0.02] transition-colors">
-              <span className="text-[10px] font-black text-memzent-glow font-mono bg-memzent-glow/5 px-2 py-1 rounded border border-memzent-glow/10 min-w-[96px] text-center shrink-0">{c.label}</span>
+              <span className={`text-[10px] font-black font-mono px-2 py-1 rounded border min-w-[96px] text-center shrink-0 ${c.supported ? "text-memzent-glow bg-memzent-glow/5 border-memzent-glow/10" : "text-white/30 bg-white/5 border-white/10"}`}>{c.label}</span>
               <p className="text-xs text-white/40 font-bold leading-relaxed">{c.desc}</p>
             </div>
           ))}
@@ -163,6 +163,15 @@ curl https://${DOCS_CONFIG.domain}/v1/tools/status \\
             Only Admins can register, update, or remove tools. Members can only list and use the tools they already have access to.
           </p>
         </div>
+      </section>
+
+      {/* Tool chaining */}
+      <section className="space-y-5 pt-2">
+        <h2 className="text-2xl font-black tracking-tighter uppercase">Multi-Step Tool Chaining</h2>
+        <p className="text-sm text-white/60 leading-relaxed font-medium">
+          For prompts that require multiple tools in sequence, send <code className="text-memzent-glow bg-memzent-glow/5 px-1 rounded font-mono">"chain": true</code> in your <code className="font-mono">/v1/chat</code> body.
+          Memzent also auto-activates chaining when the router&apos;s <code className="font-mono">PlanToolChain</code> confidence is ≥ 0.65.
+        </p>
       </section>
 
       <DocsPager />
