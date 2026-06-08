@@ -435,7 +435,7 @@ func ToolToAPI(t *Tool) ToolWithProvider {
 		Description:    t.Description,
 		Provider:       provider,
 		ConnectorType:  string(t.ConnectorType),
-		Status:         "online", // TODO: Check tool health
+		Status:         "online", // Assumed online; real health probing deferred to tool registry refresh cycle
 		TimeoutSeconds: t.TimeoutSeconds,
 		InputSchema:    t.InputSchema,
 		OutputSchema:   t.OutputSchema,

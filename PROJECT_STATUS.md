@@ -6,14 +6,14 @@ This document tracks the current completion state of Memzent features and provid
 
 | Feature | Service | Status | Notes |
 | :--- | :--- | :--- | :--- |
-| **Triple-Layer Caching** | Gateway/Rust | ✅ 100% | Literal, Canonical, and Semantic layers functional. |
+| **Four-Layer Caching** | Gateway/Rust | ✅ 100% | L1 Literal, L1.5 Canonical, L1b Entity-Keyed, L2 Semantic. |
 | **Service Boundaries** | All | ✅ 100% | Go Gateway (Auth/Orchestration), Rust Router (Math), Dashboard (UI). |
 | **RBAC Scoping & Multi-Token** | Gateway | ✅ 100% | Dynamic key generation with customizable roles and scopes. Seeded with a $10 welcome balance to unblock trials. |
 | **Dynamic Tool Registry** | Gateway | ✅ 100% | Refresh loop, Qdrant sync, full CRUD (`/v1/tools/{id}`), Dashboard edit/delete UI. |
 | **Connector Framework** | Gateway | ✅ 100% | SQL/REST/Core connectors fully implemented, registered, and active. |
-| **Neural Dashboard** | Dashboard | ✅ 100% | Dynamic Billing, API Security metrics, live Playground, Provider discovery, Tool CRUD, Notifications. |
+| **Neural Dashboard** | Dashboard | ✅ 100% | Dynamic Billing, API Security metrics, live Playground, Provider discovery, Tool CRUD, Notifications. Responsive mobile layout. |
 | **Provider Discovery** | Gateway | ✅ 100% | `/v1/providers` + `/v1/models` APIs. OpenAI, Anthropic, Gemini, Ollama discovery. |
-| **Marketing Website** | Website | ✅ 100% | Mobile nav, SEO/OG tags, "Why Memzent" comparison, terminal quickstart. |
+| **Marketing Website** | Website | ✅ 100% | Mobile nav, SEO/OG/JSON-LD, Evolution Pipeline section, comparison table, sitemap.xml. |
 | **Advanced Orchestration (Phase 4)** | All | ✅ 100% | Model-scoped caching, PlanToolChain Go/Rust bindings, and typewriter SSE streaming. |
 | **Agent Memory (Phase 5/6)** | Gateway/Rust | ✅ 100% | PostgreSQL session threads and semantic memory Qdrant extraction. |
 | **Context Analytics (Phase 5/6)** | Dashboard/Gateway | ✅ 100% | Premium ROI tracking, latency tool telemetry, and intent theme clusters. |
@@ -21,10 +21,32 @@ This document tracks the current completion state of Memzent features and provid
 | **Spend Limits & Budget Forecast** | Gateway/Dashboard | ✅ 100% | Dollar + token caps (daily/monthly), budget forecast API, spend timeseries, provider breakdown. |
 | **Notification Pipeline (Phase 7)** | Gateway/Dashboard | ✅ 100% | Webhook CRUD, 6 event types, HMAC signing, async retry with dead letter, delivery logs. |
 | **Per-User Rate Limiting** | Gateway | ✅ 100% | Role-proportional limits (viewer 20%, member 50%, admin 100% of org). |
+| **E1: Entity Extraction** | Gateway/Rust | ✅ 100% | 6 typed extractors (regex, <1ms), positional awareness, mirrored in Go + Rust. |
+| **E2: L1b Entity-Keyed Cache** | Gateway | ✅ 100% | Deterministic Valkey key from sorted entity pairs. Sub-ms lookups. Feature flag: `MEMZENT_L1B_ENABLED`. |
+| **E3: Offline Learning Plane** | Gateway | ✅ 100% | Buffered channel event bus (4096/4 workers), 3 miners (Request, Cache, Workflow). PII-safe. |
+| **E4: Workflow Registry** | Gateway/Dashboard | ✅ 100% | Full lifecycle (discovered→approved→active→stale), API endpoints, dashboard page, engine shortcut. |
+| **E5: GPU Avoidance Metrics** | Gateway/Dashboard | ✅ 100% | 8 Prometheus counters, GPU Analytics dashboard, cache layer distribution. |
+| **E6: Pattern Mining** | Gateway | ✅ 100% | Markov chain analysis + speculative pre-warmer. Experimental, flag defaults false. |
+| **Feature Flags System** | Gateway | ✅ 100% | 6 env-var flags controlling L1b, offline, streams, workflows, metrics, pattern mining. |
+| **Documentation Site** | Dashboard | ✅ 100% | 19 doc pages including entity-extraction, cache-layers, offline-learning, gpu-analytics. SEO metadata. |
+| **Engineering Blog** | Dashboard | ✅ 100% | MDX + Supabase dual source, per-post SEO/OG metadata, Evolution Pipeline launch post. |
+| **Integration Test Suites** | Gateway | ✅ 100% | 4 suites: test-cache (12), test-entity (14), test-memory (10), test-evolution (28). |
 
 ---
 
 ## 2. Completed Milestones
+
+### [Phase 8] Evolution Pipeline (E1–E6) ✅ COMPLETE
+*   **E1: Entity Extraction**: 6 typed regex extractors (<1ms) for accounts, customers, invoices, amounts, dates, identifiers. Positional awareness (source vs destination). Mirrored in both Rust Router and Go Gateway.
+*   **E2: L1b Entity-Keyed Cache**: Deterministic Valkey key from sorted entity pairs (`org:{orgID}:m:{model}:e:{key=value|...}`). Sub-millisecond lookups. Write-through on skip-cache.
+*   **E3: Offline Learning Plane**: Buffered channel event bus (4096 buffer, 4 workers) with try-send semantics. Three miners: Request, Cache, Workflow. PII-safe (no raw prompts). Valkey Streams transport available.
+*   **E4: Workflow Registry**: Full lifecycle management (discovered → simulated → pending_review → approved → active → stale → demoted). API endpoints, dashboard page, engine shortcut that fires all matched tools in one pass.
+*   **E5: GPU Avoidance Metrics**: 8 Prometheus counters for entity types, cache layer distribution, GPU avoidance rate. GPU Analytics dashboard page.
+*   **E6: Pattern Mining**: Markov chain analysis predicts next-likely requests. Speculative Pre-Warmer populates L1b entries proactively. Experimental, defaults off.
+*   **Feature Flags**: 6 environment variable flags controlling all Evolution Pipeline features.
+*   **Integration Tests**: `make test-evolution` with 28 functional assertions across E1-E5 + infrastructure.
+*   **Dashboard**: Mobile responsive rewrite, sign-out resilience, PKCE error handling, role-gated admin cards, org-isolated stats.
+*   **Website & Docs**: Evolution Pipeline section, 4 new doc pages, blog post, sitemap.xml, robots.txt, SEO metadata across all pages.
 
 ### [Phase 5 & 6] Memory, Tool Chaining & Context Analytics ✅ COMPLETE
 *   **Semantic Agent Memory**: Added PostgreSQL persistence for conversation sessions (`sessions`, `session_messages`) and vectorized conversation facts out-of-band to Qdrant memory collection.

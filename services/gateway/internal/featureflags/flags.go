@@ -32,7 +32,7 @@ func Load() *Flags {
 			OfflineStreams: envBool("MEMZENT_OFFLINE_STREAMS", false),
 			WorkflowEngine: envBool("MEMZENT_WORKFLOW_ENABLED", true),
 			EntityMetrics:  envBool("MEMZENT_ENTITY_METRICS_ENABLED", true),
-			PatternMining:  envBool("MEMZENT_PATTERN_MINING_ENABLED", true),
+			PatternMining:  envBool("MEMZENT_PATTERN_MINING_ENABLED", false),
 		}
 	})
 	return global
