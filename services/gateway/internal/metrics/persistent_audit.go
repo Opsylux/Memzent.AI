@@ -162,12 +162,13 @@ func (l *PersistentAuditLogger) GetCacheStats(orgID string) (uint64, uint64) {
 		return 0, 0
 	}
 
+	// Strict org isolation — only count this org's audit entries
 	query := `
 		SELECT 
 			COUNT(*)::bigint as total_requests,
 			COALESCE(SUM(CASE WHEN action LIKE 'CACHE:%' THEN 1 ELSE 0 END), 0)::bigint as cache_hits
 		FROM audit_logs
-		WHERE ($1::text = '' OR org_id::text = $1 OR org_id::text = '00000000-0000-0000-0000-000000000000')
+		WHERE org_id::text = $1
 	`
 
 	var total, hits sql.NullInt64
