@@ -25,33 +25,33 @@ const (
 
 // Candidate represents a workflow candidate in the registry.
 type Candidate struct {
-	ID              string            `json:"id"`
-	OrgID           string            `json:"org_id"`
-	Pattern         string            `json:"pattern"`
-	Frequency       int               `json:"frequency"`
-	ToolIDs         []string          `json:"tool_ids"`
-	EntitySchema    map[string]string `json:"entity_schema,omitempty"`
-	Status          string            `json:"status"`
-	ReplayAccuracy  *float64          `json:"replay_accuracy,omitempty"`
-	ReplayCount     *int              `json:"replay_count,omitempty"`
-	LastHitAt       *time.Time        `json:"last_hit_at,omitempty"`
-	HitCount7d      int               `json:"hit_count_7d"`
-	Accuracy7d      float64           `json:"accuracy_7d"`
-	TokensSaved     int64             `json:"tokens_saved"`
-	CreatedAt       time.Time         `json:"created_at"`
-	UpdatedAt       time.Time         `json:"updated_at"`
-	ReviewedBy      *string           `json:"reviewed_by,omitempty"`
-	ReviewedAt      *time.Time        `json:"reviewed_at,omitempty"`
-	PromotedAt      *time.Time        `json:"promoted_at,omitempty"`
-	DemotedAt       *time.Time        `json:"demoted_at,omitempty"`
-	DemotionReason  *string           `json:"demotion_reason,omitempty"`
+	ID             string            `json:"id"`
+	OrgID          string            `json:"org_id"`
+	Pattern        string            `json:"pattern"`
+	Frequency      int               `json:"frequency"`
+	ToolIDs        []string          `json:"tool_ids"`
+	EntitySchema   map[string]string `json:"entity_schema,omitempty"`
+	Status         string            `json:"status"`
+	ReplayAccuracy *float64          `json:"replay_accuracy,omitempty"`
+	ReplayCount    *int              `json:"replay_count,omitempty"`
+	LastHitAt      *time.Time        `json:"last_hit_at,omitempty"`
+	HitCount7d     int               `json:"hit_count_7d"`
+	Accuracy7d     float64           `json:"accuracy_7d"`
+	TokensSaved    int64             `json:"tokens_saved"`
+	CreatedAt      time.Time         `json:"created_at"`
+	UpdatedAt      time.Time         `json:"updated_at"`
+	ReviewedBy     *string           `json:"reviewed_by,omitempty"`
+	ReviewedAt     *time.Time        `json:"reviewed_at,omitempty"`
+	PromotedAt     *time.Time        `json:"promoted_at,omitempty"`
+	DemotedAt      *time.Time        `json:"demoted_at,omitempty"`
+	DemotionReason *string           `json:"demotion_reason,omitempty"`
 }
 
 // Registry manages the workflow candidate lifecycle in Postgres.
 type Registry struct {
-	db            *sql.DB
-	mu            sync.RWMutex
-	activeCache   map[string][]Candidate // org_id → active workflows (in-memory hot cache)
+	db          *sql.DB
+	mu          sync.RWMutex
+	activeCache map[string][]Candidate // org_id → active workflows (in-memory hot cache)
 }
 
 // NewRegistry creates a new workflow registry backed by Postgres.
@@ -194,6 +194,43 @@ func (r *Registry) Reject(ctx context.Context, id, reviewedBy string) error {
 	return nil
 }
 
+// UpdateSimulationResults stores replay metrics and advances the candidate lifecycle after simulation.
+func (r *Registry) UpdateSimulationResults(ctx context.Context, candidateID string, accuracy float64, replayCount int, newStatus string) error {
+	if candidateID == "" {
+		return fmt.Errorf("candidate id is required")
+	}
+	if accuracy < 0 || accuracy > 1 {
+		return fmt.Errorf("simulation accuracy must be between 0 and 1")
+	}
+	if replayCount < 0 {
+		return fmt.Errorf("simulation replay count cannot be negative")
+	}
+	if !isValidWorkflowStatus(newStatus) {
+		return fmt.Errorf("invalid workflow status %q", newStatus)
+	}
+
+	result, err := r.db.ExecContext(ctx, `
+		UPDATE workflow_candidates
+		SET replay_accuracy = $2,
+		    replay_count = $3,
+		    status = $4,
+		    updated_at = now()
+		WHERE id = $1
+	`, candidateID, accuracy, replayCount, newStatus)
+	if err != nil {
+		return fmt.Errorf("update workflow simulation results: %w", err)
+	}
+	rows, _ := result.RowsAffected()
+	if rows == 0 {
+		return fmt.Errorf("workflow %s not found", candidateID)
+	}
+	if newStatus == StatusPendingReview {
+		slog.Info("Workflow auto-promoted after simulation", "candidate_id", candidateID, "accuracy", accuracy, "replay_count", replayCount)
+	}
+	r.invalidateCache()
+	return nil
+}
+
 // RecordExecution logs a workflow execution for accuracy tracking.
 func (r *Registry) RecordExecution(ctx context.Context, workflowID, orgID, promptHash string, entities map[string]string, success bool, latencyMs int) error {
 	entitiesJSON, _ := json.Marshal(entities)
@@ -318,4 +355,13 @@ func (r *Registry) invalidateCache() {
 	r.mu.Lock()
 	r.activeCache = make(map[string][]Candidate)
 	r.mu.Unlock()
+}
+
+func isValidWorkflowStatus(status string) bool {
+	switch status {
+	case StatusDiscovered, StatusSimulated, StatusPendingReview, StatusApproved, StatusActive, StatusStale, StatusDemoted:
+		return true
+	default:
+		return false
+	}
 }

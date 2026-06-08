@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -11,8 +13,6 @@ import (
 	"strings"
 	"syscall"
 	"time"
-	"crypto/rand"
-	"encoding/hex"
 
 	"memzent-gateway/internal/auth"
 	"memzent-gateway/internal/billing"
@@ -27,10 +27,11 @@ import (
 	"memzent-gateway/internal/memory"
 	"memzent-gateway/internal/metrics"
 	"memzent-gateway/internal/notifications"
-	"memzent-gateway/internal/router"
-	"memzent-gateway/internal/tools"
 	"memzent-gateway/internal/offline"
 	"memzent-gateway/internal/offline/miners"
+	"memzent-gateway/internal/prewarmer"
+	"memzent-gateway/internal/router"
+	"memzent-gateway/internal/tools"
 	"memzent-gateway/internal/workflow"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -418,8 +419,9 @@ func main() {
 	if flags.WorkflowEngine && rbacClient != nil && rbacClient.GetDB() != nil {
 		workflowRegistry = workflow.NewRegistry(rbacClient.GetDB())
 		workflowRegistry.StartDemotionLoop(ctx, 1*time.Hour)
+		workflow.NewSimulator(rbacClient.GetDB()).StartSimulationLoop(ctx, 1*time.Hour)
 		memzentEngine.SetWorkflowRegistry(workflow.NewEngineAdapter(workflowRegistry))
-		slog.Info("📋 Workflow Registry initialized with hourly demotion checks")
+		slog.Info("📋 Workflow Registry initialized with hourly demotion and simulation checks")
 	}
 
 	// 8.0d O3 → Registry Bridge: auto-populate workflow candidates from miner output
@@ -450,9 +452,31 @@ func main() {
 		slog.Info("🔗 O3→Registry bridge started")
 	}
 
+	// 8.0e Speculative Pre-Warmer: O2 → Valkey (L1b pre-warming)
+	var preWarm *prewarmer.PreWarmer
+	if cacheMiner != nil && vCache != nil && flags.L1bCache {
+		// Response lookup callback — queries the persistent Postgres cache
+		var responseLookup prewarmer.ResponseLookup
+		if rbacClient != nil && rbacClient.GetDB() != nil {
+			pgDB := rbacClient.GetDB()
+			responseLookup = func(lookupCtx context.Context, key string) (string, error) {
+				var resp string
+				err := pgDB.QueryRowContext(lookupCtx,
+					"SELECT response FROM cache_entries WHERE cache_key = $1 AND expires_at > now() LIMIT 1", key,
+				).Scan(&resp)
+				if err != nil {
+					return "", err
+				}
+				return resp, nil
+			}
+		}
+		preWarm = prewarmer.New(vCache, cacheMiner, prewarmer.DefaultConfig(), responseLookup)
+		preWarm.Start(ctx)
+		slog.Info("🔥 Speculative Pre-Warmer started (O2 → L1b)")
+	}
+
 	// Start background model discovery for all registered LLM providers
 	memzentEngine.StartModelDiscovery(ctx)
-
 
 	// 8.0 Start Tool Registry Refresh Loop (Phase 2: Dynamic Tool Sync)
 	// Every 30 seconds, check Postgres for drifted tools and push them to Qdrant.
@@ -477,7 +501,6 @@ func main() {
 
 	// 8.0.5 Pre-warm the memory cache from PostgreSQL persistent B-Tree store in the background
 	go memzentEngine.WarmCache(ctx)
-
 
 	// 8.1 Initialize Stripe Handler (SaaS Billing)
 	stripeHandler := billing.NewStripeHandler(
@@ -563,7 +586,7 @@ func main() {
 			rand.Read(b)
 			reqID = hex.EncodeToString(b)
 		}
-		
+
 		w.Header().Set("X-Request-ID", reqID)
 
 		resp, err := memzentEngine.Process(r.Context(), &req)
@@ -749,7 +772,7 @@ func main() {
 	startupTime := time.Now()
 	mux.Handle("/v1/stats", middleware(requireScope("audit:read", func(w http.ResponseWriter, r *http.Request) {
 		orgID, _ := r.Context().Value("org_id").(string)
-		
+
 		var reqs, hits uint64
 		if auditLogger != nil {
 			// Pull durable stats from Postgres
@@ -860,10 +883,10 @@ func main() {
 
 		case http.MethodPut:
 			var req struct {
-				DailyLimit       *float64 `json:"daily_limit"`
-				MonthlyLimit     *float64 `json:"monthly_limit"`
-				DailyTokenLimit  *int64   `json:"daily_token_limit"`
-				MonthlyTokenLimit *int64  `json:"monthly_token_limit"`
+				DailyLimit        *float64 `json:"daily_limit"`
+				MonthlyLimit      *float64 `json:"monthly_limit"`
+				DailyTokenLimit   *int64   `json:"daily_token_limit"`
+				MonthlyTokenLimit *int64   `json:"monthly_token_limit"`
 			}
 			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 				http.Error(w, "Invalid request body", http.StatusBadRequest)
@@ -998,190 +1021,193 @@ func main() {
 		metadata := memzentEngine.GetProviderMetadata()
 		w.Header().Set("Content-Type", "application/json")
 
-	// Offline Learning Plane Stats API (E3)
-	mux.Handle("/v1/offline/stats", middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet {
-			http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
-			return
-		}
-		if channelPlane == nil && streamPlane == nil {
+		// Offline Learning Plane Stats API (E3)
+		mux.Handle("/v1/offline/stats", middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.Method != http.MethodGet {
+				http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+				return
+			}
+			if channelPlane == nil && streamPlane == nil {
+				w.Header().Set("Content-Type", "application/json")
+				json.NewEncoder(w).Encode(map[string]interface{}{"enabled": false})
+				return
+			}
+			var planeStats map[string]uint64
+			mode := "channel"
+			if streamPlane != nil {
+				planeStats = streamPlane.Stats()
+				mode = "valkey_streams"
+			} else {
+				planeStats = channelPlane.Stats()
+			}
+			stats := map[string]interface{}{
+				"enabled":             true,
+				"mode":                mode,
+				"plane":               planeStats,
+				"hot_patterns":        requestMiner.GetHotPatterns(),
+				"cache_misses":        cacheMiner.GetTopMisses(),
+				"workflow_sequences":  workflowMiner.GetDetectedSequences(),
+				"prediction_accuracy": cacheMiner.PredictionAccuracy(),
+			}
+			if preWarm != nil {
+				stats["pre_warmer"] = preWarm.Stats()
+			}
 			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(map[string]interface{}{"enabled": false})
-			return
-		}
-		var planeStats map[string]uint64
-		mode := "channel"
-		if streamPlane != nil {
-			planeStats = streamPlane.Stats()
-			mode = "valkey_streams"
-		} else {
-			planeStats = channelPlane.Stats()
-		}
-		stats := map[string]interface{}{
-			"enabled":             true,
-			"mode":               mode,
-			"plane":              planeStats,
-			"hot_patterns":       requestMiner.GetHotPatterns(),
-			"cache_misses":       cacheMiner.GetTopMisses(),
-			"workflow_sequences": workflowMiner.GetDetectedSequences(),
-			"prediction_accuracy": cacheMiner.PredictionAccuracy(),
-		}
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(stats)
-	})))
+			json.NewEncoder(w).Encode(stats)
+		})))
 
-	// Workflow Registry API (E4)
-	mux.Handle("/v1/workflows", middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if workflowRegistry == nil {
-			http.Error(w, `{"error":"workflow registry not initialized"}`, http.StatusServiceUnavailable)
-			return
-		}
-		orgID, _ := r.Context().Value("org_id").(string)
+		// Workflow Registry API (E4)
+		mux.Handle("/v1/workflows", middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if workflowRegistry == nil {
+				http.Error(w, `{"error":"workflow registry not initialized"}`, http.StatusServiceUnavailable)
+				return
+			}
+			orgID, _ := r.Context().Value("org_id").(string)
 
-		switch r.Method {
-		case http.MethodGet:
-			status := r.URL.Query().Get("status")
-			candidates, err := workflowRegistry.ListCandidates(r.Context(), orgID, status)
-			if err != nil {
-				slog.Error("Failed to list workflows", "error", err)
-				w.WriteHeader(http.StatusInternalServerError)
+			switch r.Method {
+			case http.MethodGet:
+				status := r.URL.Query().Get("status")
+				candidates, err := workflowRegistry.ListCandidates(r.Context(), orgID, status)
+				if err != nil {
+					slog.Error("Failed to list workflows", "error", err)
+					w.WriteHeader(http.StatusInternalServerError)
+					json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+					return
+				}
+				if candidates == nil {
+					candidates = []workflow.Candidate{}
+				}
+				w.Header().Set("Content-Type", "application/json")
+				json.NewEncoder(w).Encode(candidates)
+			default:
+				http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+			}
+		})))
+
+		mux.Handle("/v1/workflows/approve", middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if workflowRegistry == nil {
+				http.Error(w, `{"error":"workflow registry not initialized"}`, http.StatusServiceUnavailable)
+				return
+			}
+			if r.Method != http.MethodPut {
+				http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+				return
+			}
+			var body struct {
+				ID string `json:"id"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.ID == "" {
+				http.Error(w, `{"error":"id required"}`, http.StatusBadRequest)
+				return
+			}
+			userID, _ := r.Context().Value("user_id").(string)
+			if err := workflowRegistry.Approve(r.Context(), body.ID, userID); err != nil {
+				w.WriteHeader(http.StatusBadRequest)
 				json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 				return
 			}
-			if candidates == nil {
-				candidates = []workflow.Candidate{}
+			// Auto-activate after approval
+			_ = workflowRegistry.Activate(r.Context(), body.ID)
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]string{"status": "approved_and_activated"})
+		})))
+
+		mux.Handle("/v1/workflows/reject", middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if workflowRegistry == nil {
+				http.Error(w, `{"error":"workflow registry not initialized"}`, http.StatusServiceUnavailable)
+				return
+			}
+			if r.Method != http.MethodPut {
+				http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+				return
+			}
+			var body struct {
+				ID string `json:"id"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.ID == "" {
+				http.Error(w, `{"error":"id required"}`, http.StatusBadRequest)
+				return
+			}
+			userID, _ := r.Context().Value("user_id").(string)
+			if err := workflowRegistry.Reject(r.Context(), body.ID, userID); err != nil {
+				w.WriteHeader(http.StatusBadRequest)
+				json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+				return
 			}
 			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(candidates)
-		default:
-			http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
-		}
-	})))
+			json.NewEncoder(w).Encode(map[string]string{"status": "rejected"})
+		})))
 
-	mux.Handle("/v1/workflows/approve", middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if workflowRegistry == nil {
-			http.Error(w, `{"error":"workflow registry not initialized"}`, http.StatusServiceUnavailable)
-			return
-		}
-		if r.Method != http.MethodPut {
-			http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
-			return
-		}
-		var body struct {
-			ID string `json:"id"`
-		}
-		if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.ID == "" {
-			http.Error(w, `{"error":"id required"}`, http.StatusBadRequest)
-			return
-		}
-		userID, _ := r.Context().Value("user_id").(string)
-		if err := workflowRegistry.Approve(r.Context(), body.ID, userID); err != nil {
-			w.WriteHeader(http.StatusBadRequest)
-			json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
-			return
-		}
-		// Auto-activate after approval
-		_ = workflowRegistry.Activate(r.Context(), body.ID)
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]string{"status": "approved_and_activated"})
-	})))
+		// Entity Quality Metrics API (E5)
+		mux.Handle("/v1/metrics/entities", middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.Method != http.MethodGet {
+				http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+				return
+			}
+			regexSuccess := metrics.EntityRegexSuccess
+			regexFailure := metrics.EntityRegexFailure
+			mismatch := metrics.EntityMismatchTotal
+			llmUsage := metrics.EntityLLMUsage
+			gpuAvoided := metrics.GPUAvoidanceTotal
+			gpuInvoked := metrics.GPUInvocationTotal
 
-	mux.Handle("/v1/workflows/reject", middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if workflowRegistry == nil {
-			http.Error(w, `{"error":"workflow registry not initialized"}`, http.StatusServiceUnavailable)
-			return
-		}
-		if r.Method != http.MethodPut {
-			http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
-			return
-		}
-		var body struct {
-			ID string `json:"id"`
-		}
-		if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.ID == "" {
-			http.Error(w, `{"error":"id required"}`, http.StatusBadRequest)
-			return
-		}
-		userID, _ := r.Context().Value("user_id").(string)
-		if err := workflowRegistry.Reject(r.Context(), body.ID, userID); err != nil {
-			w.WriteHeader(http.StatusBadRequest)
-			json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
-			return
-		}
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]string{"status": "rejected"})
-	})))
+			// Read counters via prometheus
+			rsVal := getCounterValue(regexSuccess)
+			rfVal := getCounterValue(regexFailure)
+			mmVal := getCounterValue(mismatch)
+			llmVal := getCounterValue(llmUsage)
+			gpuAvVal := getCounterValue(gpuAvoided)
+			gpuInvVal := getCounterValue(gpuInvoked)
 
-	// Entity Quality Metrics API (E5)
-	mux.Handle("/v1/metrics/entities", middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet {
-			http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
-			return
-		}
-		regexSuccess := metrics.EntityRegexSuccess
-		regexFailure := metrics.EntityRegexFailure
-		mismatch := metrics.EntityMismatchTotal
-		llmUsage := metrics.EntityLLMUsage
-		gpuAvoided := metrics.GPUAvoidanceTotal
-		gpuInvoked := metrics.GPUInvocationTotal
+			total := rsVal + rfVal
+			var regexSuccessRate float64
+			if total > 0 {
+				regexSuccessRate = rsVal / total
+			}
+			var gpuAvoidanceRate float64
+			gpuTotal := gpuAvVal + gpuInvVal
+			if gpuTotal > 0 {
+				gpuAvoidanceRate = gpuAvVal / gpuTotal
+			}
 
-		// Read counters via prometheus
-		rsVal := getCounterValue(regexSuccess)
-		rfVal := getCounterValue(regexFailure)
-		mmVal := getCounterValue(mismatch)
-		llmVal := getCounterValue(llmUsage)
-		gpuAvVal := getCounterValue(gpuAvoided)
-		gpuInvVal := getCounterValue(gpuInvoked)
+			stats := map[string]interface{}{
+				"regex_success":      rsVal,
+				"regex_failure":      rfVal,
+				"regex_success_rate": regexSuccessRate,
+				"entity_mismatch":    mmVal,
+				"llm_entity_usage":   llmVal,
+				"gpu_avoidance_rate": gpuAvoidanceRate,
+				"gpu_avoided":        gpuAvVal,
+				"gpu_invoked":        gpuInvVal,
+			}
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(stats)
+		})))
 
-		total := rsVal + rfVal
-		var regexSuccessRate float64
-		if total > 0 {
-			regexSuccessRate = rsVal / total
-		}
-		var gpuAvoidanceRate float64
-		gpuTotal := gpuAvVal + gpuInvVal
-		if gpuTotal > 0 {
-			gpuAvoidanceRate = gpuAvVal / gpuTotal
-		}
-
-		stats := map[string]interface{}{
-			"regex_success":       rsVal,
-			"regex_failure":       rfVal,
-			"regex_success_rate":  regexSuccessRate,
-			"entity_mismatch":    mmVal,
-			"llm_entity_usage":   llmVal,
-			"gpu_avoidance_rate": gpuAvoidanceRate,
-			"gpu_avoided":        gpuAvVal,
-			"gpu_invoked":        gpuInvVal,
-		}
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(stats)
-	})))
-
-	// Feature flags status endpoint (E1-E5 layer toggles)
-	mux.Handle("/v1/features", middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet {
-			http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
-			return
-		}
-		f := featureflags.Get()
-		response := map[string]interface{}{
-			"l1b_cache":        f.L1bCache,
-			"offline_plane":    f.OfflinePlane,
-			"offline_streams":  f.OfflineStreams,
-			"workflow_engine":  f.WorkflowEngine,
-			"entity_metrics":   f.EntityMetrics,
-			"env_vars": map[string]string{
-				"MEMZENT_L1B_ENABLED":            "controls L1b entity-keyed hot path cache",
-				"MEMZENT_OFFLINE_ENABLED":        "controls offline learning plane (O1/O2/O3 miners)",
-				"MEMZENT_OFFLINE_STREAMS":        "use Valkey Streams instead of in-memory channels (requires Valkey)",
-				"MEMZENT_WORKFLOW_ENABLED":       "controls workflow registry + engine shortcut",
-				"MEMZENT_ENTITY_METRICS_ENABLED": "controls entity quality + GPU avoidance counters",
-			},
-		}
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(response)
-	})))
+		// Feature flags status endpoint (E1-E5 layer toggles)
+		mux.Handle("/v1/features", middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.Method != http.MethodGet {
+				http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+				return
+			}
+			f := featureflags.Get()
+			response := map[string]interface{}{
+				"l1b_cache":       f.L1bCache,
+				"offline_plane":   f.OfflinePlane,
+				"offline_streams": f.OfflineStreams,
+				"workflow_engine": f.WorkflowEngine,
+				"entity_metrics":  f.EntityMetrics,
+				"env_vars": map[string]string{
+					"MEMZENT_L1B_ENABLED":            "controls L1b entity-keyed hot path cache",
+					"MEMZENT_OFFLINE_ENABLED":        "controls offline learning plane (O1/O2/O3 miners)",
+					"MEMZENT_OFFLINE_STREAMS":        "use Valkey Streams instead of in-memory channels (requires Valkey)",
+					"MEMZENT_WORKFLOW_ENABLED":       "controls workflow registry + engine shortcut",
+					"MEMZENT_ENTITY_METRICS_ENABLED": "controls entity quality + GPU avoidance counters",
+				},
+			}
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(response)
+		})))
 		json.NewEncoder(w).Encode(metadata)
 	})))
 
@@ -1359,6 +1385,9 @@ func main() {
 	}
 	if streamPlane != nil {
 		streamPlane.Stop()
+	}
+	if preWarm != nil {
+		preWarm.Stop()
 	}
 
 	// Stop webhook dispatcher (drain queue)
