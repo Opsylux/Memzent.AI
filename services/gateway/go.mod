@@ -8,6 +8,7 @@ require (
 	github.com/lib/pq v1.11.2
 	github.com/metoro-io/mcp-golang v0.16.1
 	github.com/prometheus/client_golang v1.23.2
+	github.com/prometheus/client_model v0.6.2
 	github.com/stripe/stripe-go/v78 v78.12.0
 	github.com/swaggo/swag v1.16.6
 	github.com/valkey-io/valkey-go v1.0.73
@@ -46,7 +47,6 @@ require (
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/pelletier/go-toml/v2 v2.0.1 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
-	github.com/prometheus/client_model v0.6.2 // indirect
 	github.com/prometheus/common v0.66.1 // indirect
 	github.com/prometheus/procfs v0.16.1 // indirect
 	github.com/tidwall/gjson v1.18.0 // indirect

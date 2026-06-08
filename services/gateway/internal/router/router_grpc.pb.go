@@ -21,12 +21,12 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	SemanticRouter_SelectTools_FullMethodName       = "/router.SemanticRouter/SelectTools"
-	SemanticRouter_RegisterTool_FullMethodName      = "/router.SemanticRouter/RegisterTool"
-	SemanticRouter_PlanToolChain_FullMethodName     = "/router.SemanticRouter/PlanToolChain"
-	SemanticRouter_StoreMemory_FullMethodName       = "/router.SemanticRouter/StoreMemory"
-	SemanticRouter_QueryMemory_FullMethodName       = "/router.SemanticRouter/QueryMemory"
-	SemanticRouter_FlushPromptCache_FullMethodName  = "/router.SemanticRouter/FlushPromptCache"
+	SemanticRouter_SelectTools_FullMethodName      = "/router.SemanticRouter/SelectTools"
+	SemanticRouter_RegisterTool_FullMethodName     = "/router.SemanticRouter/RegisterTool"
+	SemanticRouter_PlanToolChain_FullMethodName    = "/router.SemanticRouter/PlanToolChain"
+	SemanticRouter_StoreMemory_FullMethodName      = "/router.SemanticRouter/StoreMemory"
+	SemanticRouter_QueryMemory_FullMethodName      = "/router.SemanticRouter/QueryMemory"
+	SemanticRouter_FlushPromptCache_FullMethodName = "/router.SemanticRouter/FlushPromptCache"
 )
 
 // SemanticRouterClient is the client API for SemanticRouter service.
@@ -129,7 +129,7 @@ type SemanticRouterServer interface {
 	StoreMemory(context.Context, *StoreMemoryRequest) (*StoreMemoryResponse, error)
 	// Queries semantic memory facts for a prompt
 	QueryMemory(context.Context, *QueryMemoryRequest) (*QueryMemoryResponse, error)
-	// Flushes cached prompt vectors for an org
+	// Flushes cached prompt vectors for an org from the prompts_collection
 	FlushPromptCache(context.Context, *FlushPromptCacheRequest) (*FlushPromptCacheResponse, error)
 	mustEmbedUnimplementedSemanticRouterServer()
 }
