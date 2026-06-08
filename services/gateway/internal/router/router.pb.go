@@ -9,8 +9,6 @@
 package router
 
 import (
-	"fmt"
-
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	reflect "reflect"
@@ -302,8 +300,8 @@ type ToolResponse struct {
 	Tools             []*Tool                `protobuf:"bytes,1,rep,name=tools,proto3" json:"tools,omitempty"`
 	TotalTokensSaved  int32                  `protobuf:"varint,2,opt,name=total_tokens_saved,json=totalTokensSaved,proto3" json:"total_tokens_saved,omitempty"`
 	CompressedPrompt  string                 `protobuf:"bytes,3,opt,name=compressed_prompt,json=compressedPrompt,proto3" json:"compressed_prompt,omitempty"`
-	SimilarPromptHash string                 `protobuf:"bytes,4,opt,name=similar_prompt_hash,json=similarPromptHash,proto3" json:"similar_prompt_hash,omitempty"` // Hash of a previously seen similar prompt (if any)
-	CurrentPromptHash string                 `protobuf:"bytes,5,opt,name=current_prompt_hash,json=currentPromptHash,proto3" json:"current_prompt_hash,omitempty"` // Canonical hash of the incoming prompt
+	SimilarPromptHash string                 `protobuf:"bytes,4,opt,name=similar_prompt_hash,json=similarPromptHash,proto3" json:"similar_prompt_hash,omitempty"`                              // Hash of a previously seen similar prompt (if any)
+	CurrentPromptHash string                 `protobuf:"bytes,5,opt,name=current_prompt_hash,json=currentPromptHash,proto3" json:"current_prompt_hash,omitempty"`                              // Canonical hash of the incoming prompt
 	Entities          map[string]string      `protobuf:"bytes,6,rep,name=entities,proto3" json:"entities,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"` // Extracted structured entities from the prompt
 	unknownFields     protoimpl.UnknownFields
 	sizeCache         protoimpl.SizeCache
@@ -845,7 +843,6 @@ func (x *QueryMemoryResponse) GetMemories() []*MemoryHit {
 	return nil
 }
 
-// FlushPromptCacheRequest — hand-maintained stub until protoc regeneration
 type FlushPromptCacheRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	OrgId         string                 `protobuf:"bytes,1,opt,name=org_id,json=orgId,proto3" json:"org_id,omitempty"`
@@ -853,10 +850,35 @@ type FlushPromptCacheRequest struct {
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *FlushPromptCacheRequest) Reset()         {}
-func (x *FlushPromptCacheRequest) String() string { return fmt.Sprintf("FlushPromptCacheRequest{OrgId: %s}", x.OrgId) }
-func (x *FlushPromptCacheRequest) ProtoMessage()  {}
-func (x *FlushPromptCacheRequest) ProtoReflect() protoreflect.Message { return nil }
+func (x *FlushPromptCacheRequest) Reset() {
+	*x = FlushPromptCacheRequest{}
+	mi := &file_router_proto_msgTypes[13]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *FlushPromptCacheRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*FlushPromptCacheRequest) ProtoMessage() {}
+
+func (x *FlushPromptCacheRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_router_proto_msgTypes[13]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use FlushPromptCacheRequest.ProtoReflect.Descriptor instead.
+func (*FlushPromptCacheRequest) Descriptor() ([]byte, []int) {
+	return file_router_proto_rawDescGZIP(), []int{13}
+}
 
 func (x *FlushPromptCacheRequest) GetOrgId() string {
 	if x != nil {
@@ -865,7 +887,6 @@ func (x *FlushPromptCacheRequest) GetOrgId() string {
 	return ""
 }
 
-// FlushPromptCacheResponse — hand-maintained stub until protoc regeneration
 type FlushPromptCacheResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Success       bool                   `protobuf:"varint,1,opt,name=success,proto3" json:"success,omitempty"`
@@ -875,10 +896,35 @@ type FlushPromptCacheResponse struct {
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *FlushPromptCacheResponse) Reset()         {}
-func (x *FlushPromptCacheResponse) String() string { return "FlushPromptCacheResponse{}" }
-func (x *FlushPromptCacheResponse) ProtoMessage()  {}
-func (x *FlushPromptCacheResponse) ProtoReflect() protoreflect.Message { return nil }
+func (x *FlushPromptCacheResponse) Reset() {
+	*x = FlushPromptCacheResponse{}
+	mi := &file_router_proto_msgTypes[14]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *FlushPromptCacheResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*FlushPromptCacheResponse) ProtoMessage() {}
+
+func (x *FlushPromptCacheResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_router_proto_msgTypes[14]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use FlushPromptCacheResponse.ProtoReflect.Descriptor instead.
+func (*FlushPromptCacheResponse) Descriptor() ([]byte, []int) {
+	return file_router_proto_rawDescGZIP(), []int{14}
+}
 
 func (x *FlushPromptCacheResponse) GetSuccess() bool {
 	if x != nil {
