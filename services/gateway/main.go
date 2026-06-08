@@ -32,12 +32,24 @@ import (
 	"memzent-gateway/internal/offline/miners"
 	"memzent-gateway/internal/workflow"
 
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	prometheusModel "github.com/prometheus/client_model/go"
 
 	_ "memzent-gateway/docs"
 )
 
-// Replace with your module path
+// getCounterValue reads the current value of a prometheus Counter.
+func getCounterValue(c prometheus.Counter) float64 {
+	var m prometheusModel.Metric
+	if err := c.Write(&m); err != nil {
+		return 0
+	}
+	if m.Counter != nil {
+		return *m.Counter.Value
+	}
+	return 0
+}
 
 func metricsMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -1026,6 +1038,52 @@ func main() {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]string{"status": "rejected"})
+	})))
+
+	// Entity Quality Metrics API (E5)
+	mux.Handle("/v1/metrics/entities", middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		regexSuccess := metrics.EntityRegexSuccess
+		regexFailure := metrics.EntityRegexFailure
+		mismatch := metrics.EntityMismatchTotal
+		llmUsage := metrics.EntityLLMUsage
+		gpuAvoided := metrics.GPUAvoidanceTotal
+		gpuInvoked := metrics.GPUInvocationTotal
+
+		// Read counters via prometheus
+		rsVal := getCounterValue(regexSuccess)
+		rfVal := getCounterValue(regexFailure)
+		mmVal := getCounterValue(mismatch)
+		llmVal := getCounterValue(llmUsage)
+		gpuAvVal := getCounterValue(gpuAvoided)
+		gpuInvVal := getCounterValue(gpuInvoked)
+
+		total := rsVal + rfVal
+		var regexSuccessRate float64
+		if total > 0 {
+			regexSuccessRate = rsVal / total
+		}
+		var gpuAvoidanceRate float64
+		gpuTotal := gpuAvVal + gpuInvVal
+		if gpuTotal > 0 {
+			gpuAvoidanceRate = gpuAvVal / gpuTotal
+		}
+
+		stats := map[string]interface{}{
+			"regex_success":       rsVal,
+			"regex_failure":       rfVal,
+			"regex_success_rate":  regexSuccessRate,
+			"entity_mismatch":    mmVal,
+			"llm_entity_usage":   llmVal,
+			"gpu_avoidance_rate": gpuAvoidanceRate,
+			"gpu_avoided":        gpuAvVal,
+			"gpu_invoked":        gpuInvVal,
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(stats)
 	})))
 		json.NewEncoder(w).Encode(metadata)
 	})))

@@ -484,6 +484,7 @@ func (e *MemzentEngine) Process(ctx context.Context, req *PromptRequest) (*Promp
 			e.CacheHits.Add(1)
 			hitCounter, _ := e.orgHits.LoadOrStore(orgID, &atomic.Uint64{})
 			hitCounter.(*atomic.Uint64).Add(1)
+			recordCacheLayerHit("L1")
 			e.emitEvent(ctx, orgID, "cache_hit", map[string]any{"query": queryPrompt, "score": 1.0, "latency_ms": time.Since(processStart).Milliseconds(), "model": resolvedModel})
 			if e.auditLogger != nil {
 				e.auditLogger.Log(ctx, metrics.AuditEvent{
@@ -567,7 +568,8 @@ func (e *MemzentEngine) Process(ctx context.Context, req *PromptRequest) (*Promp
 					e.CacheHits.Add(1)
 					hitCounter, _ := e.orgHits.LoadOrStore(orgID, &atomic.Uint64{})
 					hitCounter.(*atomic.Uint64).Add(1)
-					slog.Info("🎯 Stage 1b Cache HIT (Entity-Keyed)", "org_id", orgID, "entities", l1bEntities)
+						recordCacheLayerHit("L1b")
+						slog.Info("🎯 Stage 1b Cache HIT (Entity-Keyed)", "org_id", orgID, "entities", l1bEntities)
 						e.emitEvent(ctx, orgID, "cache_hit", map[string]any{"query": queryPrompt, "score": 1.0, "latency_ms": time.Since(processStart).Milliseconds(), "model": resolvedModel, "layer": "L1b"})
 						if e.auditLogger != nil {
 							e.auditLogger.Log(ctx, metrics.AuditEvent{
@@ -661,6 +663,7 @@ func (e *MemzentEngine) Process(ctx context.Context, req *PromptRequest) (*Promp
 	if len(extractedEntities) > 0 {
 		entitySource = "regex" // from Rust router's regex extractors
 	}
+	recordEntityExtraction(entitySource, len(extractedEntities) > 0)
 
 	// NEW: Stage 2 Cache Check (Fuzzy Vector Semantic Match) — Org-Isolated & Model-Scoped
 	if similarPromptHash != "" && e.cache != nil && !req.SkipCache {
@@ -982,6 +985,7 @@ func (e *MemzentEngine) Process(ctx context.Context, req *PromptRequest) (*Promp
 	}
 
 	// H. Log Final Result
+	recordCacheLayerHit("L5")
 	if e.auditLogger != nil {
 		e.auditLogger.Log(ctx, metrics.AuditEvent{
 			Timestamp:  time.Now(),
@@ -1187,6 +1191,28 @@ func isBillingQuery(prompt string) bool {
 func (e *MemzentEngine) emitEvent(ctx context.Context, orgID, eventType string, data any) {
 	if e.eventEmitter != nil {
 		go e.eventEmitter.Emit(ctx, orgID, eventType, data)
+	}
+}
+
+// recordCacheLayerHit updates Prometheus metrics for cache layer distribution and GPU avoidance.
+func recordCacheLayerHit(layer string) {
+	metrics.CacheLayerHits.WithLabelValues(layer).Inc()
+	if layer != "L5" {
+		metrics.GPUAvoidanceTotal.Inc()
+	} else {
+		metrics.GPUInvocationTotal.Inc()
+	}
+}
+
+// recordEntityExtraction updates Prometheus metrics for entity extraction quality.
+func recordEntityExtraction(source string, entitiesFound bool) {
+	switch {
+	case source == "regex" && entitiesFound:
+		metrics.EntityRegexSuccess.Inc()
+	case source == "regex" && !entitiesFound:
+		metrics.EntityRegexFailure.Inc()
+	case source == "llm":
+		metrics.EntityLLMUsage.Inc()
 	}
 }
 
