@@ -15,6 +15,7 @@ import {
 } from '@/app/actions'
 import { supabase } from '@/lib/supabase'
 import { Markdown } from '@/components/markdown'
+import { PipelineTrace, type PipelineStatus } from '@/components/pipeline-trace'
 
 const EXAMPLE_PROMPTS = [
   "My server IP is 192.168.1.100 and port is 8080",
@@ -23,11 +24,10 @@ const EXAMPLE_PROMPTS = [
   "What is the system latency standard?",
 ]
 
-type TraceStatus = 'idle' | 'running' | 'cache_hit' | 'llm_hit' | 'error'
-
 export default function PlaygroundPage() {
   const [prompt, setPrompt] = useState('')
-  const [status, setStatus] = useState<TraceStatus>('idle')
+  const [status, setStatus] = useState<PipelineStatus>('idle')
+  const [pipelineStep, setPipelineStep] = useState(0)
   const [result, setResult] = useState<any>(null)
   const [sessions, setSessions] = useState<any[]>([])
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null)
@@ -35,10 +35,28 @@ export default function PlaygroundPage() {
   const [loadingSessions, setLoadingSessions] = useState(true)
   const [loadingMessages, setLoadingMessages] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const pipelineTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   useEffect(() => {
     loadSessions()
+    return () => {
+      if (pipelineTimerRef.current) clearInterval(pipelineTimerRef.current)
+    }
   }, [])
+
+  useEffect(() => {
+    if (status !== 'running') {
+      if (pipelineTimerRef.current) {
+        clearInterval(pipelineTimerRef.current)
+        pipelineTimerRef.current = null
+      }
+      return
+    }
+    setPipelineStep(0)
+    pipelineTimerRef.current = setInterval(() => {
+      setPipelineStep((s) => (s >= 6 ? 6 : s + 1))
+    }, 280)
+  }, [status])
 
   useEffect(() => {
     if (messagesEndRef.current) {
@@ -208,16 +226,28 @@ export default function PlaygroundPage() {
 
   return (
     <div className="space-y-8 pb-20">
-      {/* Header */}
-      <div className="flex items-center gap-4 mb-4">
-        <div className="w-2 h-8 rounded-full bg-gradient-to-b from-memzent-glow to-memzent-purple" />
-        <div>
-          <h1 className="text-3xl font-black tracking-tighter uppercase">Playground</h1>
-          <p className="text-[10px] font-black text-white/20 uppercase tracking-[0.3em] italic">
-            Live Prompt Routing · Conversation Sessions & Semantic Context
-          </p>
+      <header className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div className="flex items-center gap-4">
+          <div className="w-1.5 h-10 rounded-full bg-gradient-to-b from-memzent-glow to-memzent-purple" />
+          <div>
+            <h1 className="text-2xl font-black tracking-tight text-readable-primary">Playground</h1>
+            <p className="text-sm text-readable-muted mt-1">
+              Test cache layers, tool routing, and session memory
+            </p>
+          </div>
         </div>
-      </div>
+        {status !== 'idle' && (
+          <span className={`inline-flex items-center gap-2 text-xs font-bold px-3 py-1.5 rounded-full border w-fit ${
+            status === 'cache_hit' ? 'text-memzent-glow border-memzent-glow/30 bg-memzent-glow/10' :
+            status === 'llm_hit' ? 'text-memzent-purple border-memzent-purple/30 bg-memzent-purple/10' :
+            status === 'error' ? 'text-red-400 border-red-500/30 bg-red-500/10' :
+            'text-white/60 border-white/10 bg-white/5'
+          }`}>
+            {status === 'running' && <Loader2 size={12} className="animate-spin" />}
+            {status === 'cache_hit' ? 'Cache hit' : status === 'llm_hit' ? 'LLM synthesis' : status === 'error' ? 'Failed' : 'Running…'}
+          </span>
+        )}
+      </header>
 
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
         
@@ -243,7 +273,7 @@ export default function PlaygroundPage() {
                 <Loader2 size={16} className="animate-spin text-white/20" />
               </div>
             ) : sessions.length === 0 ? (
-              <p className="text-[10px] font-bold text-white/20 text-center py-6">No threads active</p>
+              <p className="text-xs text-readable-muted text-center py-6">No sessions yet — send a message to start</p>
             ) : (
               sessions.map(s => {
                 const isActive = activeSessionId === s.id
@@ -277,8 +307,8 @@ export default function PlaygroundPage() {
               <BrainCircuit size={14} className="text-memzent-purple" />
               <span className="text-[9px] font-black uppercase tracking-widest text-memzent-purple">Agent Memory</span>
             </div>
-            <p className="text-[8px] text-white/30 leading-relaxed font-bold">
-              Memzent extracts facts out-of-band and saves them as vectors in Qdrant. Context is injected back during processing.
+            <p className="text-[11px] text-readable-muted leading-relaxed">
+              Facts are extracted after each turn and stored in Qdrant. Relevant memory is injected on the next request.
             </p>
           </div>
         </div>
@@ -296,9 +326,9 @@ export default function PlaygroundPage() {
             ) : messages.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-full text-center">
                 <Bot size={40} className="text-white/5 mb-4 animate-pulse" />
-                <h3 className="text-xs font-black uppercase tracking-widest text-white/40 mb-1">Start a Conversation</h3>
-                <p className="text-[9px] text-white/20 max-w-xs font-bold leading-normal">
-                  Select a session on the left or send a prompt below to launch an execution chain.
+                <h3 className="text-sm font-bold text-readable-secondary mb-1">Start a conversation</h3>
+                <p className="text-xs text-readable-muted max-w-xs leading-relaxed">
+                  Pick a session or type below — a new thread is created automatically.
                 </p>
               </div>
             ) : (
@@ -343,13 +373,13 @@ export default function PlaygroundPage() {
                   value={prompt}
                   onChange={e => setPrompt(e.target.value)}
                   onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleRun(e as any) } }}
-                  placeholder={activeSessionId ? "Route prompt through Gateway..." : "Create/Select a session on the left to start..."}
-                  className="w-full bg-black/40 border border-white/10 rounded-xl pl-4 pr-12 py-3.5 text-xs font-bold text-white focus:border-memzent-glow outline-none transition-all resize-none placeholder:text-white/15 min-h-[48px] max-h-[80px]"
-                  disabled={isRunning || !activeSessionId}
+                  placeholder="Ask anything — routes through Memzent gateway…"
+                  className="w-full bg-black/40 border border-white/10 rounded-xl pl-4 pr-12 py-3.5 text-sm text-readable-primary focus:border-memzent-glow outline-none transition-all resize-none placeholder:text-readable-muted min-h-[52px] max-h-[120px]"
+                  disabled={isRunning}
                 />
                 <button
                   type="submit"
-                  disabled={isRunning || !prompt.trim() || !activeSessionId}
+                  disabled={isRunning || !prompt.trim()}
                   className="absolute right-3 bg-memzent-glow text-black font-black p-2 rounded-lg hover:shadow-[0_0_12px_rgba(0,243,255,0.4)] transition-all disabled:opacity-20 disabled:grayscale"
                 >
                   {isRunning ? <Loader2 size={12} className="animate-spin" /> : <Send size={12} />}
@@ -363,36 +393,31 @@ export default function PlaygroundPage() {
                       key={p}
                       type="button"
                       onClick={() => setPrompt(p)}
-                      disabled={!activeSessionId}
-                      className="text-[8px] font-black uppercase tracking-widest px-2 py-1 rounded bg-white/5 border border-white/5 text-white/30 hover:text-memzent-glow hover:border-memzent-glow/20 transition-all disabled:opacity-20"
+                      className="text-[11px] font-medium px-2.5 py-1 rounded-lg bg-white/5 border border-white/5 text-readable-muted hover:text-memzent-glow hover:border-memzent-glow/20 transition-all"
                     >
                       {p.split(' ').slice(0, 3).join(' ')}...
                     </button>
                   ))}
                 </div>
-                {status !== 'idle' && (
-                  <span className={`text-[8px] font-black uppercase tracking-widest px-2 py-0.5 rounded border ${
-                    status === 'cache_hit' ? 'text-memzent-glow border-memzent-glow/20 bg-memzent-glow/5' :
-                    status === 'llm_hit' ? 'text-memzent-purple border-memzent-purple/20 bg-memzent-purple/5' :
-                    status === 'error' ? 'text-red-400 border-red-500/20 bg-red-500/5' :
-                    'text-white/30 border-white/10'
-                  }`}>
-                    {status === 'cache_hit' ? '⚡ Cache Hit' : status === 'llm_hit' ? '🤖 LLM' : status === 'error' ? '❌ Error' : 'Running...'}
-                  </span>
-                )}
               </div>
             </form>
           </div>
         </div>
 
-        {/* Right Column: Execution Telemetry & Cost Trace */}
-        <div className="space-y-6 h-[650px] overflow-y-auto custom-scrollbar">
-          
-          {/* Cost Trace Card */}
+        {/* Right Column: Pipeline + telemetry */}
+        <div className="space-y-5 h-[650px] overflow-y-auto custom-scrollbar">
+          <div className="stat-card neural-bg border-white/5 p-6">
+            <PipelineTrace
+              status={status}
+              activeStep={pipelineStep}
+              elapsedMs={result?.elapsed}
+            />
+          </div>
+
           <div className="stat-card neural-bg border-white/5 p-6">
             <div className="flex items-center gap-3 mb-6">
               <DollarSign size={14} className="text-memzent-accent" />
-              <h2 className="text-xs font-black uppercase tracking-widest text-white/60">Cost Trace</h2>
+              <h2 className="text-xs font-bold uppercase tracking-wider text-readable-label">Cost & latency</h2>
             </div>
             <div className="space-y-4">
               {[
@@ -402,14 +427,14 @@ export default function PlaygroundPage() {
                 { label: 'Est. Cost', value: result?.usage && !result.cached ? `$${((result.usage.total_tokens || 0) * 0.000002).toFixed(6)}` : result?.cached ? '$0.00 (80% off)' : '—', color: result?.cached ? 'text-memzent-accent' : 'text-white/40' },
               ].map(item => (
                 <div key={item.label} className="flex items-center justify-between py-2 border-b border-white/5">
-                  <span className="text-[9px] font-black uppercase tracking-widest text-white/30">{item.label}</span>
-                  <span className={`text-xs font-black font-mono ${item.color}`}>{item.value}</span>
+                  <span className="text-[11px] text-readable-muted">{item.label}</span>
+                  <span className={`text-sm font-bold font-mono ${item.color}`}>{item.value}</span>
                 </div>
               ))}
             </div>
             {result?.cached && (
               <div className="mt-4 p-3 rounded-xl bg-memzent-accent/5 border border-memzent-accent/20">
-                <p className="text-[8px] font-black uppercase tracking-widest text-memzent-accent">80% discount applied — semantic cache hit!</p>
+                <p className="text-[11px] font-medium text-memzent-accent">80% billing discount — served from semantic cache</p>
               </div>
             )}
           </div>
@@ -435,28 +460,6 @@ export default function PlaygroundPage() {
             ) : (
               <p className="text-[9px] font-black uppercase tracking-widest text-white/10 text-center py-6">
                 {status === 'idle' ? 'No execution yet' : result?.cached ? 'Served from cache' : 'No tools matched'}
-              </p>
-            )}
-          </div>
-
-          {/* Extracted Entities (E1) */}
-          <div className="stat-card neural-bg border-white/5 p-6">
-            <div className="flex items-center gap-3 mb-4">
-              <Layers size={14} className="text-memzent-accent" />
-              <h2 className="text-xs font-black uppercase tracking-widest text-white/60">Extracted Entities</h2>
-            </div>
-            {result?.entities && Object.keys(result.entities).length > 0 ? (
-              <div className="space-y-2">
-                {Object.entries(result.entities).map(([key, value]) => (
-                  <div key={key} className="flex items-center justify-between p-3 rounded-xl bg-white/[0.02] border border-white/5">
-                    <span className="text-[9px] font-black text-white/40 uppercase tracking-wider">{key}</span>
-                    <span className="text-[10px] font-mono font-bold text-memzent-accent">{String(value)}</span>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p className="text-[9px] font-black uppercase tracking-widest text-white/10 text-center py-6">
-                {status === 'idle' ? 'No execution yet' : 'No entities extracted'}
               </p>
             )}
           </div>
