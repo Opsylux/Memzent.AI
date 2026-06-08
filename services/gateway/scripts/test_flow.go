@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -15,14 +16,6 @@ import (
 )
 
 const (
-	baseURL   = "http://localhost:8080"
-	jwtSecret = "memzent-enterprise-secret-2026"
-	orgID     = "5127e445-bb64-4057-ac66-0f86fb68284c"
-
-	// Your raw agent identity key
-	realToken = "memzent_928e2529c9c2208b84e547be187b8c8f4d4c7c9ebcc15faa"
-
-	// Performance Configuration
 	concurrency = 20
 	totalRuns   = 100
 	rampUpDelay = 200 * time.Millisecond
@@ -39,9 +32,50 @@ type Metrics struct {
 	TotalDuration int64 // in microseconds
 }
 
+type loadConfig struct {
+	baseURL   string
+	jwtSecret string
+	orgID     string
+	apiKey    string
+}
+
+func loadConfigFromEnv() (loadConfig, error) {
+	cfg := loadConfig{
+		baseURL:   envOr("GATEWAY_URL", "http://localhost:8080"),
+		jwtSecret: os.Getenv("JWT_SECRET"),
+		orgID:     os.Getenv("MEMZENT_ORG_ID"),
+		apiKey:    os.Getenv("MEMZENT_API_KEY"),
+	}
+	if cfg.jwtSecret == "" {
+		return cfg, fmt.Errorf("JWT_SECRET is required")
+	}
+	if cfg.orgID == "" {
+		return cfg, fmt.Errorf("MEMZENT_ORG_ID is required")
+	}
+	if cfg.apiKey == "" {
+		return cfg, fmt.Errorf("MEMZENT_API_KEY is required")
+	}
+	return cfg, nil
+}
+
+func envOr(key, fallback string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return fallback
+}
+
 func main() {
+	cfg, err := loadConfigFromEnv()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "test_flow: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Required env: JWT_SECRET, MEMZENT_ORG_ID, MEMZENT_API_KEY\n")
+		fmt.Fprintf(os.Stderr, "Optional env: GATEWAY_URL (default http://localhost:8080)\n")
+		os.Exit(1)
+	}
+
 	fmt.Printf("\033[1;36m=== MEMZENT OS: HIGH-THROUGHPUT LOAD GENERATOR ===\033[0m\n")
-	fmt.Printf("Config: Concurrency=%d, Target Total Cycles=%d\n\n", concurrency, totalRuns)
+	fmt.Printf("Config: Concurrency=%d, Target Total Cycles=%d, Gateway=%s\n\n", concurrency, totalRuns, cfg.baseURL)
 
 	client := &http.Client{
 		Timeout: 30 * time.Second,
@@ -52,8 +86,7 @@ func main() {
 		},
 	}
 
-	// Generate a validated context token using your real token signature mapping
-	jwtTokenString := generateDynamicJwtToken()
+	jwtTokenString := generateDynamicJwtToken(cfg)
 	metrics := &Metrics{}
 
 	taskQueue := make(chan int, totalRuns)
@@ -70,15 +103,14 @@ func main() {
 		go func(workerID int) {
 			defer wg.Done()
 
-			// Authenticate using the robust multi-header mapping fallback
-			sessionID, err := createSession(client, jwtTokenString, realToken)
+			sessionID, err := createSession(client, cfg, jwtTokenString)
 			if err != nil {
 				fmt.Printf("\033[1;31m[Worker %d] Failed to initialize session: %v\033[0m\n", workerID, err)
 				return
 			}
 
 			for range taskQueue {
-				runCycle(client, jwtTokenString, realToken, sessionID, metrics)
+				runCycle(client, cfg, jwtTokenString, sessionID, metrics)
 			}
 		}(w)
 
@@ -91,7 +123,7 @@ func main() {
 	printReport(metrics, totalElapsed)
 }
 
-func runCycle(client *http.Client, jwtToken, apiKey, sessionID string, m *Metrics) {
+func runCycle(client *http.Client, cfg loadConfig, jwtToken, sessionID string, m *Metrics) {
 	prompt := "Verify performance connectivity metrics."
 
 	reqPayload := map[string]interface{}{
@@ -102,13 +134,12 @@ func runCycle(client *http.Client, jwtToken, apiKey, sessionID string, m *Metric
 	}
 	reqBody, _ := json.Marshal(reqPayload)
 
-	req, _ := http.NewRequestWithContext(context.Background(), "POST", baseURL+"/v1/chat", bytes.NewBuffer(reqBody))
+	req, _ := http.NewRequestWithContext(context.Background(), "POST", cfg.baseURL+"/v1/chat", bytes.NewBuffer(reqBody))
 
-	// Providing both verification pipelines simultaneously avoids policy blockages
 	req.Header.Set("Authorization", "Bearer "+jwtToken)
-	req.Header.Set("X-API-Key", apiKey)
+	req.Header.Set("X-API-Key", cfg.apiKey)
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-Org-ID", orgID)
+	req.Header.Set("X-Org-ID", cfg.orgID)
 
 	start := time.Now()
 	resp, err := client.Do(req)
@@ -117,7 +148,6 @@ func runCycle(client *http.Client, jwtToken, apiKey, sessionID string, m *Metric
 	atomic.AddInt64(&m.TotalRequests, 1)
 	atomic.AddInt64(&m.TotalDuration, duration)
 
-	// Replace the bottom half of your runCycle func with this to debug:
 	if err != nil {
 		atomic.AddInt64(&m.FailureCount, 1)
 		fmt.Printf("\033[1;31m[Network Error]: %v\033[0m\n", err)
@@ -135,7 +165,6 @@ func runCycle(client *http.Client, jwtToken, apiKey, sessionID string, m *Metric
 		if len(bodyStr) > 200 {
 			bodyStr = bodyStr[:200]
 		}
-		// Only print first 5 failures to avoid flooding
 		failCount := atomic.LoadInt64(&m.FailureCount)
 		if failCount <= 5 {
 			fmt.Printf("\033[1;33m[HTTP Reject]: Status %d | Body: %s\033[0m\n", resp.StatusCode, bodyStr)
@@ -143,31 +172,28 @@ func runCycle(client *http.Client, jwtToken, apiKey, sessionID string, m *Metric
 	}
 }
 
-func generateDynamicJwtToken() string {
-	// Re-injecting user claims context using your custom token signature
+func generateDynamicJwtToken(cfg loadConfig) string {
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
 		"sub":  "test-user-01",
 		"role": "admin",
 		"app_metadata": map[string]interface{}{
-			"org_id": orgID,
+			"org_id": cfg.orgID,
 			"tier":   "pro",
 		},
-		"key": realToken, // Injecting agent identity context into token claims
 		"exp": time.Now().Add(time.Hour * 2).Unix(),
 	})
-	tokenString, _ := token.SignedString([]byte(jwtSecret))
+	tokenString, _ := token.SignedString([]byte(cfg.jwtSecret))
 	return tokenString
 }
 
-func createSession(client *http.Client, jwtToken, apiKey string) (string, error) {
+func createSession(client *http.Client, cfg loadConfig, jwtToken string) (string, error) {
 	reqBody, _ := json.Marshal(map[string]string{"title": "Load Test Worker Session"})
-	req, _ := http.NewRequest("POST", baseURL+"/v1/sessions", bytes.NewBuffer(reqBody))
+	req, _ := http.NewRequest("POST", cfg.baseURL+"/v1/sessions", bytes.NewBuffer(reqBody))
 
-	// Supply both context lanes to satisfy complex orchestration checks
 	req.Header.Set("Authorization", "Bearer "+jwtToken)
-	req.Header.Set("X-API-Key", apiKey)
+	req.Header.Set("X-API-Key", cfg.apiKey)
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-Org-ID", orgID)
+	req.Header.Set("X-Org-ID", cfg.orgID)
 
 	resp, err := client.Do(req)
 	if err != nil {

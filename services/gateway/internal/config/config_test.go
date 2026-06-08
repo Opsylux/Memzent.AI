@@ -147,3 +147,69 @@ func TestLoadConfig_InvalidFormats(t *testing.T) {
 		t.Errorf("expected default ToolRelevanceThreshold 0.7 when overridden with invalid format, got %f", cfg.ToolRelevanceThreshold)
 	}
 }
+
+func TestParseCORSOrigins_DevelopmentDefault(t *testing.T) {
+	t.Setenv("CORS_ALLOWED_ORIGINS", "")
+	origins := parseCORSOrigins("development")
+	if len(origins) != 1 || origins[0] != "*" {
+		t.Fatalf("expected dev wildcard, got %v", origins)
+	}
+}
+
+func TestParseCORSOrigins_ProductionEmpty(t *testing.T) {
+	t.Setenv("CORS_ALLOWED_ORIGINS", "")
+	origins := parseCORSOrigins("production")
+	if len(origins) != 0 {
+		t.Fatalf("expected no default origins in production, got %v", origins)
+	}
+}
+
+func TestParseCORSOrigins_ExplicitList(t *testing.T) {
+	t.Setenv("CORS_ALLOWED_ORIGINS", "http://localhost:3002, https://app.memzent.ai ")
+	origins := parseCORSOrigins("production")
+	if len(origins) != 2 || origins[0] != "http://localhost:3002" || origins[1] != "https://app.memzent.ai" {
+		t.Fatalf("unexpected origins: %v", origins)
+	}
+}
+
+func TestConfig_IsProduction_CaseInsensitive(t *testing.T) {
+	for _, env := range []string{"production", "Production", "PRODUCTION", " production "} {
+		c := &Config{Environment: env}
+		if !c.IsProduction() {
+			t.Fatalf("IsProduction() should be true for %q", env)
+		}
+	}
+	if (&Config{Environment: "staging"}).IsProduction() {
+		t.Fatal("staging should not be production")
+	}
+}
+
+func TestParseCORSOrigins_ProductionCaseInsensitive(t *testing.T) {
+	t.Setenv("CORS_ALLOWED_ORIGINS", "")
+	origins := parseCORSOrigins("Production")
+	if len(origins) != 0 {
+		t.Fatalf("expected no default origins for Production, got %v", origins)
+	}
+}
+
+func TestConfig_UsesDefaultJWTSecret(t *testing.T) {
+	c := &Config{JWTSecret: DefaultJWTSecret}
+	if !c.UsesDefaultJWTSecret() {
+		t.Fatal("expected default secret detection")
+	}
+	c.JWTSecret = "custom"
+	if c.UsesDefaultJWTSecret() {
+		t.Fatal("expected non-default secret")
+	}
+}
+
+func TestLoadConfig_ReadsEnvironment(t *testing.T) {
+	t.Setenv("ENVIRONMENT", "staging")
+	t.Setenv("JWT_SECRET", "test-secret-not-default")
+	t.Setenv("CORS_ALLOWED_ORIGINS", "http://localhost:3002")
+	cfg := LoadConfig()
+	if cfg.Environment != "staging" {
+		t.Fatalf("expected staging, got %s", cfg.Environment)
+	}
+	_ = os.Unsetenv("ENVIRONMENT")
+}

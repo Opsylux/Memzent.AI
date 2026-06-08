@@ -1,11 +1,15 @@
 package config
 
 import (
+	"log/slog"
 	"os"
 	"strconv"
 	"strings"
 	"time"
 )
+
+// DefaultJWTSecret is the development-only fallback. Must not be used in production.
+const DefaultJWTSecret = "memzent-enterprise-secret-2026"
 
 type Config struct {
 	Port                   string
@@ -27,12 +31,16 @@ type Config struct {
 	LLMCacheTTL            time.Duration
 	ToolRelevanceThreshold float64
 	Environment            string
-	AllowedOrigins         []string
-	DevAdminBypass         bool
+	CORSAllowedOrigins     []string
+}
+
+func normalizeEnvironment(env string) string {
+	return strings.ToLower(strings.TrimSpace(env))
 }
 
 func LoadConfig() *Config {
-	return &Config{
+	env := normalizeEnvironment(getEnv("ENVIRONMENT", "development"))
+	cfg := &Config{
 		Port:                   getEnv("PORT", ":8080"),
 		ValkeyURL:              getEnv("VALKEY_URL", "http://localhost:6379"),
 		RouterURL:              getEnv("ROUTER_URL", "router:50051"),
@@ -46,15 +54,57 @@ func LoadConfig() *Config {
 		OllamaEnabled:          getEnv("OLLAMA_ENABLED", "true") == "true",
 		OllamaURL:              getEnv("OLLAMA_URL", "http://host.docker.internal:11434"),
 		OllamaModel:            getEnv("OLLAMA_MODEL", "llama3.2"),
-		JWTSecret:              getEnv("JWT_SECRET", "memzent-enterprise-secret-2026"),
+		JWTSecret:              getEnv("JWT_SECRET", DefaultJWTSecret),
 		JWKSURL:                getEnv("JWKS_URL", ""),
 		SupabaseKey:            getEnv("SUPABASE_ANON_KEY", ""),
 		LLMCacheTTL:            getEnvDuration("LLM_CACHE_TTL", 1*time.Hour),
 		ToolRelevanceThreshold: getEnvFloat("TOOL_RELEVANCE_THRESHOLD", 0.7),
-		Environment:            getEnv("ENVIRONMENT", "development"),
-		AllowedOrigins:         getEnvList("ALLOWED_ORIGINS", "*"),
-		DevAdminBypass:         getEnv("MEMZENT_DEV_ADMIN_BYPASS", "false") == "true",
+		Environment:            env,
+		CORSAllowedOrigins:     parseCORSOrigins(env),
 	}
+	cfg.validateProduction()
+	return cfg
+}
+
+func (c *Config) IsProduction() bool {
+	return normalizeEnvironment(c.Environment) == "production"
+}
+
+func (c *Config) UsesDefaultJWTSecret() bool {
+	return c.JWTSecret == DefaultJWTSecret
+}
+
+func (c *Config) validateProduction() {
+	if !c.IsProduction() {
+		return
+	}
+	if c.UsesDefaultJWTSecret() {
+		slog.Error("Refusing to start: JWT_SECRET is the development default. Set a strong unique secret before production deployment.")
+		os.Exit(1)
+	}
+	if len(c.CORSAllowedOrigins) == 0 {
+		slog.Error("Refusing to start: CORS_ALLOWED_ORIGINS must be set in production (comma-separated list of allowed origins).")
+		os.Exit(1)
+	}
+}
+
+func parseCORSOrigins(environment string) []string {
+	raw := strings.TrimSpace(os.Getenv("CORS_ALLOWED_ORIGINS"))
+	if raw == "" {
+		if normalizeEnvironment(environment) == "production" {
+			return nil
+		}
+		return []string{"*"}
+	}
+	parts := strings.Split(raw, ",")
+	origins := make([]string, 0, len(parts))
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p != "" {
+			origins = append(origins, p)
+		}
+	}
+	return origins
 }
 
 func getEnv(key, fallback string) string {

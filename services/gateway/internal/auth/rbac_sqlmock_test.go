@@ -66,6 +66,59 @@ func TestRBACClient_CheckPermission(t *testing.T) {
 	}
 }
 
+func TestRBACClient_CheckPermission_ProductionStrict(t *testing.T) {
+	for _, env := range []string{"production", "Production", "PRODUCTION"} {
+		t.Run(env, func(t *testing.T) {
+			testRBACProductionStrict(t, env)
+		})
+	}
+}
+
+func testRBACProductionStrict(t *testing.T, environment string) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("failed to open sqlmock database: %v", err)
+	}
+	defer db.Close()
+
+	client := NewRBACClientForTestWithEnv(db, environment)
+	ctx := context.Background()
+
+	// No admin-01 bypass in production
+	mock.ExpectQuery("SELECT EXISTS").
+		WithArgs("admin-01", "some_tool").
+		WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(false))
+
+	allowed, err := client.CheckPermission(ctx, "admin-01", "some_tool")
+	if err != nil || allowed {
+		t.Errorf("production mode must not bypass admin-01 without org_tools row")
+	}
+
+	// No permissive chat:execute bypass in production
+	mock.ExpectQuery("SELECT EXISTS").
+		WithArgs("some_org", "chat:execute").
+		WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(false))
+
+	allowed, err = client.CheckPermission(ctx, "some_org", "chat:execute")
+	if err != nil || allowed {
+		t.Errorf("production mode must require org_tools row for chat:execute")
+	}
+
+	// Explicit grant works
+	mock.ExpectQuery("SELECT EXISTS").
+		WithArgs("some_org", "chat:execute").
+		WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(true))
+
+	allowed, err = client.CheckPermission(ctx, "some_org", "chat:execute")
+	if err != nil || !allowed {
+		t.Errorf("production mode should allow chat:execute when org_tools row exists")
+	}
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("Unfulfilled expectations: %s", err)
+	}
+}
+
 func TestRBACClient_GetAllowedTools(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	if err != nil {

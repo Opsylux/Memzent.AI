@@ -14,12 +14,13 @@ import (
 
 
 type RBACClient struct {
-	db             *sql.DB
-	devAdminBypass bool
+	db          *sql.DB
+	environment string
 }
 
-// NewRBACClient connects to the Postgres database
-func NewRBACClient(connStr string, devAdminBypass bool) (*RBACClient, error) {
+// NewRBACClient connects to the Postgres database.
+// environment should match config.Environment (e.g. "development", "production").
+func NewRBACClient(connStr string, environment string) (*RBACClient, error) {
 	// Auto-append binary_parameters=yes to support PgBouncer transaction pooling (e.g. Supabase poolers)
 	if strings.HasPrefix(connStr, "postgres://") || strings.HasPrefix(connStr, "postgresql://") {
 		if strings.Contains(connStr, "?") {
@@ -40,20 +41,28 @@ func NewRBACClient(connStr string, devAdminBypass bool) (*RBACClient, error) {
 		return nil, fmt.Errorf("failed to ping postgres: %w", err)
 	}
 
-	return &RBACClient{db: db, devAdminBypass: devAdminBypass}, nil
+	return &RBACClient{db: db, environment: normalizeEnvironment(environment)}, nil
 }
 
-// CheckPermission verifies if an organization has access to a specific tool
-func (c *RBACClient) CheckPermission(ctx context.Context, orgID string, toolID string) (bool, error) {
-	// Dev-only bypass: only active when MEMZENT_DEV_ADMIN_BYPASS=true
-	if c.devAdminBypass && orgID == "admin-01" {
-		return true, nil
-	}
+func normalizeEnvironment(env string) string {
+	return strings.ToLower(strings.TrimSpace(env))
+}
 
-	// 2. Permissive App-Focus Mode: Allow everyone to execute chat for now
-	// This ensures the dashboard remains functional even before migrations/provisioning
-	if toolID == "chat:execute" {
-		return true, nil
+func (c *RBACClient) devBypassesEnabled() bool {
+	return normalizeEnvironment(c.environment) != "production"
+}
+
+// CheckPermission verifies if an organization has access to a specific tool.
+// In production, every tool (including chat:execute) requires an org_tools row.
+// Dev bypasses (admin-01, permissive chat:execute) apply only when ENVIRONMENT != production.
+func (c *RBACClient) CheckPermission(ctx context.Context, orgID string, toolID string) (bool, error) {
+	if c.devBypassesEnabled() {
+		if orgID == "admin-01" {
+			return true, nil
+		}
+		if toolID == "chat:execute" {
+			return true, nil
+		}
 	}
 
 	var exists bool
