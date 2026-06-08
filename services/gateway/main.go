@@ -382,12 +382,14 @@ func main() {
 		"offline_plane", flags.OfflinePlane,
 		"workflow_engine", flags.WorkflowEngine,
 		"entity_metrics", flags.EntityMetrics,
+		"pattern_mining", flags.PatternMining,
 	)
 
 	// 8.0b Initialize Offline Learning Plane (E3)
 	var requestMiner *miners.RequestMiner
 	var cacheMiner *miners.CacheMiner
 	var workflowMiner *miners.WorkflowMiner
+	var patternMiner *miners.PatternMiner
 	var streamPlane *offline.StreamPlane
 	var channelPlane *offline.Plane
 	if flags.OfflinePlane {
@@ -395,19 +397,22 @@ func main() {
 		cacheMiner = miners.NewCacheMiner(10, 100)
 		workflowMiner = miners.NewWorkflowMiner(100, 0.90)
 
+		// Build miner list (O4 is optional based on flag)
+		allMiners := []offline.Miner{requestMiner, cacheMiner, workflowMiner}
+		if flags.PatternMining {
+			patternMiner = miners.NewPatternMiner(20)
+			allMiners = append(allMiners, patternMiner)
+			slog.Info("🧬 O4 Pattern Miner enabled (experimental)")
+		}
+
 		if flags.OfflineStreams && vCache != nil {
-			// Valkey Streams mode — crash-durable, multi-instance
 			streamCfg := offline.DefaultStreamConfig("")
-			streamPlane = offline.NewStreamPlane(vCache, streamCfg, requestMiner, cacheMiner, workflowMiner)
+			streamPlane = offline.NewStreamPlane(vCache, streamCfg, allMiners...)
 			streamPlane.Start(ctx)
 			memzentEngine.SetOfflinePlane(streamPlane)
 			slog.Info("🌊 Offline Learning Plane started (Valkey Streams mode)")
 		} else {
-			// In-memory channel mode (single instance, fast)
-			channelPlane = offline.NewPlane(
-				offline.DefaultConfig(),
-				requestMiner, cacheMiner, workflowMiner,
-			)
+			channelPlane = offline.NewPlane(offline.DefaultConfig(), allMiners...)
 			channelPlane.Start(ctx)
 			memzentEngine.SetOfflinePlane(channelPlane)
 			slog.Info("🧠 Offline Learning Plane started (channel mode)")
@@ -1052,9 +1057,45 @@ func main() {
 			if preWarm != nil {
 				stats["pre_warmer"] = preWarm.Stats()
 			}
+			if patternMiner != nil {
+				stats["pattern_mining"] = map[string]interface{}{
+					"enabled":          true,
+					"hot_transitions":  patternMiner.GetAllHotTransitions(),
+				}
+			}
 			w.Header().Set("Content-Type", "application/json")
 			json.NewEncoder(w).Encode(stats)
 		})))
+
+	// Pattern Mining Prediction API (E6 - experimental)
+	mux.Handle("/v1/patterns/predict", middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		if patternMiner == nil {
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]interface{}{"enabled": false, "message": "Set MEMZENT_PATTERN_MINING_ENABLED=true"})
+			return
+		}
+		orgID, _ := r.Context().Value("org_id").(string)
+		tool := r.URL.Query().Get("tool")
+
+		if tool != "" {
+			// Predict next tool
+			result := patternMiner.Predict(orgID, tool)
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(result)
+		} else {
+			// Return full transition matrix for org
+			matrix := patternMiner.GetTransitionMatrix(orgID)
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"org_id": orgID,
+				"states": matrix,
+			})
+		}
+	})))
 
 		// Workflow Registry API (E4)
 		mux.Handle("/v1/workflows", middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -1197,12 +1238,14 @@ func main() {
 				"offline_streams": f.OfflineStreams,
 				"workflow_engine": f.WorkflowEngine,
 				"entity_metrics":  f.EntityMetrics,
+				"pattern_mining":  f.PatternMining,
 				"env_vars": map[string]string{
-					"MEMZENT_L1B_ENABLED":            "controls L1b entity-keyed hot path cache",
-					"MEMZENT_OFFLINE_ENABLED":        "controls offline learning plane (O1/O2/O3 miners)",
-					"MEMZENT_OFFLINE_STREAMS":        "use Valkey Streams instead of in-memory channels (requires Valkey)",
-					"MEMZENT_WORKFLOW_ENABLED":       "controls workflow registry + engine shortcut",
-					"MEMZENT_ENTITY_METRICS_ENABLED": "controls entity quality + GPU avoidance counters",
+					"MEMZENT_L1B_ENABLED":              "controls L1b entity-keyed hot path cache",
+					"MEMZENT_OFFLINE_ENABLED":          "controls offline learning plane (O1/O2/O3 miners)",
+					"MEMZENT_OFFLINE_STREAMS":          "use Valkey Streams instead of in-memory channels (requires Valkey)",
+					"MEMZENT_WORKFLOW_ENABLED":         "controls workflow registry + engine shortcut",
+					"MEMZENT_ENTITY_METRICS_ENABLED":   "controls entity quality + GPU avoidance counters",
+					"MEMZENT_PATTERN_MINING_ENABLED":   "E6 Markov chain agent pattern mining (experimental, default: false)",
 				},
 			}
 			w.Header().Set("Content-Type", "application/json")

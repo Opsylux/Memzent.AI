@@ -14,6 +14,7 @@ type Flags struct {
 	OfflineStreams  bool // MEMZENT_OFFLINE_STREAMS — use Valkey Streams instead of in-memory channels
 	WorkflowEngine  bool // MEMZENT_WORKFLOW_ENABLED — workflow registry + engine shortcut
 	EntityMetrics   bool // MEMZENT_ENTITY_METRICS_ENABLED — entity quality + GPU avoidance counters
+	PatternMining   bool // MEMZENT_PATTERN_MINING_ENABLED — E6 Markov chain agent pattern mining (experimental)
 }
 
 var (
@@ -31,6 +32,7 @@ func Load() *Flags {
 			OfflineStreams: envBool("MEMZENT_OFFLINE_STREAMS", false),
 			WorkflowEngine: envBool("MEMZENT_WORKFLOW_ENABLED", true),
 			EntityMetrics:  envBool("MEMZENT_ENTITY_METRICS_ENABLED", true),
+			PatternMining:  envBool("MEMZENT_PATTERN_MINING_ENABLED", false),
 		}
 	})
 	return global
