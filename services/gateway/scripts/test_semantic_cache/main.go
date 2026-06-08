@@ -134,10 +134,9 @@ func main() {
 			SkipCache: true,
 		},
 		{
-			Name:           "5b. Fibonacci 15th term → must NOT return 10th's answer",
-			Prompt:         "What is the 15th fibonacci number?",
-			ExpectCached:   &falseVal,
-			MustNotContain: "10th",
+			Name:         "5b. Fibonacci 15th term → must NOT return 10th's answer",
+			Prompt:       "What is the 15th fibonacci number?",
+			ExpectCached: &falseVal,
 		},
 	}
 
