@@ -21,7 +21,7 @@ export default function BlogLayout({
             <Link href="https://memzent.ai" className="text-xs font-bold text-white/40 uppercase tracking-widest hover:text-white transition-colors">Home</Link>
             <Link href="/docs" className="text-xs font-bold text-white/40 uppercase tracking-widest hover:text-white transition-colors">Documentation</Link>
             <Link href="/blog" className="text-xs font-bold text-white uppercase tracking-widest hover:text-memzent-glow transition-colors">Blog</Link>
-            <Link href="https://github.com/Opsylux/MemzentMCP" target="_blank" className="text-xs font-bold text-white/40 uppercase tracking-widest hover:text-white transition-colors">GitHub</Link>
+            <Link href="https://github.com/Opsylux/Memzent.AI" target="_blank" className="text-xs font-bold text-white/40 uppercase tracking-widest hover:text-white transition-colors">GitHub</Link>
           </nav>
         </div>
         <div className="flex items-center gap-4">
@@ -44,7 +44,7 @@ export default function BlogLayout({
           </span>
           <div className="flex items-center gap-4">
             <Link href="/docs" className="text-[10px] font-bold text-white/20 uppercase tracking-widest hover:text-white/40 transition-colors">Docs</Link>
-            <Link href="https://github.com/Opsylux/MemzentMCP" className="text-[10px] font-bold text-white/20 uppercase tracking-widest hover:text-white/40 transition-colors">GitHub</Link>
+            <Link href="https://github.com/Opsylux/Memzent.AI" className="text-[10px] font-bold text-white/20 uppercase tracking-widest hover:text-white/40 transition-colors">GitHub</Link>
           </div>
         </div>
       </footer>
