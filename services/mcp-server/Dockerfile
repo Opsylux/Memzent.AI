@@ -1,4 +1,4 @@
-FROM golang:1.24-alpine
+FROM golang:1.25-alpine
 
 # Install build essentials
 RUN apk add --no-cache git gcc musl-dev
