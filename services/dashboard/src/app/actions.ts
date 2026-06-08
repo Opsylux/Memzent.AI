@@ -746,3 +746,65 @@ export async function getWebhookDeliveries(webhookId: string, orgId?: string) {
         return [];
     }
 }
+
+// ── Workflow Registry (E4) ──────────────────────────────────────
+
+export async function getWorkflows(orgId?: string, status?: string) {
+    try {
+        const headers = await gatewayHeaders(orgId)
+        const url = status
+            ? `${GATEWAY_URL}/v1/workflows?status=${status}`
+            : `${GATEWAY_URL}/v1/workflows`
+        const res = await fetch(url, { cache: 'no-store', headers });
+        if (!res.ok) return [];
+        return res.json();
+    } catch (e) {
+        console.error("Gateway workflows fetch failed", e);
+        return [];
+    }
+}
+
+export async function approveWorkflow(orgId: string, workflowId: string) {
+    try {
+        const headers = await gatewayHeaders(orgId)
+        const res = await fetch(`${GATEWAY_URL}/v1/workflows/approve`, {
+            method: 'PUT',
+            headers,
+            body: JSON.stringify({ id: workflowId }),
+        });
+        return res.json();
+    } catch (e) {
+        console.error("Workflow approve failed", e);
+        return { error: 'failed' };
+    }
+}
+
+export async function rejectWorkflow(orgId: string, workflowId: string) {
+    try {
+        const headers = await gatewayHeaders(orgId)
+        const res = await fetch(`${GATEWAY_URL}/v1/workflows/reject`, {
+            method: 'PUT',
+            headers,
+            body: JSON.stringify({ id: workflowId }),
+        });
+        return res.json();
+    } catch (e) {
+        console.error("Workflow reject failed", e);
+        return { error: 'failed' };
+    }
+}
+
+export async function getOfflineStats(orgId?: string) {
+    try {
+        const headers = await gatewayHeaders(orgId)
+        const res = await fetch(`${GATEWAY_URL}/v1/offline/stats`, {
+            cache: 'no-store',
+            headers,
+        });
+        if (!res.ok) return null;
+        return res.json();
+    } catch (e) {
+        console.error("Offline stats fetch failed", e);
+        return null;
+    }
+}

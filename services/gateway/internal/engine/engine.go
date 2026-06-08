@@ -85,6 +85,9 @@ type MemzentEngine struct {
 	// Offline Learning Plane (E3)
 	offlinePlane *offline.Plane
 
+	// Workflow Registry (E4)
+	workflowRegistry WorkflowRegistry
+
 	TotalRequests atomic.Uint64
 	CacheHits     atomic.Uint64
 	orgRequests   sync.Map // Tracks requests per org (map[string]*atomic.Uint64)
@@ -104,6 +107,17 @@ func (e *MemzentEngine) SetEventEmitter(emitter EventEmitter) {
 // SetOfflinePlane attaches the offline learning plane to the engine.
 func (e *MemzentEngine) SetOfflinePlane(plane *offline.Plane) {
 	e.offlinePlane = plane
+}
+
+// WorkflowRegistry abstracts workflow lookup so engine doesn't import workflow package directly.
+type WorkflowRegistry interface {
+	MatchWorkflow(ctx context.Context, orgID string, toolPattern string) (matched bool, toolIDs []string, workflowID string, err error)
+	RecordExecution(ctx context.Context, workflowID, orgID, promptHash string, entities map[string]string, success bool, latencyMs int) error
+}
+
+// SetWorkflowRegistry attaches the workflow registry to the engine.
+func (e *MemzentEngine) SetWorkflowRegistry(registry WorkflowRegistry) {
+	e.workflowRegistry = registry
 }
 
 // emitOffline sends an event to the offline learning plane (non-blocking).

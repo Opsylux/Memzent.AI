@@ -30,6 +30,7 @@ import (
 	"memzent-gateway/internal/tools"
 	"memzent-gateway/internal/offline"
 	"memzent-gateway/internal/offline/miners"
+	"memzent-gateway/internal/workflow"
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
@@ -370,6 +371,15 @@ func main() {
 	)
 	offlinePlane.Start(ctx)
 	memzentEngine.SetOfflinePlane(offlinePlane)
+
+	// 8.0c Initialize Workflow Registry (E4)
+	var workflowRegistry *workflow.Registry
+	if rbacClient != nil && rbacClient.GetDB() != nil {
+		workflowRegistry = workflow.NewRegistry(rbacClient.GetDB())
+		workflowRegistry.StartDemotionLoop(ctx, 1*time.Hour)
+		memzentEngine.SetWorkflowRegistry(workflow.NewEngineAdapter(workflowRegistry))
+		slog.Info("📋 Workflow Registry initialized with hourly demotion checks")
+	}
 
 	// Start background model discovery for all registered LLM providers
 	memzentEngine.StartModelDiscovery(ctx)
@@ -934,6 +944,88 @@ func main() {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(stats)
+	})))
+
+	// Workflow Registry API (E4)
+	mux.Handle("/v1/workflows", middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if workflowRegistry == nil {
+			http.Error(w, `{"error":"workflow registry not initialized"}`, http.StatusServiceUnavailable)
+			return
+		}
+		orgID, _ := r.Context().Value("org_id").(string)
+
+		switch r.Method {
+		case http.MethodGet:
+			status := r.URL.Query().Get("status")
+			candidates, err := workflowRegistry.ListCandidates(r.Context(), orgID, status)
+			if err != nil {
+				slog.Error("Failed to list workflows", "error", err)
+				w.WriteHeader(http.StatusInternalServerError)
+				json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+				return
+			}
+			if candidates == nil {
+				candidates = []workflow.Candidate{}
+			}
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(candidates)
+		default:
+			http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+		}
+	})))
+
+	mux.Handle("/v1/workflows/approve", middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if workflowRegistry == nil {
+			http.Error(w, `{"error":"workflow registry not initialized"}`, http.StatusServiceUnavailable)
+			return
+		}
+		if r.Method != http.MethodPut {
+			http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		var body struct {
+			ID string `json:"id"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.ID == "" {
+			http.Error(w, `{"error":"id required"}`, http.StatusBadRequest)
+			return
+		}
+		userID, _ := r.Context().Value("user_id").(string)
+		if err := workflowRegistry.Approve(r.Context(), body.ID, userID); err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+			return
+		}
+		// Auto-activate after approval
+		_ = workflowRegistry.Activate(r.Context(), body.ID)
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"status": "approved_and_activated"})
+	})))
+
+	mux.Handle("/v1/workflows/reject", middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if workflowRegistry == nil {
+			http.Error(w, `{"error":"workflow registry not initialized"}`, http.StatusServiceUnavailable)
+			return
+		}
+		if r.Method != http.MethodPut {
+			http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		var body struct {
+			ID string `json:"id"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.ID == "" {
+			http.Error(w, `{"error":"id required"}`, http.StatusBadRequest)
+			return
+		}
+		userID, _ := r.Context().Value("user_id").(string)
+		if err := workflowRegistry.Reject(r.Context(), body.ID, userID); err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"status": "rejected"})
 	})))
 		json.NewEncoder(w).Encode(metadata)
 	})))

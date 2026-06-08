@@ -16,7 +16,8 @@ import {
   Activity,
   Cpu,
   FlaskConical,
-  Bell
+  Bell,
+  GitBranch
 } from 'lucide-react'
 import { signOutAction } from '@/app/actions'
 
@@ -25,6 +26,7 @@ const navItems = [
   { name: 'Analytics', href: '/analytics', icon: Activity },
   { name: 'Playground', href: '/playground', icon: FlaskConical },
   { name: 'Memzent Tools', href: '/tools', icon: Database },
+  { name: 'Workflows', href: '/workflows', icon: GitBranch },
   { name: 'Providers', href: '/providers', icon: Cpu },
   { name: 'API Keys', href: '/keys', icon: Key },
   { name: 'Notifications', href: '/notifications', icon: Bell },
