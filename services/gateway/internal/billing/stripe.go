@@ -138,11 +138,11 @@ func (h *StripeHandler) CreateCheckoutSession(w http.ResponseWriter, r *http.Req
 
 	successURL := os.Getenv("STRIPE_SUCCESS_URL")
 	if successURL == "" {
-		successURL = "http://localhost:3000/dashboard/billing?session_id={CHECKOUT_SESSION_ID}"
+		successURL = "http://localhost:3000/billing?session_id={CHECKOUT_SESSION_ID}"
 	}
 	cancelURL := os.Getenv("STRIPE_CANCEL_URL")
 	if cancelURL == "" {
-		cancelURL = "http://localhost:3000/dashboard/billing?status=cancel"
+		cancelURL = "http://localhost:3000/billing?status=cancel"
 	}
 
 	var params *stripe.CheckoutSessionParams
