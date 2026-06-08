@@ -47,7 +47,7 @@ export default function LoginPage() {
     const { error } = await supabase.auth.signInWithOtp({
       email,
       options: {
-        emailRedirectTo: `${window.location.origin}/auth/callback`,
+        emailRedirectTo: `${process.env.NEXT_PUBLIC_APP_URL}/auth/callback`,
       },
     })
     if (error) {
@@ -62,7 +62,7 @@ export default function LoginPage() {
     await supabase.auth.signInWithOAuth({
       provider,
       options: {
-        redirectTo: `${window.location.origin}/auth/callback`,
+        redirectTo: `${process.env.NEXT_PUBLIC_APP_URL}/auth/callback`,
       },
     })
   }
@@ -78,15 +78,15 @@ export default function LoginPage() {
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid grid-cols-2 gap-3">
-            <Button 
-              variant="outline" 
+            <Button
+              variant="outline"
               className="border-white/20 bg-white/5 hover:bg-white/10 text-white transition-colors"
               onClick={() => handleOAuthLogin('github')}
             >
               <Github className="mr-2 h-4 w-4" />
               GitHub
             </Button>
-            <Button 
+            <Button
               variant="outline"
               className="border-white/20 bg-white/5 hover:bg-white/10 text-white transition-colors"
               onClick={() => handleOAuthLogin('google')}
@@ -95,7 +95,7 @@ export default function LoginPage() {
               Google
             </Button>
           </div>
-          
+
           <div className="relative">
             <div className="absolute inset-0 flex items-center">
               <span className="w-full border-t border-white/10" />
@@ -114,8 +114,8 @@ export default function LoginPage() {
               className="border-white/20 bg-white/5 text-white placeholder:text-white/30 focus:ring-memzent-glow/50"
               required
             />
-            <Button 
-              type="submit" 
+            <Button
+              type="submit"
               className="w-full bg-memzent-glow text-black font-bold hover:shadow-[0_0_20px_rgba(0,243,255,0.3)] transition-all"
               disabled={loading}
             >
