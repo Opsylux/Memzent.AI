@@ -266,7 +266,7 @@ Memzent.AI/
 └── docker-compose.yml  # Orchestration Layer
 ```
 
----
+----
 
 ## 🔑 Authentication
 
