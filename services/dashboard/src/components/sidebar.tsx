@@ -21,7 +21,8 @@ import {
   GitBranch,
   Gauge,
   Menu,
-  X
+  X,
+  DollarSign
 } from 'lucide-react'
 import { signOutAction } from '@/app/actions'
 import { supabase } from '@/lib/supabase'
@@ -39,6 +40,7 @@ const navItems = [
   { name: 'Notifications', href: '/notifications', icon: Bell },
   { name: 'Audit Logs', href: '/audit', icon: Activity },
   { name: 'Billing', href: '/billing', icon: CreditCard },
+  { name: 'Spend Limits', href: '/billing/spend-limits', icon: DollarSign },
   { name: 'Documentation', href: '/docs', icon: Book },
   { name: 'Settings', href: '/settings', icon: Settings },
 ]

@@ -1,0 +1,55 @@
+name: Dashboard
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'services/dashboard/**'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'services/dashboard/**'
+
+jobs:
+  build:
+    name: Type Check & Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        working-directory: services/dashboard
+        run: bun install --frozen-lockfile || bun install
+
+      - name: Type check
+        working-directory: services/dashboard
+        run: bun run build
+        env:
+          NEXT_PUBLIC_GATEWAY_URL: http://localhost:8080
+          NEXT_PUBLIC_SUPABASE_URL: https://example.supabase.co
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: placeholder-key-for-build
+          NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: pk_test_placeholder
+
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        working-directory: services/dashboard
+        run: bun install --frozen-lockfile || bun install
+
+      - name: Lint
+        working-directory: services/dashboard
+        run: bun run lint

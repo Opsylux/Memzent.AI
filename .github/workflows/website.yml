@@ -1,0 +1,57 @@
+name: Website
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'website/**'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'website/**'
+
+jobs:
+  build:
+    name: Build & Type Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: website/package-lock.json
+
+      - name: Install dependencies
+        working-directory: website
+        run: npm ci || npm install
+
+      - name: Build
+        working-directory: website
+        run: npm run build
+        env:
+          VITE_APP_URL: https://app.memzent.ai
+          VITE_GATEWAY_URL: https://api.memzent.ai
+
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: website/package-lock.json
+
+      - name: Install dependencies
+        working-directory: website
+        run: npm ci || npm install
+
+      - name: Lint
+        working-directory: website
+        run: npm run lint
