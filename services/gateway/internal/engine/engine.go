@@ -506,6 +506,39 @@ func (e *MemzentEngine) Process(ctx context.Context, req *PromptRequest) (*Promp
 			}
 			return &PromptResponse{Text: cachedCanon, Cached: true, SessionID: req.SessionID}, nil
 		}
+
+		// Stage 1b: Entity-Keyed Hot Path Cache (L1b)
+		// Fast entity extraction via regex, then deterministic key lookup in Valkey.
+		// Only fires if we have a non-trivial prompt (entities can be extracted client-side).
+		l1bEntities := extractEntitiesLocal(queryPrompt)
+		if len(l1bEntities) > 0 {
+			entityKey := e.buildEntityCacheKey(orgID, resolvedModel, l1bEntities)
+			if entityKey != "" {
+				cachedEntity, err := e.cache.GetSemanticResult(ctx, entityKey)
+				if err != nil || cachedEntity == "" {
+					cachedEntity, _ = e.getPersistentCache(ctx, entityKey)
+					if cachedEntity != "" {
+						go func() {
+							_ = e.cache.SetResult(context.Background(), entityKey, cachedEntity, e.cacheTTL)
+						}()
+					}
+				}
+
+				if cachedEntity != "" {
+					e.CacheHits.Add(1)
+					hitCounter, _ := e.orgHits.LoadOrStore(orgID, &atomic.Uint64{})
+					hitCounter.(*atomic.Uint64).Add(1)
+					slog.Info("🎯 Stage 1b Cache HIT (Entity-Keyed)", "org_id", orgID, "entities", l1bEntities)
+					e.chargeCacheHit(ctx, orgID, req.Provider, req.Model, queryPrompt)
+
+					if req.SessionID != "" && e.sessionMgr != nil {
+						_ = e.sessionMgr.AppendMessage(ctx, req.SessionID, "user", queryPrompt)
+						_ = e.sessionMgr.AppendMessage(ctx, req.SessionID, "assistant", cachedEntity)
+					}
+					return &PromptResponse{Text: cachedEntity, Cached: true, SessionID: req.SessionID, Entities: l1bEntities}, nil
+				}
+			}
+		}
 	}
 
 	// 1. Short-term Memory: Load previous messages if SessionID is provided
@@ -860,6 +893,16 @@ func (e *MemzentEngine) Process(ctx context.Context, req *PromptRequest) (*Promp
 			_ = e.cache.SetResult(ctx, simKey, aiResp, e.cacheTTL)
 			e.setPersistentCache(ctx, orgID, simKey, aiResp, e.cacheTTL)
 		}
+
+		// L1b Dual-Write: entity-keyed cache entry (only if entities were extracted)
+		if len(extractedEntities) > 0 {
+			entityKey := e.buildEntityCacheKey(orgID, resolvedModel, extractedEntities)
+			if entityKey != "" {
+				_ = e.cache.SetResult(ctx, entityKey, aiResp, e.cacheTTL)
+				e.setPersistentCache(ctx, orgID, entityKey, aiResp, e.cacheTTL)
+				slog.Debug("💾 L1b entity-keyed cache written", "key", entityKey)
+			}
+		}
 	}
 
 	// Post-Generation: Out-of-band facts extraction
@@ -959,6 +1002,41 @@ func (e *MemzentEngine) setPersistentCache(ctx context.Context, orgID, cacheKey,
 
 func (e *MemzentEngine) buildCacheKey(orgID, keyType, model, value string) string {
 	return fmt.Sprintf("org:%s:m:%s:%s:%s", orgID, model, keyType, value)
+}
+
+// buildEntityCacheKey creates a deterministic L1b cache key from extracted entities.
+// Format: org:{orgID}:m:{model}:e:{action}:{sorted_key=value pairs}
+// Returns empty string if entities are empty or have no action.
+func (e *MemzentEngine) buildEntityCacheKey(orgID, model string, entities map[string]string) string {
+	if len(entities) == 0 {
+		return ""
+	}
+
+	// Sort entity keys for deterministic ordering
+	keys := make([]string, 0, len(entities))
+	for k := range entities {
+		keys = append(keys, k)
+	}
+	// Use sort to ensure deterministic key
+	sortStrings(keys)
+
+	// Build key parts
+	parts := make([]string, 0, len(keys))
+	for _, k := range keys {
+		parts = append(parts, k+"="+entities[k])
+	}
+
+	entityStr := strings.Join(parts, ":")
+	return fmt.Sprintf("org:%s:m:%s:e:%s", orgID, model, entityStr)
+}
+
+// sortStrings sorts a slice of strings in place (simple insertion sort for small slices)
+func sortStrings(s []string) {
+	for i := 1; i < len(s); i++ {
+		for j := i; j > 0 && s[j] < s[j-1]; j-- {
+			s[j], s[j-1] = s[j-1], s[j]
+		}
+	}
 }
 
 // WarmCache queries PostgreSQL persistent cache for active entries and pre-warms Valkey in the background
