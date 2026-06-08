@@ -808,3 +808,33 @@ export async function getOfflineStats(orgId?: string) {
         return null;
     }
 }
+
+export async function getEntityMetrics(orgId?: string) {
+    try {
+        const headers = await gatewayHeaders(orgId)
+        const res = await fetch(`${GATEWAY_URL}/v1/metrics/entities`, {
+            cache: 'no-store',
+            headers,
+        });
+        if (!res.ok) return null;
+        return res.json();
+    } catch (e) {
+        console.error("Entity metrics fetch failed", e);
+        return null;
+    }
+}
+
+export async function getFeatureFlags(orgId?: string) {
+    try {
+        const headers = await gatewayHeaders(orgId)
+        const res = await fetch(`${GATEWAY_URL}/v1/features`, {
+            cache: 'no-store',
+            headers,
+        });
+        if (!res.ok) return null;
+        return res.json();
+    } catch (e) {
+        console.error("Feature flags fetch failed", e);
+        return null;
+    }
+}

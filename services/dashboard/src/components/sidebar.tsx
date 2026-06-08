@@ -17,13 +17,15 @@ import {
   Cpu,
   FlaskConical,
   Bell,
-  GitBranch
+  GitBranch,
+  Gauge
 } from 'lucide-react'
 import { signOutAction } from '@/app/actions'
 
 const navItems = [
   { name: 'Overview', href: '/', icon: LayoutDashboard },
   { name: 'Analytics', href: '/analytics', icon: Activity },
+  { name: 'GPU Analytics', href: '/analytics/gpu', icon: Gauge },
   { name: 'Playground', href: '/playground', icon: FlaskConical },
   { name: 'Memzent Tools', href: '/tools', icon: Database },
   { name: 'Workflows', href: '/workflows', icon: GitBranch },
