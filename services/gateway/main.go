@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -11,8 +13,6 @@ import (
 	"strings"
 	"syscall"
 	"time"
-	"crypto/rand"
-	"encoding/hex"
 
 	"memzent-gateway/internal/auth"
 	"memzent-gateway/internal/billing"
@@ -21,19 +21,37 @@ import (
 	"memzent-gateway/internal/connectors"
 	"memzent-gateway/internal/db"
 	"memzent-gateway/internal/engine"
+	"memzent-gateway/internal/featureflags"
 	"memzent-gateway/internal/llm"
 	"memzent-gateway/internal/mcp"
 	"memzent-gateway/internal/memory"
 	"memzent-gateway/internal/metrics"
+	"memzent-gateway/internal/notifications"
+	"memzent-gateway/internal/offline"
+	"memzent-gateway/internal/offline/miners"
+	"memzent-gateway/internal/prewarmer"
 	"memzent-gateway/internal/router"
 	"memzent-gateway/internal/tools"
+	"memzent-gateway/internal/workflow"
 
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	prometheusModel "github.com/prometheus/client_model/go"
 
 	_ "memzent-gateway/docs"
 )
 
-// Replace with your module path
+// getCounterValue reads the current value of a prometheus Counter.
+func getCounterValue(c prometheus.Counter) float64 {
+	var m prometheusModel.Metric
+	if err := c.Write(&m); err != nil {
+		return 0
+	}
+	if m.Counter != nil {
+		return *m.Counter.Value
+	}
+	return 0
+}
 
 func metricsMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -57,18 +75,34 @@ func (rw *statusResponseWriter) WriteHeader(code int) {
 	rw.ResponseWriter.WriteHeader(code)
 }
 
-func commonMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Memzent-Provider, X-Memzent-Model, X-Skip-Cache, X-Org-ID")
+func corsMiddleware(allowedOrigins []string) func(http.Handler) http.Handler {
+	allowAll := len(allowedOrigins) == 1 && allowedOrigins[0] == "*"
+	originSet := make(map[string]struct{}, len(allowedOrigins))
+	for _, o := range allowedOrigins {
+		originSet[o] = struct{}{}
+	}
 
-		if r.Method == "OPTIONS" {
-			w.WriteHeader(http.StatusOK)
-			return
-		}
-		next.ServeHTTP(w, r)
-	})
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			origin := r.Header.Get("Origin")
+			if allowAll {
+				w.Header().Set("Access-Control-Allow-Origin", "*")
+			} else if _, ok := originSet[origin]; ok {
+				w.Header().Set("Access-Control-Allow-Origin", origin)
+				w.Header().Set("Vary", "Origin")
+			}
+			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
+			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-API-Key, X-Memzent-Provider, X-Memzent-Model, X-Skip-Cache, X-Org-ID, X-Request-ID")
+			w.Header().Set("Access-Control-Expose-Headers", "X-Cache, X-Request-ID, X-RateLimit-Remaining")
+			w.Header().Set("Access-Control-Max-Age", "86400")
+
+			if r.Method == "OPTIONS" {
+				w.WriteHeader(http.StatusOK)
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
 }
 
 func main() {
@@ -108,7 +142,7 @@ func main() {
 	slog.Info("Connected to Rust Router")
 
 	// 5. Initialize RBAC Client
-	rbacClient, err := auth.NewRBACClient(cfg.PostgresURL)
+	rbacClient, err := auth.NewRBACClient(cfg.PostgresURL, cfg.DevAdminBypass)
 	if err != nil {
 		slog.Warn("Postgres RBAC unavailable, starting with limited permissions", "error", err)
 	} else {
@@ -303,6 +337,15 @@ func main() {
 		slog.Info("Memory & Context Telemetry Services initialized with Postgres")
 	}
 
+	// 7b. Initialize Webhook Notification Dispatcher
+	var webhookRegistry *notifications.Registry
+	var webhookDispatcher *notifications.Dispatcher
+	if rbacClient != nil {
+		webhookRegistry = notifications.NewRegistry(rbacClient.GetDB())
+		webhookDispatcher = notifications.NewDispatcher(webhookRegistry, 4)
+		slog.Info("Webhook Notification Pipeline initialized")
+	}
+
 	// 8. Initialize Engine
 	memzentEngine := engine.NewMemzentEngine(
 		vCache,
@@ -327,9 +370,118 @@ func main() {
 	// in long-running multi-tenant deployments (one entry per orgID:userID pair).
 	memzentEngine.StartRateLimiterEviction(ctx)
 
+	// Attach webhook event emitter to engine
+	if webhookDispatcher != nil {
+		memzentEngine.SetEventEmitter(webhookDispatcher)
+	}
+
+	// Load feature flags from environment
+	flags := featureflags.Load()
+	slog.Info("🚩 Feature flags loaded",
+		"l1b_cache", flags.L1bCache,
+		"offline_plane", flags.OfflinePlane,
+		"workflow_engine", flags.WorkflowEngine,
+		"entity_metrics", flags.EntityMetrics,
+		"pattern_mining", flags.PatternMining,
+	)
+
+	// 8.0b Initialize Offline Learning Plane (E3)
+	var requestMiner *miners.RequestMiner
+	var cacheMiner *miners.CacheMiner
+	var workflowMiner *miners.WorkflowMiner
+	var patternMiner *miners.PatternMiner
+	var streamPlane *offline.StreamPlane
+	var channelPlane *offline.Plane
+	if flags.OfflinePlane {
+		requestMiner = miners.NewRequestMiner(50)
+		cacheMiner = miners.NewCacheMiner(10, 100)
+		workflowMiner = miners.NewWorkflowMiner(100, 0.90)
+
+		// Build miner list (O4 is optional based on flag)
+		allMiners := []offline.Miner{requestMiner, cacheMiner, workflowMiner}
+		if flags.PatternMining {
+			patternMiner = miners.NewPatternMiner(20)
+			allMiners = append(allMiners, patternMiner)
+			slog.Info("🧬 O4 Pattern Miner enabled (experimental)")
+		}
+
+		if flags.OfflineStreams && vCache != nil {
+			streamCfg := offline.DefaultStreamConfig("")
+			streamPlane = offline.NewStreamPlane(vCache, streamCfg, allMiners...)
+			streamPlane.Start(ctx)
+			memzentEngine.SetOfflinePlane(streamPlane)
+			slog.Info("🌊 Offline Learning Plane started (Valkey Streams mode)")
+		} else {
+			channelPlane = offline.NewPlane(offline.DefaultConfig(), allMiners...)
+			channelPlane.Start(ctx)
+			memzentEngine.SetOfflinePlane(channelPlane)
+			slog.Info("🧠 Offline Learning Plane started (channel mode)")
+		}
+	}
+
+	// 8.0c Initialize Workflow Registry (E4)
+	var workflowRegistry *workflow.Registry
+	if flags.WorkflowEngine && rbacClient != nil && rbacClient.GetDB() != nil {
+		workflowRegistry = workflow.NewRegistry(rbacClient.GetDB())
+		workflowRegistry.StartDemotionLoop(ctx, 1*time.Hour)
+		workflow.NewSimulator(rbacClient.GetDB()).StartSimulationLoop(ctx, 1*time.Hour)
+		memzentEngine.SetWorkflowRegistry(workflow.NewEngineAdapter(workflowRegistry))
+		slog.Info("📋 Workflow Registry initialized with hourly demotion and simulation checks")
+	}
+
+	// 8.0d O3 → Registry Bridge: auto-populate workflow candidates from miner output
+	if workflowMiner != nil && workflowRegistry != nil {
+		go func() {
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case output := <-workflowMiner.Output():
+					for _, seq := range output.PromotionReady {
+						_, err := workflowRegistry.UpsertCandidate(
+							ctx, seq.OrgID, seq.Pattern,
+							int(seq.Frequency), seq.Tools, nil,
+						)
+						if err != nil {
+							slog.Warn("O3→Registry bridge: failed to upsert candidate",
+								"pattern", seq.Pattern, "org_id", seq.OrgID, "error", err)
+						} else {
+							slog.Info("🔗 O3→Registry: workflow candidate upserted",
+								"pattern", seq.Pattern, "frequency", seq.Frequency,
+								"success_rate", seq.SuccessRate)
+						}
+					}
+				}
+			}
+		}()
+		slog.Info("🔗 O3→Registry bridge started")
+	}
+
+	// 8.0e Speculative Pre-Warmer: O2 → Valkey (L1b pre-warming)
+	var preWarm *prewarmer.PreWarmer
+	if cacheMiner != nil && vCache != nil && flags.L1bCache {
+		// Response lookup callback — queries the persistent Postgres cache
+		var responseLookup prewarmer.ResponseLookup
+		if rbacClient != nil && rbacClient.GetDB() != nil {
+			pgDB := rbacClient.GetDB()
+			responseLookup = func(lookupCtx context.Context, key string) (string, error) {
+				var resp string
+				err := pgDB.QueryRowContext(lookupCtx,
+					"SELECT response FROM cache_entries WHERE cache_key = $1 AND expires_at > now() LIMIT 1", key,
+				).Scan(&resp)
+				if err != nil {
+					return "", err
+				}
+				return resp, nil
+			}
+		}
+		preWarm = prewarmer.New(vCache, cacheMiner, prewarmer.DefaultConfig(), responseLookup)
+		preWarm.Start(ctx)
+		slog.Info("🔥 Speculative Pre-Warmer started (O2 → L1b)")
+	}
+
 	// Start background model discovery for all registered LLM providers
 	memzentEngine.StartModelDiscovery(ctx)
-
 
 	// 8.0 Start Tool Registry Refresh Loop (Phase 2: Dynamic Tool Sync)
 	// Every 30 seconds, check Postgres for drifted tools and push them to Qdrant.
@@ -354,7 +506,6 @@ func main() {
 
 	// 8.0.5 Pre-warm the memory cache from PostgreSQL persistent B-Tree store in the background
 	go memzentEngine.WarmCache(ctx)
-
 
 	// 8.1 Initialize Stripe Handler (SaaS Billing)
 	stripeHandler := billing.NewStripeHandler(
@@ -430,6 +581,9 @@ func main() {
 		if m := r.Header.Get("X-Memzent-Model"); m != "" {
 			req.Model = m
 		}
+		if strings.EqualFold(r.Header.Get("X-Skip-Cache"), "true") {
+			req.SkipCache = true
+		}
 
 		reqID := r.Header.Get("X-Request-ID")
 		if reqID == "" {
@@ -437,7 +591,7 @@ func main() {
 			rand.Read(b)
 			reqID = hex.EncodeToString(b)
 		}
-		
+
 		w.Header().Set("X-Request-ID", reqID)
 
 		resp, err := memzentEngine.Process(r.Context(), &req)
@@ -570,6 +724,32 @@ func main() {
 	mux.Handle("/v1/tools/register", middleware(requireScope("tools:write", tools.HandleRegisterTool(toolRegistry, rClient, auditLogger))))
 	mux.Handle("/v1/tools/status", middleware(requireScope("tools:read", tools.HandleRegistryStatus(toolRegistry))))
 
+	// Tool CRUD by ID: GET, PUT, DELETE /v1/tools/{toolId}
+	mux.Handle("/v1/tools/", middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			if !auth.HasScope(r.Context(), "tools:read") {
+				http.Error(w, "Forbidden", http.StatusForbidden)
+				return
+			}
+			tools.HandleGetTool(toolRegistry)(w, r)
+		case http.MethodPut:
+			if !auth.HasScope(r.Context(), "tools:write") {
+				http.Error(w, "Forbidden", http.StatusForbidden)
+				return
+			}
+			tools.HandleUpdateTool(toolRegistry, rClient, auditLogger)(w, r)
+		case http.MethodDelete:
+			if !auth.HasScope(r.Context(), "tools:write") {
+				http.Error(w, "Forbidden", http.StatusForbidden)
+				return
+			}
+			tools.HandleDisableTool(toolRegistry)(w, r)
+		default:
+			http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+		}
+	})))
+
 	// Audit API
 	mux.Handle("/v1/audit", middleware(requireScope("audit:read", func(w http.ResponseWriter, r *http.Request) {
 		orgID, _ := r.Context().Value("org_id").(string)
@@ -586,11 +766,18 @@ func main() {
 		json.NewEncoder(w).Encode(events)
 	})))
 
+	// Webhooks API (Phase 7: Notification Pipeline)
+	if webhookRegistry != nil {
+		mux.Handle("/v1/webhooks", middleware(requireScope("tools:write", notifications.HandleWebhooks(webhookRegistry))))
+		mux.Handle("/v1/webhooks/", middleware(requireScope("tools:write", notifications.HandleWebhookByID(webhookRegistry))))
+		mux.Handle("/v1/webhooks/event-types", middleware(requireScope("tools:read", notifications.HandleEventTypes())))
+	}
+
 	// Stats API
 	startupTime := time.Now()
 	mux.Handle("/v1/stats", middleware(requireScope("audit:read", func(w http.ResponseWriter, r *http.Request) {
 		orgID, _ := r.Context().Value("org_id").(string)
-		
+
 		var reqs, hits uint64
 		if auditLogger != nil {
 			// Pull durable stats from Postgres
@@ -605,19 +792,124 @@ func main() {
 			tokenBalance, _ = billingLedger.GetBalance(r.Context(), orgID)
 		}
 
+		// Build list of active provider names
+		activeProviders := make([]string, 0, len(providers))
+		for name := range providers {
+			activeProviders = append(activeProviders, name)
+		}
+
 		stats := map[string]any{
-			"total_requests": reqs,
-			"cache_hits":     hits,
-			"token_balance":  tokenBalance,
-			"uptime_seconds": int(time.Since(startupTime).Seconds()),
-			"status":         "online",
-			"org_id":         orgID,
+			"total_requests":   reqs,
+			"cache_hits":       hits,
+			"token_balance":    tokenBalance,
+			"uptime_seconds":   int(time.Since(startupTime).Seconds()),
+			"status":           "online",
+			"org_id":           orgID,
+			"active_providers": activeProviders,
+			"default_provider": defaultProvider,
 		}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(stats)
 	})))
 
 	mux.Handle("/v1/billing/checkout", middleware(http.HandlerFunc(stripeHandler.CreateCheckoutSession)))
+
+	// Budget & Spend API (for planning tools / external integrations)
+	mux.Handle("/v1/billing/budget", middleware(requireScope("audit:read", func(w http.ResponseWriter, r *http.Request) {
+		orgID, _ := r.Context().Value("org_id").(string)
+
+		if billingLedger == nil {
+			http.Error(w, "Billing not configured", http.StatusServiceUnavailable)
+			return
+		}
+
+		status, err := billingLedger.GetBudgetStatus(r.Context(), orgID)
+		if err != nil {
+			slog.Error("Failed to get budget status", "error", err)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		// Include spend limits
+		if spendLimits, err := billingLedger.CheckSpendLimits(r.Context(), orgID); err == nil && spendLimits != nil {
+			status.SpendLimit = spendLimits.DailyLimit
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(status)
+	})))
+
+	mux.Handle("/v1/billing/spend-timeseries", middleware(requireScope("audit:read", func(w http.ResponseWriter, r *http.Request) {
+		orgID, _ := r.Context().Value("org_id").(string)
+
+		if billingLedger == nil {
+			http.Error(w, "Billing not configured", http.StatusServiceUnavailable)
+			return
+		}
+
+		days := 30
+		if d := r.URL.Query().Get("days"); d != "" {
+			if parsed, err := fmt.Sscanf(d, "%d", &days); parsed == 0 || err != nil {
+				days = 30
+			}
+		}
+
+		data, err := billingLedger.GetSpendTimeseries(r.Context(), orgID, days)
+		if err != nil {
+			slog.Error("Failed to get spend timeseries", "error", err)
+			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(data)
+	})))
+
+	mux.Handle("/v1/billing/spend-limits", middleware(requireScope("audit:read", func(w http.ResponseWriter, r *http.Request) {
+		orgID, _ := r.Context().Value("org_id").(string)
+
+		if billingLedger == nil {
+			http.Error(w, "Billing not configured", http.StatusServiceUnavailable)
+			return
+		}
+
+		switch r.Method {
+		case http.MethodGet:
+			status, err := billingLedger.CheckSpendLimits(r.Context(), orgID)
+			if err != nil {
+				http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+				return
+			}
+			if status == nil {
+				status = &billing.SpendLimitStatus{}
+			}
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(status)
+
+		case http.MethodPut:
+			var req struct {
+				DailyLimit        *float64 `json:"daily_limit"`
+				MonthlyLimit      *float64 `json:"monthly_limit"`
+				DailyTokenLimit   *int64   `json:"daily_token_limit"`
+				MonthlyTokenLimit *int64   `json:"monthly_token_limit"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+				http.Error(w, "Invalid request body", http.StatusBadRequest)
+				return
+			}
+
+			if err := billingLedger.SetSpendLimits(r.Context(), orgID, req.DailyLimit, req.MonthlyLimit, req.DailyTokenLimit, req.MonthlyTokenLimit); err != nil {
+				http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+				return
+			}
+
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]string{"status": "updated"})
+
+		default:
+			http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+		}
+	})))
 
 	// Sessions API
 	mux.Handle("/v1/sessions", middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -639,7 +931,7 @@ func main() {
 			}
 
 			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(map[string]string{"session_id": sessionID})
+			json.NewEncoder(w).Encode(map[string]string{"id": sessionID, "session_id": sessionID})
 			return
 		}
 
@@ -733,7 +1025,353 @@ func main() {
 	mux.Handle("/v1/providers", middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		metadata := memzentEngine.GetProviderMetadata()
 		w.Header().Set("Content-Type", "application/json")
+
+		// Offline Learning Plane Stats API (E3)
+		mux.Handle("/v1/offline/stats", middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.Method != http.MethodGet {
+				http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+				return
+			}
+			if channelPlane == nil && streamPlane == nil {
+				w.Header().Set("Content-Type", "application/json")
+				json.NewEncoder(w).Encode(map[string]interface{}{"enabled": false})
+				return
+			}
+			var planeStats map[string]uint64
+			mode := "channel"
+			if streamPlane != nil {
+				planeStats = streamPlane.Stats()
+				mode = "valkey_streams"
+			} else {
+				planeStats = channelPlane.Stats()
+			}
+			stats := map[string]interface{}{
+				"enabled":             true,
+				"mode":                mode,
+				"plane":               planeStats,
+				"hot_patterns":        requestMiner.GetHotPatterns(),
+				"cache_misses":        cacheMiner.GetTopMisses(),
+				"workflow_sequences":  workflowMiner.GetDetectedSequences(),
+				"prediction_accuracy": cacheMiner.PredictionAccuracy(),
+			}
+			if preWarm != nil {
+				stats["pre_warmer"] = preWarm.Stats()
+			}
+			if patternMiner != nil {
+				stats["pattern_mining"] = map[string]interface{}{
+					"enabled":          true,
+					"hot_transitions":  patternMiner.GetAllHotTransitions(),
+				}
+			}
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(stats)
+		})))
+
+	// Pattern Mining Prediction API (E6 - experimental)
+	mux.Handle("/v1/patterns/predict", middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		if patternMiner == nil {
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]interface{}{"enabled": false, "message": "Set MEMZENT_PATTERN_MINING_ENABLED=true"})
+			return
+		}
+		orgID, _ := r.Context().Value("org_id").(string)
+		tool := r.URL.Query().Get("tool")
+
+		if tool != "" {
+			// Predict next tool
+			result := patternMiner.Predict(orgID, tool)
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(result)
+		} else {
+			// Return full transition matrix for org
+			matrix := patternMiner.GetTransitionMatrix(orgID)
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"org_id": orgID,
+				"states": matrix,
+			})
+		}
+	})))
+
+		// Workflow Registry API (E4)
+		mux.Handle("/v1/workflows", middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if workflowRegistry == nil {
+				http.Error(w, `{"error":"workflow registry not initialized"}`, http.StatusServiceUnavailable)
+				return
+			}
+			orgID, _ := r.Context().Value("org_id").(string)
+
+			switch r.Method {
+			case http.MethodGet:
+				status := r.URL.Query().Get("status")
+				candidates, err := workflowRegistry.ListCandidates(r.Context(), orgID, status)
+				if err != nil {
+					slog.Error("Failed to list workflows", "error", err)
+					w.WriteHeader(http.StatusInternalServerError)
+					json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+					return
+				}
+				if candidates == nil {
+					candidates = []workflow.Candidate{}
+				}
+				w.Header().Set("Content-Type", "application/json")
+				json.NewEncoder(w).Encode(candidates)
+			default:
+				http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+			}
+		})))
+
+		mux.Handle("/v1/workflows/approve", middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if workflowRegistry == nil {
+				http.Error(w, `{"error":"workflow registry not initialized"}`, http.StatusServiceUnavailable)
+				return
+			}
+			if r.Method != http.MethodPut {
+				http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+				return
+			}
+			var body struct {
+				ID string `json:"id"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.ID == "" {
+				http.Error(w, `{"error":"id required"}`, http.StatusBadRequest)
+				return
+			}
+			userID, _ := r.Context().Value("user_id").(string)
+			if err := workflowRegistry.Approve(r.Context(), body.ID, userID); err != nil {
+				w.WriteHeader(http.StatusBadRequest)
+				json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+				return
+			}
+			// Auto-activate after approval
+			_ = workflowRegistry.Activate(r.Context(), body.ID)
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]string{"status": "approved_and_activated"})
+		})))
+
+		mux.Handle("/v1/workflows/reject", middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if workflowRegistry == nil {
+				http.Error(w, `{"error":"workflow registry not initialized"}`, http.StatusServiceUnavailable)
+				return
+			}
+			if r.Method != http.MethodPut {
+				http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+				return
+			}
+			var body struct {
+				ID string `json:"id"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.ID == "" {
+				http.Error(w, `{"error":"id required"}`, http.StatusBadRequest)
+				return
+			}
+			userID, _ := r.Context().Value("user_id").(string)
+			if err := workflowRegistry.Reject(r.Context(), body.ID, userID); err != nil {
+				w.WriteHeader(http.StatusBadRequest)
+				json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]string{"status": "rejected"})
+		})))
+
+		// Entity Quality Metrics API (E5)
+		mux.Handle("/v1/metrics/entities", middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.Method != http.MethodGet {
+				http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+				return
+			}
+			regexSuccess := metrics.EntityRegexSuccess
+			regexFailure := metrics.EntityRegexFailure
+			mismatch := metrics.EntityMismatchTotal
+			llmUsage := metrics.EntityLLMUsage
+			gpuAvoided := metrics.GPUAvoidanceTotal
+			gpuInvoked := metrics.GPUInvocationTotal
+
+			// Read counters via prometheus
+			rsVal := getCounterValue(regexSuccess)
+			rfVal := getCounterValue(regexFailure)
+			mmVal := getCounterValue(mismatch)
+			llmVal := getCounterValue(llmUsage)
+			gpuAvVal := getCounterValue(gpuAvoided)
+			gpuInvVal := getCounterValue(gpuInvoked)
+
+			total := rsVal + rfVal
+			var regexSuccessRate float64
+			if total > 0 {
+				regexSuccessRate = rsVal / total
+			}
+			var gpuAvoidanceRate float64
+			gpuTotal := gpuAvVal + gpuInvVal
+			if gpuTotal > 0 {
+				gpuAvoidanceRate = gpuAvVal / gpuTotal
+			}
+
+			stats := map[string]interface{}{
+				"regex_success":      rsVal,
+				"regex_failure":      rfVal,
+				"regex_success_rate": regexSuccessRate,
+				"entity_mismatch":    mmVal,
+				"llm_entity_usage":   llmVal,
+				"gpu_avoidance_rate": gpuAvoidanceRate,
+				"gpu_avoided":        gpuAvVal,
+				"gpu_invoked":        gpuInvVal,
+			}
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(stats)
+		})))
+
+		// Feature flags status endpoint (E1-E5 layer toggles)
+		mux.Handle("/v1/features", middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.Method != http.MethodGet {
+				http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+				return
+			}
+			f := featureflags.Get()
+			response := map[string]interface{}{
+				"l1b_cache":       f.L1bCache,
+				"offline_plane":   f.OfflinePlane,
+				"offline_streams": f.OfflineStreams,
+				"workflow_engine": f.WorkflowEngine,
+				"entity_metrics":  f.EntityMetrics,
+				"pattern_mining":  f.PatternMining,
+				"env_vars": map[string]string{
+					"MEMZENT_L1B_ENABLED":              "controls L1b entity-keyed hot path cache",
+					"MEMZENT_OFFLINE_ENABLED":          "controls offline learning plane (O1/O2/O3 miners)",
+					"MEMZENT_OFFLINE_STREAMS":          "use Valkey Streams instead of in-memory channels (requires Valkey)",
+					"MEMZENT_WORKFLOW_ENABLED":         "controls workflow registry + engine shortcut",
+					"MEMZENT_ENTITY_METRICS_ENABLED":   "controls entity quality + GPU avoidance counters",
+					"MEMZENT_PATTERN_MINING_ENABLED":   "E6 Markov chain agent pattern mining (experimental, default: false)",
+				},
+			}
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(response)
+		})))
 		json.NewEncoder(w).Encode(metadata)
+	})))
+
+	// Full model listing endpoint — returns all discovered models per provider
+	mux.Handle("/v1/models", middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		metadata := memzentEngine.GetProviderMetadata()
+		type ModelEntry struct {
+			Provider string   `json:"provider"`
+			Models   []string `json:"models"`
+			Default  string   `json:"default_model"`
+		}
+		result := make([]ModelEntry, 0, len(metadata))
+		for _, m := range metadata {
+			result = append(result, ModelEntry{
+				Provider: m.Name,
+				Models:   m.SupportedModels,
+				Default:  m.DefaultModel,
+			})
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(result)
+	})))
+
+	// Similarity Threshold API: per-org configurable semantic precision
+	mux.Handle("/v1/settings/threshold", middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		orgID, _ := r.Context().Value("org_id").(string)
+		if orgID == "" {
+			http.Error(w, `{"error":"org_id required"}`, http.StatusBadRequest)
+			return
+		}
+
+		switch r.Method {
+		case "GET":
+			var threshold float64
+			err := rbacClient.GetDB().QueryRowContext(r.Context(),
+				"SELECT COALESCE(similarity_threshold, 0.88) FROM organizations WHERE id = $1", orgID).Scan(&threshold)
+			if err != nil {
+				threshold = 0.88
+			}
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]float64{"similarity_threshold": threshold})
+
+		case "PUT", "PATCH":
+			var body struct {
+				Threshold float64 `json:"similarity_threshold"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				http.Error(w, `{"error":"invalid body"}`, http.StatusBadRequest)
+				return
+			}
+			if body.Threshold < 0.5 || body.Threshold > 1.0 {
+				http.Error(w, `{"error":"threshold must be between 0.5 and 1.0"}`, http.StatusBadRequest)
+				return
+			}
+			_, err := rbacClient.GetDB().ExecContext(r.Context(),
+				"UPDATE organizations SET similarity_threshold = $1 WHERE id = $2", body.Threshold, orgID)
+			if err != nil {
+				http.Error(w, `{"error":"failed to update threshold"}`, http.StatusInternalServerError)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "similarity_threshold": body.Threshold})
+
+		default:
+			http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
+		}
+	})))
+
+	// Cache Flush API: invalidate stale canonical/semantic cache entries for an org
+	mux.Handle("/v1/cache/flush", middleware(requireScope("tools:write", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
+			return
+		}
+		orgID, _ := r.Context().Value("org_id").(string)
+		if orgID == "" {
+			http.Error(w, `{"error":"org_id required"}`, http.StatusBadRequest)
+			return
+		}
+
+		if vCache == nil {
+			http.Error(w, `{"error":"cache not initialized"}`, http.StatusServiceUnavailable)
+			return
+		}
+
+		// Flush all cache keys for this org (literal, canonical, semantic)
+		pattern := fmt.Sprintf("org:%s:*", orgID)
+		deleted, err := vCache.FlushByPattern(r.Context(), pattern)
+		if err != nil {
+			slog.Error("Cache flush failed", "error", err, "org_id", orgID)
+			http.Error(w, `{"error":"cache flush failed"}`, http.StatusInternalServerError)
+			return
+		}
+
+		// Purge persistent DB cache for this org
+		var dbDeleted int64
+		if rbacClient != nil && rbacClient.GetDB() != nil {
+			result, dbErr := rbacClient.GetDB().ExecContext(r.Context(),
+				"DELETE FROM persistent_cache WHERE org_id = $1", orgID)
+			if dbErr != nil {
+				slog.Warn("Persistent cache flush failed (non-fatal)", "error", dbErr, "org_id", orgID)
+			} else if result != nil {
+				dbDeleted, _ = result.RowsAffected()
+			}
+		}
+
+		// Flush Qdrant prompts_collection for this org (semantic Stage 2 cache)
+		if rClient != nil {
+			if flushErr := rClient.FlushPromptCache(r.Context(), orgID); flushErr != nil {
+				slog.Warn("Qdrant prompt cache flush failed (non-fatal)", "error", flushErr, "org_id", orgID)
+			}
+		}
+
+		slog.Info("🗑️ Cache flushed", "org_id", orgID, "valkey_keys_deleted", deleted, "db_rows_deleted", dbDeleted)
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success":             true,
+			"valkey_keys_deleted": deleted,
+			"db_rows_deleted":     dbDeleted,
+			"org_id":              orgID,
+		})
 	})))
 
 	// /generate-token is a dev-only convenience endpoint for issuing admin JWTs.
@@ -764,7 +1402,7 @@ func main() {
 
 	// Checkout session handler is already registered on 'mux' above
 
-	publicMux.Handle("/", auth.UnifiedAuthMiddleware(cfg.JWTSecret, jwksProvider, rbacClient)(metricsMiddleware(commonMiddleware(mux))))
+	publicMux.Handle("/", auth.UnifiedAuthMiddleware(cfg.JWTSecret, jwksProvider, rbacClient)(metricsMiddleware(corsMiddleware(cfg.AllowedOrigins)(mux))))
 
 	srv := &http.Server{
 		Addr:    cfg.Port,
@@ -783,6 +1421,22 @@ func main() {
 	// 10. Graceful Shutdown
 	<-ctx.Done()
 	slog.Info("Shutting down Memzent Gateway...")
+
+	// Stop offline learning plane (drain events, flush miners)
+	if channelPlane != nil {
+		channelPlane.Stop()
+	}
+	if streamPlane != nil {
+		streamPlane.Stop()
+	}
+	if preWarm != nil {
+		preWarm.Stop()
+	}
+
+	// Stop webhook dispatcher (drain queue)
+	if webhookDispatcher != nil {
+		webhookDispatcher.Stop()
+	}
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()

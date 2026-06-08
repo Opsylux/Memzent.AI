@@ -21,11 +21,12 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	SemanticRouter_SelectTools_FullMethodName   = "/router.SemanticRouter/SelectTools"
-	SemanticRouter_RegisterTool_FullMethodName  = "/router.SemanticRouter/RegisterTool"
-	SemanticRouter_PlanToolChain_FullMethodName = "/router.SemanticRouter/PlanToolChain"
-	SemanticRouter_StoreMemory_FullMethodName   = "/router.SemanticRouter/StoreMemory"
-	SemanticRouter_QueryMemory_FullMethodName   = "/router.SemanticRouter/QueryMemory"
+	SemanticRouter_SelectTools_FullMethodName       = "/router.SemanticRouter/SelectTools"
+	SemanticRouter_RegisterTool_FullMethodName      = "/router.SemanticRouter/RegisterTool"
+	SemanticRouter_PlanToolChain_FullMethodName     = "/router.SemanticRouter/PlanToolChain"
+	SemanticRouter_StoreMemory_FullMethodName       = "/router.SemanticRouter/StoreMemory"
+	SemanticRouter_QueryMemory_FullMethodName       = "/router.SemanticRouter/QueryMemory"
+	SemanticRouter_FlushPromptCache_FullMethodName  = "/router.SemanticRouter/FlushPromptCache"
 )
 
 // SemanticRouterClient is the client API for SemanticRouter service.
@@ -42,6 +43,8 @@ type SemanticRouterClient interface {
 	StoreMemory(ctx context.Context, in *StoreMemoryRequest, opts ...grpc.CallOption) (*StoreMemoryResponse, error)
 	// Queries semantic memory facts for a prompt
 	QueryMemory(ctx context.Context, in *QueryMemoryRequest, opts ...grpc.CallOption) (*QueryMemoryResponse, error)
+	// Flushes cached prompt vectors for an org from the prompts_collection
+	FlushPromptCache(ctx context.Context, in *FlushPromptCacheRequest, opts ...grpc.CallOption) (*FlushPromptCacheResponse, error)
 }
 
 type semanticRouterClient struct {
@@ -102,6 +105,16 @@ func (c *semanticRouterClient) QueryMemory(ctx context.Context, in *QueryMemoryR
 	return out, nil
 }
 
+func (c *semanticRouterClient) FlushPromptCache(ctx context.Context, in *FlushPromptCacheRequest, opts ...grpc.CallOption) (*FlushPromptCacheResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(FlushPromptCacheResponse)
+	err := c.cc.Invoke(ctx, SemanticRouter_FlushPromptCache_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // SemanticRouterServer is the server API for SemanticRouter service.
 // All implementations must embed UnimplementedSemanticRouterServer
 // for forward compatibility.
@@ -116,6 +129,8 @@ type SemanticRouterServer interface {
 	StoreMemory(context.Context, *StoreMemoryRequest) (*StoreMemoryResponse, error)
 	// Queries semantic memory facts for a prompt
 	QueryMemory(context.Context, *QueryMemoryRequest) (*QueryMemoryResponse, error)
+	// Flushes cached prompt vectors for an org
+	FlushPromptCache(context.Context, *FlushPromptCacheRequest) (*FlushPromptCacheResponse, error)
 	mustEmbedUnimplementedSemanticRouterServer()
 }
 
@@ -140,6 +155,9 @@ func (UnimplementedSemanticRouterServer) StoreMemory(context.Context, *StoreMemo
 }
 func (UnimplementedSemanticRouterServer) QueryMemory(context.Context, *QueryMemoryRequest) (*QueryMemoryResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method QueryMemory not implemented")
+}
+func (UnimplementedSemanticRouterServer) FlushPromptCache(context.Context, *FlushPromptCacheRequest) (*FlushPromptCacheResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method FlushPromptCache not implemented")
 }
 func (UnimplementedSemanticRouterServer) mustEmbedUnimplementedSemanticRouterServer() {}
 func (UnimplementedSemanticRouterServer) testEmbeddedByValue()                        {}
@@ -252,6 +270,24 @@ func _SemanticRouter_QueryMemory_Handler(srv interface{}, ctx context.Context, d
 	return interceptor(ctx, in, info, handler)
 }
 
+func _SemanticRouter_FlushPromptCache_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(FlushPromptCacheRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SemanticRouterServer).FlushPromptCache(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SemanticRouter_FlushPromptCache_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SemanticRouterServer).FlushPromptCache(ctx, req.(*FlushPromptCacheRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // SemanticRouter_ServiceDesc is the grpc.ServiceDesc for SemanticRouter service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -278,6 +314,10 @@ var SemanticRouter_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "QueryMemory",
 			Handler:    _SemanticRouter_QueryMemory_Handler,
+		},
+		{
+			MethodName: "FlushPromptCache",
+			Handler:    _SemanticRouter_FlushPromptCache_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

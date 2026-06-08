@@ -36,4 +36,57 @@ var (
 			Help: "Total number of semantic cache misses.",
 		},
 	)
+
+	// Entity Extraction Quality Metrics (E5)
+	EntityRegexSuccess = promauto.NewCounter(
+		prometheus.CounterOpts{
+			Name: "memzent_entity_regex_success_total",
+			Help: "Total entity extractions that succeeded via regex (no LLM needed).",
+		},
+	)
+
+	EntityRegexFailure = promauto.NewCounter(
+		prometheus.CounterOpts{
+			Name: "memzent_entity_regex_failure_total",
+			Help: "Total entity extractions where regex produced no results.",
+		},
+	)
+
+	EntityMismatchTotal = promauto.NewCounter(
+		prometheus.CounterOpts{
+			Name: "memzent_entity_mismatch_total",
+			Help: "Total cache guard rejections due to entity mismatch.",
+		},
+	)
+
+	EntityLLMUsage = promauto.NewCounter(
+		prometheus.CounterOpts{
+			Name: "memzent_entity_llm_usage_total",
+			Help: "Total requests where LLM was needed for entity extraction.",
+		},
+	)
+
+	// Cache Layer Distribution (E5)
+	CacheLayerHits = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "memzent_cache_layer_hits_total",
+			Help: "Cache hits by layer (L1, L1b, L2, L5).",
+		},
+		[]string{"layer"},
+	)
+
+	// GPU Avoidance Rate — the key business metric
+	GPUAvoidanceTotal = promauto.NewCounter(
+		prometheus.CounterOpts{
+			Name: "memzent_gpu_avoidance_total",
+			Help: "Total requests that avoided GPU/LLM invocation (served from cache/workflow).",
+		},
+	)
+
+	GPUInvocationTotal = promauto.NewCounter(
+		prometheus.CounterOpts{
+			Name: "memzent_gpu_invocation_total",
+			Help: "Total requests that required GPU/LLM invocation.",
+		},
+	)
 )

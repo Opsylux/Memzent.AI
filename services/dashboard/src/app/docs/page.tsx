@@ -76,13 +76,18 @@ export default function DocsIntroduction() {
       <section className="space-y-6">
         <h2 className="text-2xl font-black tracking-tighter uppercase">How the Flow Works</h2>
         <p className="text-sm text-white/60 leading-relaxed font-medium">
-          At a high level, every request goes through three stages before a response is returned.
+          Every request through the gateway goes through a precise execution pipeline:
         </p>
         <div className="space-y-3">
           {[
-            { label: "Check Memory", desc: "Has something similar been asked before? If yes, return the cached answer instantly." },
-            { label: "Gather Context", desc: "Find and call the tools that can provide fresh, relevant information for this specific question." },
-            { label: "Generate & Return", desc: "Send the enriched prompt to the AI model, get the response, and save it for future requests." },
+            { label: "Rate Limit & Auth", desc: "Distributed rate limiting per org/tier, then JWT or API key verification with RBAC scope checks." },
+            { label: "Billing Pre-check", desc: "Verify token balance and spend limits (daily/monthly caps) before processing." },
+            { label: "Cache Check", desc: "Three-layer lookup: literal hash → canonical hash → semantic similarity (vector match via Qdrant)." },
+            { label: "Session & Memory", desc: "Load conversation history, recall long-term semantic memories relevant to this prompt." },
+            { label: "Semantic Routing", desc: "gRPC call to Rust Router for tool matching, prompt compression, and vector search." },
+            { label: "Tool Execution", desc: "Fire matched MCP/connector tools to gather live context for the LLM." },
+            { label: "LLM Synthesis", desc: "Send enriched prompt to the selected provider (Ollama, OpenAI, Anthropic, or Gemini)." },
+            { label: "Cache & Respond", desc: "Store the response in cache, deduct billing, emit webhook events, and return to client." },
           ].map((item, i) => (
             <div key={item.label} className="flex gap-5 items-start p-4 rounded-xl hover:bg-white/[0.02] transition-colors">
               <span className="text-xl font-black text-white/10 italic shrink-0 mt-0.5">0{i + 1}</span>
@@ -93,6 +98,32 @@ export default function DocsIntroduction() {
             </div>
           ))}
         </div>
+      </section>
+
+      {/* Quick API */}
+      <section className="space-y-6">
+        <h2 className="text-2xl font-black tracking-tighter uppercase">Quick API Overview</h2>
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs border border-white/5 rounded-lg overflow-hidden">
+            <thead>
+              <tr className="bg-white/[0.03] border-b border-white/5">
+                <th className="text-left px-4 py-2 font-black text-white/60">Endpoint</th>
+                <th className="text-left px-4 py-2 font-black text-white/60">Purpose</th>
+              </tr>
+            </thead>
+            <tbody className="text-white/40">
+              <tr className="border-b border-white/5"><td className="px-4 py-2 font-mono text-memzent-glow/70">POST /v1/chat</td><td className="px-4 py-2">Send prompts, get AI responses</td></tr>
+              <tr className="border-b border-white/5"><td className="px-4 py-2 font-mono text-memzent-glow/70">GET /v1/providers</td><td className="px-4 py-2">List available LLM providers</td></tr>
+              <tr className="border-b border-white/5"><td className="px-4 py-2 font-mono text-memzent-glow/70">POST /v1/tools/register</td><td className="px-4 py-2">Register tools for semantic routing</td></tr>
+              <tr className="border-b border-white/5"><td className="px-4 py-2 font-mono text-memzent-glow/70">POST /v1/sessions</td><td className="px-4 py-2">Create conversation sessions</td></tr>
+              <tr className="border-b border-white/5"><td className="px-4 py-2 font-mono text-memzent-glow/70">GET /v1/billing/budget</td><td className="px-4 py-2">Check balance and spend analytics</td></tr>
+              <tr><td className="px-4 py-2 font-mono text-memzent-glow/70">POST /v1/webhooks</td><td className="px-4 py-2">Subscribe to real-time events</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p className="text-xs text-white/40">
+          See the full <Link href="/docs/api-reference" className="text-memzent-glow hover:underline">API Reference</Link> for all endpoints.
+        </p>
       </section>
 
       {/* CTA */}

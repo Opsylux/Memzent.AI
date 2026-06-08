@@ -1,4 +1,5 @@
-import { motion } from 'framer-motion';
+import { useState } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import {
   Shield,
   Activity,
@@ -12,33 +13,70 @@ import {
   ArrowRight,
   Check,
   DollarSign,
-  Cpu
+  Cpu,
+  Menu,
+  X,
+  Code as Github
 } from 'lucide-react';
+
+
 
 import FeatureCard from './components/FeatureCard';
 
 const appUrl = import.meta.env.VITE_APP_URL || "http://localhost:3000"
 
-const Navbar = () => (
-  <nav className="fixed top-0 left-0 right-0 z-50 glass px-6 py-4 flex justify-between items-center m-4 rounded-2xl">
-    <div className="flex items-center gap-2">
-      <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-memzent-glow to-memzent-purple flex items-center justify-center shadow-[0_0_15px_rgba(0,243,255,0.3)]">
-        <span className="text-black font-black text-sm italic select-none">M</span>
+const Navbar = () => {
+  const [mobileOpen, setMobileOpen] = useState(false);
+
+  return (
+    <nav className="fixed top-0 left-0 right-0 z-50 glass px-6 py-4 flex justify-between items-center m-4 rounded-2xl">
+      <div className="flex items-center gap-2">
+        <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-memzent-glow to-memzent-purple flex items-center justify-center shadow-[0_0_15px_rgba(0,243,255,0.3)]">
+          <span className="text-black font-black text-sm italic select-none">M</span>
+        </div>
+        <span className="text-2xl font-black tracking-tighter">MEMZENT</span>
       </div>
-      <span className="text-2xl font-black tracking-tighter">MEMZENT</span>
-    </div>
-    <div className="hidden md:flex gap-8 text-sm font-medium opacity-80">
-      <a href="#payg" className="hover:text-memzent-glow transition-colors">Pricing</a>
-      <a href="#security" className="hover:text-memzent-glow transition-colors">Security</a>
-      <a href="#observability" className="hover:text-memzent-glow transition-colors">Observability</a>
-      <a href="#cost" className="hover:text-memzent-glow transition-colors">Cost Savings</a>
-    </div>
-    <div className="flex gap-4">
-      <a href={appUrl + "/login"} className="text-sm font-bold opacity-75 hover:opacity-100 px-4 py-2 transition-all cursor-pointer">Login</a>
-      <a href={appUrl + "/login"} className="bg-memzent-glow text-black text-sm font-black px-6 py-2 rounded-xl hover:shadow-[0_0_20px_rgba(0,243,255,0.4)] hover:scale-105 transition-all cursor-pointer">Get Started Free</a>
-    </div>
-  </nav>
-);
+      <div className="hidden md:flex gap-8 text-sm font-medium opacity-80">
+        <a href="#payg" className="hover:text-memzent-glow transition-colors">Pricing</a>
+        <a href="#why" className="hover:text-memzent-glow transition-colors">Why Memzent</a>
+        <a href="#security" className="hover:text-memzent-glow transition-colors">Security</a>
+        <a href="#observability" className="hover:text-memzent-glow transition-colors">Observability</a>
+      </div>
+      <div className="hidden md:flex gap-4">
+        <a href="https://github.com/Opsylux/Memzent.AI" target="_blank" rel="noopener" className="text-sm font-bold opacity-75 hover:opacity-100 px-3 py-2 transition-all cursor-pointer flex items-center gap-2">
+          <Github size={16} /> GitHub
+        </a>
+        <a href={appUrl + "/login"} className="text-sm font-bold opacity-75 hover:opacity-100 px-4 py-2 transition-all cursor-pointer">Login</a>
+        <a href={appUrl + "/login"} className="bg-memzent-glow text-black text-sm font-black px-6 py-2 rounded-xl hover:shadow-[0_0_20px_rgba(0,243,255,0.4)] hover:scale-105 transition-all cursor-pointer">Get Started Free</a>
+      </div>
+
+      {/* Mobile hamburger */}
+      <button onClick={() => setMobileOpen(!mobileOpen)} className="md:hidden text-white p-2">
+        {mobileOpen ? <X size={24} /> : <Menu size={24} />}
+      </button>
+
+      {/* Mobile menu */}
+      <AnimatePresence>
+        {mobileOpen && (
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            className="absolute top-full left-0 right-0 mt-2 mx-4 glass rounded-2xl p-6 flex flex-col gap-4 md:hidden"
+          >
+            <a href="#payg" onClick={() => setMobileOpen(false)} className="text-sm font-bold opacity-80 hover:text-memzent-glow py-2">Pricing</a>
+            <a href="#why" onClick={() => setMobileOpen(false)} className="text-sm font-bold opacity-80 hover:text-memzent-glow py-2">Why Memzent</a>
+            <a href="#security" onClick={() => setMobileOpen(false)} className="text-sm font-bold opacity-80 hover:text-memzent-glow py-2">Security</a>
+            <a href="#observability" onClick={() => setMobileOpen(false)} className="text-sm font-bold opacity-80 hover:text-memzent-glow py-2">Observability</a>
+            <hr className="border-white/10" />
+            <a href="https://github.com/Opsylux/Memzent.AI" target="_blank" rel="noopener" className="text-sm font-bold opacity-80 flex items-center gap-2"><Github size={16} /> GitHub</a>
+            <a href={appUrl + "/login"} className="bg-memzent-glow text-black text-sm font-black px-6 py-3 rounded-xl text-center">Get Started Free</a>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </nav>
+  );
+};
 
 const Hero = () => (
   <section className="relative pt-40 pb-20 px-6 max-w-7xl mx-auto flex flex-col items-center text-center">
@@ -112,6 +150,43 @@ const Hero = () => (
           {b.icon} {b.label}
         </div>
       ))}
+    </motion.div>
+
+    {/* Terminal Quickstart */}
+    <motion.div
+      initial={{ opacity: 0, y: 30 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: 1.5, duration: 0.8 }}
+      className="mt-16 w-full max-w-2xl"
+    >
+      <div className="glass rounded-2xl overflow-hidden border-memzent-glow/10">
+        <div className="flex items-center gap-2 px-4 py-3 border-b border-white/5">
+          <div className="w-3 h-3 rounded-full bg-red-500/60" />
+          <div className="w-3 h-3 rounded-full bg-yellow-500/60" />
+          <div className="w-3 h-3 rounded-full bg-green-500/60" />
+          <span className="ml-2 text-[10px] font-mono text-white/30">terminal</span>
+        </div>
+        <div className="p-6 font-mono text-sm space-y-2">
+          <div className="text-white/40">
+            <span className="text-memzent-accent">$</span> curl -X POST https://api.memzent.ai/v1/route \
+          </div>
+          <div className="text-white/40 pl-4">
+            -H &quot;Authorization: Bearer mk_live_...&quot; \
+          </div>
+          <div className="text-white/40 pl-4">
+            -d &apos;{`{"prompt": "Deploy staging server", "tools": ["github", "aws"]}`}&apos;
+          </div>
+          <div className="mt-4 text-memzent-glow/80">
+            <span className="text-white/30">→</span> Cache HIT (semantic similarity: 0.94) — <span className="text-memzent-accent">saved $0.012</span>
+          </div>
+          <div className="text-memzent-glow/60">
+            <span className="text-white/30">→</span> Routed to: github.create_deployment, aws.ecs_update
+          </div>
+          <div className="text-white/20">
+            <span className="text-white/30">→</span> Latency: 12ms (vs 2400ms without cache)
+          </div>
+        </div>
+      </div>
     </motion.div>
   </section>
 );
@@ -206,6 +281,55 @@ const PAYGSection = () => (
           ))}
         </div>
       </div>
+    </div>
+  </section>
+);
+
+const WhyMemzent = () => (
+  <section id="why" className="py-32 px-6 max-w-7xl mx-auto">
+    <div className="text-center mb-16">
+      <h2 className="text-5xl md:text-7xl font-black tracking-tighter mb-6">
+        WHY <span className="text-transparent bg-clip-text bg-gradient-to-r from-memzent-glow to-memzent-purple">MEMZENT</span>
+      </h2>
+      <p className="text-lg opacity-70 max-w-2xl mx-auto">Most proxy layers solve one problem. Memzent solves the full stack — caching, routing, security, and memory — in one semantic layer.</p>
+    </div>
+
+    <div className="glass rounded-[40px] p-8 md:p-12 border-white/5 overflow-x-auto">
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="border-b border-white/10">
+            <th className="text-left py-4 px-4 font-black text-white/40 uppercase tracking-widest text-xs">Feature</th>
+            <th className="text-center py-4 px-4 font-black text-memzent-glow uppercase tracking-widest text-xs">Memzent</th>
+            <th className="text-center py-4 px-4 font-black text-white/30 uppercase tracking-widest text-xs">LiteLLM</th>
+            <th className="text-center py-4 px-4 font-black text-white/30 uppercase tracking-widest text-xs">Helicone</th>
+            <th className="text-center py-4 px-4 font-black text-white/30 uppercase tracking-widest text-xs">Portkey</th>
+          </tr>
+        </thead>
+        <tbody className="text-white/70 font-bold">
+          {[
+            { feature: "Semantic Cache (Vector)", memzent: true, litellm: false, helicone: false, portkey: false },
+            { feature: "Multi-LLM Routing", memzent: true, litellm: true, helicone: false, portkey: true },
+            { feature: "MCP Tool Registry", memzent: true, litellm: false, helicone: false, portkey: false },
+            { feature: "RBAC + Governance", memzent: true, litellm: false, helicone: false, portkey: true },
+            { feature: "Agent Memory (Persistent)", memzent: true, litellm: false, helicone: false, portkey: false },
+            { feature: "Real-time Observability", memzent: true, litellm: true, helicone: true, portkey: true },
+            { feature: "Pay-As-You-Go Billing", memzent: true, litellm: false, helicone: true, portkey: true },
+            { feature: "Open Source Core", memzent: true, litellm: true, helicone: false, portkey: false },
+          ].map(row => (
+            <tr key={row.feature} className="border-b border-white/5 hover:bg-white/[0.02] transition-colors">
+              <td className="py-4 px-4">{row.feature}</td>
+              <td className="text-center py-4 px-4">{row.memzent ? <Check size={18} className="inline text-memzent-glow" /> : <span className="text-white/20">—</span>}</td>
+              <td className="text-center py-4 px-4">{row.litellm ? <Check size={18} className="inline text-white/40" /> : <span className="text-white/20">—</span>}</td>
+              <td className="text-center py-4 px-4">{row.helicone ? <Check size={18} className="inline text-white/40" /> : <span className="text-white/20">—</span>}</td>
+              <td className="text-center py-4 px-4">{row.portkey ? <Check size={18} className="inline text-white/40" /> : <span className="text-white/20">—</span>}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+
+    <div className="text-center mt-12">
+      <p className="text-sm opacity-50 font-bold">Comparison based on public feature documentation as of 2026. All products are excellent — Memzent combines capabilities into one unified layer.</p>
     </div>
   </section>
 );
@@ -323,6 +447,7 @@ export default function App() {
       <Navbar />
       <Hero />
       <PAYGSection />
+      <WhyMemzent />
       <Pillars />
       <Footer />
     </div>

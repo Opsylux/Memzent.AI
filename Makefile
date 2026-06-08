@@ -22,4 +22,20 @@ logs:
 test-flow:
 	cd services/gateway && go run scripts/test_flow.go
 
-.PHONY: gen-proto up down test-flow
+# Run semantic cache correctness tests (requires MEMZENT_API_KEY env var)
+test-cache:
+	cd services/gateway && go run scripts/test_semantic_cache/main.go
+
+# Run agent memory & session knowledge tests (requires MEMZENT_API_KEY env var)
+test-memory:
+	cd services/gateway && go run scripts/test_agent_memory/main.go
+
+# Run entity extraction cache guard tests (requires MEMZENT_API_KEY env var)
+test-entity:
+	cd services/gateway && go run scripts/test_entity_extraction/main.go
+
+# Run full Evolution Pipeline integration test E1-E5 (requires MEMZENT_API_KEY + running gateway)
+test-evolution:
+	cd services/gateway && go run scripts/test_evolution/main.go
+
+.PHONY: gen-proto up down test-flow test-cache test-memory test-entity test-evolution

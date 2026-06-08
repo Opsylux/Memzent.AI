@@ -15,17 +15,23 @@ import {
   Book,
   Activity,
   Cpu,
-  FlaskConical
+  FlaskConical,
+  Bell,
+  GitBranch,
+  Gauge
 } from 'lucide-react'
 import { signOutAction } from '@/app/actions'
 
 const navItems = [
   { name: 'Overview', href: '/', icon: LayoutDashboard },
   { name: 'Analytics', href: '/analytics', icon: Activity },
+  { name: 'GPU Analytics', href: '/analytics/gpu', icon: Gauge },
   { name: 'Playground', href: '/playground', icon: FlaskConical },
   { name: 'Memzent Tools', href: '/tools', icon: Database },
+  { name: 'Workflows', href: '/workflows', icon: GitBranch },
   { name: 'Providers', href: '/providers', icon: Cpu },
   { name: 'API Keys', href: '/keys', icon: Key },
+  { name: 'Notifications', href: '/notifications', icon: Bell },
   { name: 'Audit Logs', href: '/audit', icon: Activity },
   { name: 'Billing', href: '/billing', icon: CreditCard },
   { name: 'Documentation', href: '/docs', icon: Book },
@@ -85,7 +91,7 @@ export function Sidebar({ orgName, tier, initials, role }: SidebarProps) {
 
       {/* Navigation */}
       <nav className="flex-1 space-y-2">
-        <div className="text-[10px] font-black uppercase text-white/20 tracking-[0.2em] mb-4 px-4 italic">Neural_Node</div>
+        <div className="text-[10px] font-black uppercase text-white/20 tracking-[0.2em] mb-4 px-4 italic">Navigation</div>
         {navItems.map((item) => {
           const isActive = pathname === item.href
           return (
@@ -105,7 +111,7 @@ export function Sidebar({ orgName, tier, initials, role }: SidebarProps) {
 
         {role === 'platform_staff' && (
           <div className="pt-8 space-y-2">
-            <div className="text-[10px] font-black uppercase text-memzent-purple/40 tracking-[0.2em] mb-4 px-4 italic">Infrastructure_Ops</div>
+            <div className="text-[10px] font-black uppercase text-memzent-purple/40 tracking-[0.2em] mb-4 px-4 italic">Admin_Ops</div>
             {staffItems.map((item) => {
               const isActive = pathname === item.href
               return (

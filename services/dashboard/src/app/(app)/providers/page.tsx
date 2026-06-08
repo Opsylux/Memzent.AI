@@ -9,6 +9,14 @@ const PROVIDER_COSTS: Record<string, { input: string; output: string; color: str
   gemini: { input: "$1.25", output: "$5.00", color: "text-blue-400" },
 }
 
+// Show only top 4 models per provider (latest 2 + previous 2)
+const FEATURED_MODELS: Record<string, string[]> = {
+  ollama: ["qwen3.6", "llama3.2", "qwen2.5-coder", "mistral"],
+  openai: ["gpt-5.5", "gpt-5.4", "gpt-5.4-mini", "gpt-4.1"],
+  anthropic: ["claude-sonnet-4-20250514", "claude-opus-4-20250514", "claude-3-5-sonnet-20241022", "claude-3-5-haiku-20241022"],
+  gemini: ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.0-flash", "gemini-1.5-pro"],
+}
+
 export default async function ProvidersPage() {
   const org = await getCurrentOrg()
   const stats = await getMemzentStats(org?.orgId)
@@ -24,7 +32,6 @@ export default async function ProvidersPage() {
       id: "ollama",
       name: "Ollama",
       tagline: "Local open-source LLM engine",
-      models: ["llama3.2", "llama3", "mistral", "phi3", "qwen2.5-coder", "qwen3.6"],
       icon: <Brain size={28} />,
       type: "Local",
       note: "* Infrastructure cost only — no API key required",
@@ -32,24 +39,21 @@ export default async function ProvidersPage() {
     {
       id: "openai",
       name: "OpenAI",
-      tagline: "GPT-4o & GPT-5 series",
-      models: ["gpt-4o", "gpt-4o-mini", "gpt-5.1"],
+      tagline: "GPT-5.x & GPT-4.x series",
       icon: <Cpu size={28} />,
       type: "Cloud",
     },
     {
       id: "anthropic",
       name: "Anthropic",
-      tagline: "Claude 3.x series",
-      models: ["claude-3-5-sonnet-20241022", "claude-3-opus-20240229", "claude-3-haiku-20240307"],
+      tagline: "Claude 4 & Claude 3.5 series",
       icon: <Layers size={28} />,
       type: "Cloud",
     },
     {
       id: "gemini",
       name: "Google Gemini",
-      tagline: "Gemini 1.5 Pro & Flash",
-      models: ["gemini-1.5-pro", "gemini-1.5-flash", "gemini-2.0-flash"],
+      tagline: "Gemini 2.5 & 2.0 series",
       icon: <Globe size={28} />,
       type: "Cloud",
     },
@@ -61,8 +65,8 @@ export default async function ProvidersPage() {
       <div className="flex items-center gap-4 mb-4">
         <div className="w-2 h-8 rounded-full bg-gradient-to-b from-memzent-purple to-memzent-glow" />
         <div>
-          <h1 className="text-3xl font-black tracking-tighter uppercase">Provider Mesh</h1>
-          <p className="text-[10px] font-black text-white/20 uppercase tracking-[0.3em] italic">LLM Compute Node Discovery & Cost Ledger</p>
+          <h1 className="text-3xl font-black tracking-tighter uppercase">LLM Providers</h1>
+          <p className="text-[10px] font-black text-white/40 uppercase tracking-[0.3em] italic">Connected Models & Cost Overview</p>
         </div>
       </div>
 
@@ -160,9 +164,9 @@ export default async function ProvidersPage() {
 
               {/* Model List */}
               <div>
-                <div className="text-[9px] font-black uppercase tracking-widest text-white/20 mb-3">Available Models</div>
+                <div className="text-[9px] font-black uppercase tracking-widest text-white/40 mb-3">Featured Models (Latest 2 + Previous 2)</div>
                 <div className="flex flex-wrap gap-2">
-                  {provider.models.map(m => (
+                  {(FEATURED_MODELS[provider.id] || []).map(m => (
                     <span
                       key={m}
                       className="text-[9px] font-black font-mono px-3 py-1.5 rounded-lg bg-white/5 border border-white/5 text-white/50 hover:text-white hover:border-white/10 transition-all"
@@ -171,6 +175,12 @@ export default async function ProvidersPage() {
                     </span>
                   ))}
                 </div>
+                <a
+                  href="/docs"
+                  className="inline-flex items-center gap-1 mt-3 text-[9px] font-black uppercase tracking-widest text-memzent-glow/60 hover:text-memzent-glow transition-colors"
+                >
+                  View all models → GET /v1/models
+                </a>
               </div>
 
               {provider.note && (

@@ -112,15 +112,27 @@ Output strict JSON:`, userPrompt, assistantResponse)
 			return
 		}
 
-		// Locate JSON boundaries in response (to handle standard LLM conversational wrappers)
-		startIdx := strings.Index(response, "{")
-		endIdx := strings.LastIndex(response, "}")
+		// Strip markdown code fences and trailing commentary that LLMs often add
+		cleanResponse := response
+		if idx := strings.Index(cleanResponse, "```json"); idx != -1 {
+			cleanResponse = cleanResponse[idx+7:]
+		} else if idx := strings.Index(cleanResponse, "```"); idx != -1 {
+			cleanResponse = cleanResponse[idx+3:]
+		}
+		if idx := strings.Index(cleanResponse, "```"); idx != -1 {
+			cleanResponse = cleanResponse[:idx]
+		}
+		cleanResponse = strings.TrimSpace(cleanResponse)
+
+		// Locate JSON boundaries in response
+		startIdx := strings.Index(cleanResponse, "{")
+		endIdx := strings.LastIndex(cleanResponse, "}")
 		if startIdx == -1 || endIdx == -1 || startIdx >= endIdx {
 			slog.Debug("No JSON brackets found in fact extraction response", "response", response)
 			return
 		}
 
-		cleanJSON := response[startIdx : endIdx+1]
+		cleanJSON := cleanResponse[startIdx : endIdx+1]
 		var result FactExtractionResult
 		if err := json.Unmarshal([]byte(cleanJSON), &result); err != nil {
 			slog.Warn("Failed to unmarshal structured facts result", "error", err, "raw", cleanJSON)

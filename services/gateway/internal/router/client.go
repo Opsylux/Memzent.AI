@@ -9,11 +9,25 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 )
 
+// SemanticRouterInterface defines the contract for the semantic router.
+// Implement this interface to mock the router in tests.
+type SemanticRouterInterface interface {
+	GetBestTools(ctx context.Context, prompt string, orgID string, allowedToolIDs []string, skipCache bool) ([]*Tool, string, string, string, map[string]string, error)
+	RegisterTool(ctx context.Context, id, name, description, orgID string) (bool, error)
+	PlanToolChain(ctx context.Context, prompt string, orgID string, allowedToolIDs []string) ([]*ToolStep, float32, error)
+	StoreMemory(ctx context.Context, fact, orgID, userID string) (bool, error)
+	QueryMemory(ctx context.Context, prompt, orgID, userID string, threshold float32) ([]*MemoryHit, error)
+	Close()
+}
+
 // RouterClient wraps the gRPC connection to the Rust Semantic Router
 type RouterClient struct {
 	client SemanticRouterClient
 	conn   *grpc.ClientConn
 }
+
+// Compile-time assertion: *RouterClient satisfies SemanticRouterInterface.
+var _ SemanticRouterInterface = (*RouterClient)(nil)
 
 // NewRouterClient initializes a gRPC connection to the Rust service
 func NewRouterClient(ctx context.Context, addr string) (*RouterClient, error) {
@@ -49,21 +63,24 @@ func NewRouterClient(ctx context.Context, addr string) (*RouterClient, error) {
 // GetBestTools calls the Rust Router to find relevant tools for a prompt.
 // orgID is passed in the OrgId field so the Rust router can scope the
 // prompts_collection cache lookup to this organisation only.
-func (rc *RouterClient) GetBestTools(ctx context.Context, prompt string, orgID string, allowedToolIDs []string) ([]*Tool, string, string, string, error) {
+// skipCache=true tells the Rust router to skip the prompts_collection lookup
+// and upsert, preventing forced-fresh requests from polluting the vector store.
+func (rc *RouterClient) GetBestTools(ctx context.Context, prompt string, orgID string, allowedToolIDs []string, skipCache bool) ([]*Tool, string, string, string, map[string]string, error) {
 	req := &ToolRequest{
 		Prompt:                 prompt,
 		UserId:                 orgID, // kept for backward compat with existing Qdrant payloads
 		OrgId:                  orgID, // new field — drives org-isolated cache lookup
 		AllowedToolIds:         allowedToolIDs,
 		ScoreThresholdOverride: 0.65,
+		SkipCache:              skipCache,
 	}
 
 	resp, err := rc.client.SelectTools(ctx, req)
 	if err != nil {
-		return nil, "", "", "", fmt.Errorf("gRPC SelectTools failed: %w", err)
+		return nil, "", "", "", nil, fmt.Errorf("gRPC SelectTools failed: %w", err)
 	}
 
-	return resp.Tools, resp.CompressedPrompt, resp.SimilarPromptHash, resp.CurrentPromptHash, nil
+	return resp.Tools, resp.CompressedPrompt, resp.SimilarPromptHash, resp.CurrentPromptHash, resp.GetEntities(), nil
 }
 
 // RegisterTool notifies the Rust router about a new tool to vectorize it in Qdrant
@@ -139,6 +156,20 @@ func (rc *RouterClient) QueryMemory(ctx context.Context, prompt, orgID, userID s
 	return resp.Memories, nil
 }
 
+
+// FlushPromptCache deletes all cached prompt vectors for an org from Qdrant.
+// Uses a direct gRPC call — the message types are defined here until proto is regenerated.
+func (rc *RouterClient) FlushPromptCache(ctx context.Context, orgID string) error {
+	req := &FlushPromptCacheRequest{OrgId: orgID}
+	resp, err := rc.client.FlushPromptCache(ctx, req)
+	if err != nil {
+		return fmt.Errorf("gRPC FlushPromptCache failed: %w", err)
+	}
+	if !resp.Success {
+		return fmt.Errorf("flush failed: %s", resp.Error)
+	}
+	return nil
+}
 
 // Close cleans up the gRPC connection
 func (rc *RouterClient) Close() {

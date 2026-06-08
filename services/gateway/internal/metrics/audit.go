@@ -7,13 +7,15 @@ import (
 
 // AuditEvent represents a single request/event in the system
 type AuditEvent struct {
-	Timestamp time.Time `json:"timestamp"`
-	OrgID     string    `json:"org_id"`
-	Type      string    `json:"type"`       // e.g. "AUTH", "SEMANTIC_HIT", "GATEWAY", "REGISTRY"
-	User      string    `json:"user"`       // e.g. "admin", "user@memzent.io", etc.
-	Detail    string    `json:"detail"`     // e.g. "Session Active", "Intent: 'analyze gateway latency' - L1.5 Resolved"
-	Status    string    `json:"status"`     // e.g. "success", "error", "warning"
-	Latency   float64   `json:"latency_ms"` // processing latency
+	Timestamp  time.Time         `json:"timestamp"`
+	OrgID      string            `json:"org_id"`
+	Type       string            `json:"type"`        // e.g. "AUTH", "SEMANTIC_HIT", "GATEWAY", "REGISTRY"
+	User       string            `json:"user"`        // e.g. "admin", "user@memzent.io", etc.
+	Detail     string            `json:"detail"`      // e.g. "Session Active", "Intent: 'analyze gateway latency' - L1.5 Resolved"
+	Status     string            `json:"status"`      // e.g. "success", "error", "warning"
+	Latency    float64           `json:"latency_ms"`  // processing latency
+	CacheLayer string            `json:"cache_layer,omitempty"` // L1, L1b, L2, L5 (which layer resolved)
+	Entities   map[string]string `json:"entities,omitempty"` // extracted entities from prompt (E1)
 }
 
 // AuditBuffer is a thread-safe ring buffer for the latest audit events

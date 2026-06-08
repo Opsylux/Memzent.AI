@@ -6,7 +6,11 @@ services:
     ports:
       - "6379:6379"
     command: [ "valkey-server", "--io-threads", "4" ]
-    #command: ["redis-server", "--maxmemory", "512mb", "--maxmemory-policy", "allkeys-lru"]
+    healthcheck:
+      test: ["CMD", "valkey-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
 
   # Memzent MCP Server (Go)
   mcp-server:
@@ -17,7 +21,8 @@ services:
     ports:
       - "50052:50052"
     depends_on:
-      - valkey
+      valkey:
+        condition: service_healthy
     environment:
       - VALKEY_ADDR=valkey:6379
       #- VALKEY_ADDR=127.0.0.1:6379
@@ -33,6 +38,11 @@ services:
       - "6333:6333"
     volumes:
       - ./data/qdrant:/qdrant/storage
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:6333/healthz || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
 
 
 
@@ -55,7 +65,8 @@ services:
     working_dir: /app
     command: cargo run
     depends_on:
-      - qdrant
+      qdrant:
+        condition: service_healthy
 
   # Memzent Gateway (Go) - Optimized
   # gateway:

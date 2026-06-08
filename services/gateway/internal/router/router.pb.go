@@ -9,6 +9,8 @@
 package router
 
 import (
+	"fmt"
+
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	reflect "reflect"
@@ -150,6 +152,7 @@ type ToolRequest struct {
 	AllowedToolIds         []string               `protobuf:"bytes,3,rep,name=allowed_tool_ids,json=allowedToolIds,proto3" json:"allowed_tool_ids,omitempty"`                           // For RBAC-filtered searches
 	ScoreThresholdOverride float32                `protobuf:"fixed32,4,opt,name=score_threshold_override,json=scoreThresholdOverride,proto3" json:"score_threshold_override,omitempty"` // Override default relevance threshold
 	OrgId                  string                 `protobuf:"bytes,5,opt,name=org_id,json=orgId,proto3" json:"org_id,omitempty"`                                                        // Org isolation — required for cache partitioning
+	SkipCache              bool                   `protobuf:"varint,6,opt,name=skip_cache,json=skipCache,proto3" json:"skip_cache,omitempty"`                                           // When true, skip semantic cache lookup AND suppress Qdrant prompt storage
 	unknownFields          protoimpl.UnknownFields
 	sizeCache              protoimpl.SizeCache
 }
@@ -217,6 +220,13 @@ func (x *ToolRequest) GetOrgId() string {
 		return x.OrgId
 	}
 	return ""
+}
+
+func (x *ToolRequest) GetSkipCache() bool {
+	if x != nil {
+		return x.SkipCache
+	}
+	return false
 }
 
 type Tool struct {
@@ -294,6 +304,7 @@ type ToolResponse struct {
 	CompressedPrompt  string                 `protobuf:"bytes,3,opt,name=compressed_prompt,json=compressedPrompt,proto3" json:"compressed_prompt,omitempty"`
 	SimilarPromptHash string                 `protobuf:"bytes,4,opt,name=similar_prompt_hash,json=similarPromptHash,proto3" json:"similar_prompt_hash,omitempty"` // Hash of a previously seen similar prompt (if any)
 	CurrentPromptHash string                 `protobuf:"bytes,5,opt,name=current_prompt_hash,json=currentPromptHash,proto3" json:"current_prompt_hash,omitempty"` // Canonical hash of the incoming prompt
+	Entities          map[string]string      `protobuf:"bytes,6,rep,name=entities,proto3" json:"entities,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"` // Extracted structured entities from the prompt
 	unknownFields     protoimpl.UnknownFields
 	sizeCache         protoimpl.SizeCache
 }
@@ -361,6 +372,13 @@ func (x *ToolResponse) GetCurrentPromptHash() string {
 		return x.CurrentPromptHash
 	}
 	return ""
+}
+
+func (x *ToolResponse) GetEntities() map[string]string {
+	if x != nil {
+		return x.Entities
+	}
+	return nil
 }
 
 type ToolChainRequest struct {
@@ -827,6 +845,62 @@ func (x *QueryMemoryResponse) GetMemories() []*MemoryHit {
 	return nil
 }
 
+// FlushPromptCacheRequest — hand-maintained stub until protoc regeneration
+type FlushPromptCacheRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	OrgId         string                 `protobuf:"bytes,1,opt,name=org_id,json=orgId,proto3" json:"org_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *FlushPromptCacheRequest) Reset()         {}
+func (x *FlushPromptCacheRequest) String() string { return fmt.Sprintf("FlushPromptCacheRequest{OrgId: %s}", x.OrgId) }
+func (x *FlushPromptCacheRequest) ProtoMessage()  {}
+func (x *FlushPromptCacheRequest) ProtoReflect() protoreflect.Message { return nil }
+
+func (x *FlushPromptCacheRequest) GetOrgId() string {
+	if x != nil {
+		return x.OrgId
+	}
+	return ""
+}
+
+// FlushPromptCacheResponse — hand-maintained stub until protoc regeneration
+type FlushPromptCacheResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Success       bool                   `protobuf:"varint,1,opt,name=success,proto3" json:"success,omitempty"`
+	DeletedCount  int64                  `protobuf:"varint,2,opt,name=deleted_count,json=deletedCount,proto3" json:"deleted_count,omitempty"`
+	Error         string                 `protobuf:"bytes,3,opt,name=error,proto3" json:"error,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *FlushPromptCacheResponse) Reset()         {}
+func (x *FlushPromptCacheResponse) String() string { return "FlushPromptCacheResponse{}" }
+func (x *FlushPromptCacheResponse) ProtoMessage()  {}
+func (x *FlushPromptCacheResponse) ProtoReflect() protoreflect.Message { return nil }
+
+func (x *FlushPromptCacheResponse) GetSuccess() bool {
+	if x != nil {
+		return x.Success
+	}
+	return false
+}
+
+func (x *FlushPromptCacheResponse) GetDeletedCount() int64 {
+	if x != nil {
+		return x.DeletedCount
+	}
+	return 0
+}
+
+func (x *FlushPromptCacheResponse) GetError() string {
+	if x != nil {
+		return x.Error
+	}
+	return ""
+}
+
 var File_router_proto protoreflect.FileDescriptor
 
 const file_router_proto_rawDesc = "" +
@@ -839,13 +913,15 @@ const file_router_proto_rawDesc = "" +
 	"\x06org_id\x18\x04 \x01(\tR\x05orgId\"F\n" +
 	"\x14RegisterToolResponse\x12\x18\n" +
 	"\asuccess\x18\x01 \x01(\bR\asuccess\x12\x14\n" +
-	"\x05error\x18\x02 \x01(\tR\x05error\"\xb9\x01\n" +
+	"\x05error\x18\x02 \x01(\tR\x05error\"\xd8\x01\n" +
 	"\vToolRequest\x12\x16\n" +
 	"\x06prompt\x18\x01 \x01(\tR\x06prompt\x12\x17\n" +
 	"\auser_id\x18\x02 \x01(\tR\x06userId\x12(\n" +
 	"\x10allowed_tool_ids\x18\x03 \x03(\tR\x0eallowedToolIds\x128\n" +
 	"\x18score_threshold_override\x18\x04 \x01(\x02R\x16scoreThresholdOverride\x12\x15\n" +
-	"\x06org_id\x18\x05 \x01(\tR\x05orgId\"u\n" +
+	"\x06org_id\x18\x05 \x01(\tR\x05orgId\x12\x1d\n" +
+	"\n" +
+	"skip_cache\x18\x06 \x01(\bR\tskipCache\"u\n" +
 	"\x04Tool\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12'\n" +

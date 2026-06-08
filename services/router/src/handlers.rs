@@ -1,0 +1,665 @@
+use tonic::{Request, Response, Status};
+use qdrant_client::Qdrant;
+use qdrant_client::qdrant::{
+    Condition, Filter, SearchPointsBuilder, FieldCondition, Match, r#match::MatchValue,
+    condition::ConditionOneOf, PointStruct, UpsertPointsBuilder, Value,
+    DeletePointsBuilder, points_selector::PointsSelectorOneOf,
+};
+use std::collections::HashMap;
+
+use regex::Regex;
+use crate::embedding::{Embedder, compress_text, calculate_hash};
+use crate::router_proto::semantic_router_server::SemanticRouter;
+use crate::router_proto::{
+    ToolRequest, ToolResponse, Tool, RegisterToolRequest, RegisterToolResponse,
+    ToolChainRequest, ToolChainResponse, ToolStep, StoreMemoryRequest,
+    StoreMemoryResponse, QueryMemoryRequest, QueryMemoryResponse, MemoryHit,
+    FlushPromptCacheRequest, FlushPromptCacheResponse,
+};
+
+pub struct MyRouter {
+    pub q_client: Qdrant,
+    pub embedder: Embedder,
+}
+
+#[tonic::async_trait]
+impl SemanticRouter for MyRouter {
+    async fn select_tools(
+        &self,
+        request: Request<ToolRequest>,
+    ) -> Result<Response<ToolResponse>, Status> {
+        let req = request.into_inner();
+
+        println!("Received request for user: {}", req.user_id);
+        println!("Prompt to route: \"{}\"", req.prompt);
+
+        // 1. Vector Embedding (Map embedding errors to gRPC Status)
+        let real_vector = self.embedder.embed(&req.prompt)
+            .map_err(|e| Status::internal(format!("Embedding generation failed: {}", e)))?;
+        let prompt_hash = calculate_hash(&req.prompt);
+
+        // --- Semantic Cache Lookup (Org-Isolated) ---
+        let mut similar_prompt_hash = String::new();
+        if !req.skip_cache {
+            let mut cache_filter_conditions: Vec<Condition> = Vec::new();
+            if !req.org_id.is_empty() {
+                cache_filter_conditions.push(Condition {
+                    condition_one_of: Some(ConditionOneOf::Field(FieldCondition {
+                        key: "org_id".to_string(),
+                        r#match: Some(Match {
+                            match_value: Some(MatchValue::Keyword(req.org_id.clone())),
+                        }),
+                        ..Default::default()
+                    })),
+                });
+            }
+
+            let cache_search_request = SearchPointsBuilder::new("prompts_collection", real_vector.clone(), 1)
+                .filter(Filter { must: cache_filter_conditions, ..Default::default() })
+                .with_payload(true)
+                .build();
+
+            if let Ok(cache_res) = self.q_client.search_points(cache_search_request).await {
+                if let Some(hit) = cache_res.result.first() {
+                    println!("🔍 Semantic Cache Candidate: Score {}, Threshold 0.95", hit.score);
+
+                    if hit.score > 0.95 {
+                        let cached_prompt_text = hit.payload.get("prompt_text")
+                            .and_then(|v| v.kind.as_ref())
+                            .map(|k| match k {
+                                qdrant_client::qdrant::value::Kind::StringValue(s) => s.clone(),
+                                _ => String::new(),
+                            })
+                            .unwrap_or_default();
+
+                        // --- Entity-based Cache Guard (replaces positional-blind sort) ---
+                        // Try entity comparison first; fall back to old numeric guard for legacy entries
+                        let cached_entities: HashMap<String, String> = hit.payload.get("entities")
+                            .and_then(|v| v.kind.as_ref())
+                            .and_then(|k| match k {
+                                qdrant_client::qdrant::value::Kind::StructValue(s) => {
+                                    Some(s.fields.iter().map(|(key, val)| {
+                                        let v = val.kind.as_ref().map(|k| match k {
+                                            qdrant_client::qdrant::value::Kind::StringValue(s) => s.clone(),
+                                            _ => String::new(),
+                                        }).unwrap_or_default();
+                                        (key.clone(), v)
+                                    }).collect::<HashMap<String, String>>())
+                                },
+                                _ => None,
+                            })
+                            .unwrap_or_default();
+
+                        let guard_pass = if !cached_entities.is_empty() {
+                            // New path: entity map comparison (positional-aware)
+                            let current_entities = extract_entities(&req.prompt);
+                            let matched = entities_match(&current_entities, &cached_entities);
+                            if matched {
+                                println!("🎯 Entity Guard PASS: entities match cached payload");
+                            } else {
+                                println!("⚠️ Entity Guard REJECT: entities differ (current={:?}, cached={:?})", current_entities, cached_entities);
+                            }
+                            matched
+                        } else {
+                            // Legacy fallback: old sorted-number comparison for entries without entity map
+                            let mut current_numbers = extract_numbers(&req.prompt);
+                            let mut cached_numbers = extract_numbers(&cached_prompt_text);
+                            current_numbers.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+                            cached_numbers.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+                            if cached_prompt_text.is_empty() {
+                                current_numbers.is_empty()
+                            } else {
+                                current_numbers == cached_numbers
+                            }
+                        };
+
+                        if guard_pass {
+                            similar_prompt_hash = hit.payload.get("prompt_hash")
+                                .and_then(|v| v.kind.as_ref())
+                                .map(|k| match k {
+                                    qdrant_client::qdrant::value::Kind::StringValue(s) => s.clone(),
+                                    _ => String::new(),
+                                })
+                                .unwrap_or_default();
+                            println!("🎯 Semantic Cache Hit! Hash: {}", similar_prompt_hash);
+                        } else {
+                            println!("⚠️ Semantic Cache REJECTED: entity/numeric guard failed");
+                        }
+                    }
+                }
+            }
+
+            // Store new template signature if cache missed (with entities for future lookups)
+            if similar_prompt_hash.is_empty() {
+                println!("💾 Semantic Cache Store: New prompt intent saved");
+
+                let prompt_entities = extract_entities(&req.prompt);
+
+                let mut payload = HashMap::new();
+                payload.insert("prompt_hash".to_string(), Value::from(prompt_hash.clone()));
+                payload.insert("prompt_text".to_string(), Value::from(req.prompt.clone()));
+                payload.insert("user_id".to_string(), Value::from(req.user_id.clone()));
+                payload.insert("org_id".to_string(), Value::from(req.org_id.clone()));
+
+                // Store entities as a Struct value in the payload
+                if !prompt_entities.is_empty() {
+                    let entity_fields: HashMap<String, Value> = prompt_entities.iter()
+                        .map(|(k, v)| (k.clone(), Value::from(v.clone())))
+                        .collect();
+                    payload.insert("entities".to_string(), Value {
+                        kind: Some(qdrant_client::qdrant::value::Kind::StructValue(
+                            qdrant_client::qdrant::Struct { fields: entity_fields }
+                        )),
+                    });
+                }
+
+                let _ = self.q_client.upsert_points(UpsertPointsBuilder::new(
+                    "prompts_collection",
+                    vec![PointStruct::new(
+                        uuid::Uuid::new_v4().to_string(),
+                        real_vector.clone(),
+                        payload,
+                    )],
+                )).await;
+            }
+        } else {
+            println!("⏭️ Semantic Cache skipped (skip_cache=true)");
+        }
+
+        // --- Prompt Compression ---
+        let compressed = compress_text(&req.prompt);
+        let tokens_saved = (req.prompt.len() as i32 - compressed.len() as i32) / 4;
+
+        // 2. Build Payload Filter for RBAC + Tenant Isolation
+        let mut must_conditions = Vec::new();
+
+        // Multi-tenant guard: Enforce org isolation at tool level
+        if !req.org_id.is_empty() {
+            must_conditions.push(Condition {
+                condition_one_of: Some(ConditionOneOf::Field(FieldCondition {
+                    key: "org_id".to_string(),
+                    r#match: Some(Match {
+                        match_value: Some(MatchValue::Keyword(req.org_id.clone())),
+                    }),
+                    ..Default::default()
+                })),
+            });
+        }
+
+        let mut should_conditions = Vec::new();
+        if !req.allowed_tool_ids.is_empty() {
+            should_conditions = req.allowed_tool_ids.iter().map(|id| {
+                Condition {
+                    condition_one_of: Some(ConditionOneOf::Field(FieldCondition {
+                        key: "tool_id".to_string(),
+                        r#match: Some(Match {
+                            match_value: Some(MatchValue::Keyword(id.clone())),
+                        }),
+                        ..Default::default()
+                    })),
+                }
+            }).collect();
+        }
+
+        let tool_filter = Filter {
+            must: must_conditions,
+            should: should_conditions,
+            ..Default::default()
+        };
+
+        // 3. Search Qdrant (for Tools)
+        let search_request = SearchPointsBuilder::new("tools_collection", real_vector, 10)
+            .filter(tool_filter)
+            .with_payload(true)
+            .build();
+
+        let search_result = match self.q_client.search_points(search_request).await {
+            Ok(res) => res,
+            Err(e) => {
+                eprintln!("Qdrant search failed: {}", e);
+                qdrant_client::qdrant::SearchResponse {
+                    result: vec![],
+                    time: 0.0,
+                    ..Default::default()
+                }
+            }
+        };
+
+        // 4. Map Results to ToolResponse
+        let mut tools = Vec::new();
+        let threshold = if req.score_threshold_override > 0.0 { req.score_threshold_override } else { 0.65 };
+
+        for scored_point in search_result.result {
+            if scored_point.score < threshold {
+                continue;
+            }
+
+            let payload = scored_point.payload;
+            let tool_id = payload.get("tool_id")
+                .and_then(|v| v.kind.as_ref())
+                .map(|k| match k {
+                    qdrant_client::qdrant::value::Kind::StringValue(s) => s.clone(),
+                    _ => "unknown".to_string(),
+                })
+                .unwrap_or_else(|| "unknown".to_string());
+
+            let tool_name = payload.get("tool_name")
+                .and_then(|v| v.kind.as_ref())
+                .map(|k| match k {
+                    qdrant_client::qdrant::value::Kind::StringValue(s) => s.clone(),
+                    _ => tool_id.clone(),
+                })
+                .unwrap_or_else(|| tool_id.clone());
+
+            let description = payload.get("description")
+                .and_then(|v| v.kind.as_ref())
+                .map(|k| match k {
+                    qdrant_client::qdrant::value::Kind::StringValue(s) => s.clone(),
+                    _ => String::new(),
+                })
+                .unwrap_or_default();
+
+            tools.push(Tool {
+                id: tool_id,
+                name: tool_name,
+                relevance_score: scored_point.score,
+                description,
+            });
+        }
+
+        // Extract entities from the incoming prompt to return to gateway
+        let response_entities = extract_entities(&req.prompt);
+
+        let reply = ToolResponse {
+            tools,
+            total_tokens_saved: tokens_saved.max(0),
+            compressed_prompt: compressed,
+            similar_prompt_hash,
+            current_prompt_hash: prompt_hash,
+            entities: response_entities,
+        };
+
+        Ok(Response::new(reply))
+    }
+
+    async fn register_tool(
+        &self,
+        request: Request<RegisterToolRequest>,
+    ) -> Result<Response<RegisterToolResponse>, Status> {
+        let req = request.into_inner();
+        println!("📝 Registering new tool semantic intent: {} (ID: {})", req.name, req.id);
+
+        let vector = self.embedder.embed(&req.description)
+            .map_err(|e| Status::internal(format!("Embedding generation failed: {}", e)))?;
+
+        let mut payload = HashMap::new();
+        payload.insert("tool_id".to_string(), Value::from(req.id.clone()));
+        payload.insert("tool_name".to_string(), Value::from(req.name.clone()));
+        payload.insert("description".to_string(), Value::from(req.description.clone()));
+        payload.insert("org_id".to_string(), Value::from(req.org_id.clone()));
+
+        let tool_uuid = uuid::Uuid::new_v5(&uuid::Uuid::NAMESPACE_OID, req.id.as_bytes());
+        let result = self.q_client.upsert_points(UpsertPointsBuilder::new(
+            "tools_collection",
+            vec![PointStruct::new(tool_uuid.to_string(), vector, payload)],
+        )).await;
+
+        match result {
+            Ok(_) => {
+                println!("✅ Tool vectorized and stored in Qdrant: {}", req.id);
+                Ok(Response::new(RegisterToolResponse { success: true, error: String::new() }))
+            }
+            Err(e) => {
+                eprintln!("❌ Qdrant upsert failed: {}", e);
+                Ok(Response::new(RegisterToolResponse {
+                    success: false,
+                    error: format!("Qdrant failure: {}", e),
+                }))
+            }
+        }
+    }
+
+    async fn plan_tool_chain(
+        &self,
+        request: Request<ToolChainRequest>,
+    ) -> Result<Response<ToolChainResponse>, Status> {
+        let req = request.into_inner();
+        println!("🔮 Planning sequential tool chain for prompt: \"{}\"", req.prompt);
+
+        let real_vector = self.embedder.embed(&req.prompt)
+            .map_err(|e| Status::internal(format!("Embedding generation failed: {}", e)))?;
+
+        let mut must_conditions = Vec::new();
+        if !req.org_id.is_empty() {
+            must_conditions.push(Condition {
+                condition_one_of: Some(ConditionOneOf::Field(FieldCondition {
+                    key: "org_id".to_string(),
+                    r#match: Some(Match {
+                        match_value: Some(MatchValue::Keyword(req.org_id.clone())),
+                    }),
+                    ..Default::default()
+                })),
+            });
+        }
+
+        let mut should_conditions = Vec::new();
+        if !req.allowed_tool_ids.is_empty() {
+            should_conditions = req.allowed_tool_ids.iter().map(|id| {
+                Condition {
+                    condition_one_of: Some(ConditionOneOf::Field(FieldCondition {
+                        key: "tool_id".to_string(),
+                        r#match: Some(Match {
+                            match_value: Some(MatchValue::Keyword(id.clone())),
+                        }),
+                        ..Default::default()
+                    })),
+                }
+            }).collect();
+        }
+
+        let tool_filter = Filter {
+            must: must_conditions,
+            should: should_conditions,
+            ..Default::default()
+        };
+
+        let search_request = SearchPointsBuilder::new("tools_collection", real_vector, 5)
+            .with_payload(true)
+            .filter(tool_filter)
+            .build();
+
+        let mut steps = Vec::new();
+        let mut confidence_score = 0.0;
+
+        if let Ok(search_res) = self.q_client.search_points(search_request).await {
+            let mut matched_tools = search_res.result;
+            matched_tools.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+
+            let threshold = if req.score_threshold_override > 0.0 { req.score_threshold_override } else { 0.65 };
+
+            for (idx, hit) in matched_tools.iter().enumerate() {
+                if hit.score > threshold {
+                    let tool_name = hit.payload.get("tool_name")
+                        .and_then(|v| v.kind.as_ref())
+                        .map(|k| match k {
+                            qdrant_client::qdrant::value::Kind::StringValue(s) => s.clone(),
+                            _ => "unknown_tool".to_string(),
+                        })
+                        .unwrap_or_else(|| "unknown_tool".to_string());
+
+                    steps.push(ToolStep {
+                        step_order: (idx + 1) as i32,
+                        tool_name,
+                        parameters_json: "{\"status\": \"scheduled\"}".to_string(),
+                    });
+                }
+            }
+
+            if !steps.is_empty() {
+                confidence_score = 0.95;
+            }
+        }
+
+        Ok(Response::new(ToolChainResponse { steps, confidence_score }))
+    }
+
+    async fn store_memory(
+        &self,
+        request: Request<StoreMemoryRequest>,
+    ) -> Result<Response<StoreMemoryResponse>, Status> {
+        let req = request.into_inner();
+        println!("💾 Storing semantic memory fact: \"{}\" for org: {}", req.fact, req.org_id);
+
+        let vector = self.embedder.embed(&req.fact)
+            .map_err(|e| Status::internal(format!("Embedding generation failed: {}", e)))?;
+
+        let mut payload = HashMap::new();
+        payload.insert("fact".to_string(), Value::from(req.fact.clone()));
+        payload.insert("org_id".to_string(), Value::from(req.org_id.clone()));
+        payload.insert("user_id".to_string(), Value::from(req.user_id.clone()));
+        payload.insert("created_at".to_string(), Value::from(chrono::Utc::now().to_rfc3339()));
+
+        let result = self.q_client.upsert_points(UpsertPointsBuilder::new(
+            "memories_collection",
+            vec![PointStruct::new(uuid::Uuid::new_v4().to_string(), vector, payload)],
+        )).await;
+
+        match result {
+            Ok(_) => {
+                println!("✅ Memory fact vectorized and stored in Qdrant successfully!");
+                Ok(Response::new(StoreMemoryResponse { success: true, error: String::new() }))
+            }
+            Err(e) => {
+                eprintln!("❌ Qdrant memory upsert failed: {}", e);
+                Ok(Response::new(StoreMemoryResponse { success: false, error: format!("Qdrant memory failure: {}", e) }))
+            }
+        }
+    }
+
+    async fn query_memory(
+        &self,
+        request: Request<QueryMemoryRequest>,
+    ) -> Result<Response<QueryMemoryResponse>, Status> {
+        let req = request.into_inner();
+        println!("🔍 Querying semantic memories for prompt: \"{}\" under org: {}", req.prompt, req.org_id);
+
+        let real_vector = self.embedder.embed(&req.prompt)
+            .map_err(|e| Status::internal(format!("Embedding generation failed: {}", e)))?;
+
+        let mut filter_conditions = Vec::new();
+        if !req.org_id.is_empty() {
+            filter_conditions.push(Condition {
+                condition_one_of: Some(ConditionOneOf::Field(FieldCondition {
+                    key: "org_id".to_string(),
+                    r#match: Some(Match {
+                        match_value: Some(MatchValue::Keyword(req.org_id.clone())),
+                    }),
+                    ..Default::default()
+                })),
+            });
+        }
+
+        let search_request = SearchPointsBuilder::new("memories_collection", real_vector, 5)
+            .filter(Filter { must: filter_conditions, ..Default::default() })
+            .with_payload(true)
+            .build();
+
+        let search_result = match self.q_client.search_points(search_request).await {
+            Ok(res) => res,
+            Err(e) => {
+                eprintln!("Qdrant memory search failed: {}", e);
+                qdrant_client::qdrant::SearchResponse { result: vec![], time: 0.0, ..Default::default() }
+            }
+        };
+
+        let mut memories = Vec::new();
+        let threshold = if req.score_threshold_override > 0.0 { req.score_threshold_override } else { 0.65 };
+
+        for scored_point in search_result.result {
+            if scored_point.score < threshold {
+                continue;
+            }
+
+            let payload = scored_point.payload;
+            let fact = payload.get("fact")
+                .and_then(|v| v.kind.as_ref())
+                .map(|k| match k {
+                    qdrant_client::qdrant::value::Kind::StringValue(s) => s.clone(),
+                    _ => String::new(),
+                })
+                .unwrap_or_default();
+
+            if !fact.is_empty() {
+                memories.push(MemoryHit { fact, relevance_score: scored_point.score });
+            }
+        }
+
+        Ok(Response::new(QueryMemoryResponse { memories }))
+    }
+
+    async fn flush_prompt_cache(
+        &self,
+        request: Request<FlushPromptCacheRequest>,
+    ) -> Result<Response<FlushPromptCacheResponse>, Status> {
+        let req = request.into_inner();
+        println!("🗑️ Flushing prompt cache for org: {}", req.org_id);
+
+        if req.org_id.is_empty() {
+            return Ok(Response::new(FlushPromptCacheResponse {
+                success: false,
+                deleted_count: 0,
+                error: "org_id is required".to_string(),
+            }));
+        }
+
+        // Delete all points in prompts_collection that belong to this org
+        let filter = Filter {
+            must: vec![Condition {
+                condition_one_of: Some(ConditionOneOf::Field(FieldCondition {
+                    key: "org_id".to_string(),
+                    r#match: Some(Match {
+                        match_value: Some(MatchValue::Keyword(req.org_id.clone())),
+                    }),
+                    ..Default::default()
+                })),
+            }],
+            ..Default::default()
+        };
+
+        let delete_result = self.q_client.delete_points(
+            DeletePointsBuilder::new("prompts_collection")
+                .points(PointsSelectorOneOf::Filter(filter)),
+        ).await;
+
+        match delete_result {
+            Ok(resp) => {
+                let status = resp.result.map(|s| s.status).unwrap_or(0);
+                println!("✅ Prompt cache flushed for org: {} (status: {})", req.org_id, status);
+                Ok(Response::new(FlushPromptCacheResponse {
+                    success: true,
+                    deleted_count: 0, // Qdrant doesn't return count on delete
+                    error: String::new(),
+                }))
+            }
+            Err(e) => {
+                eprintln!("❌ Failed to flush prompt cache: {}", e);
+                Ok(Response::new(FlushPromptCacheResponse {
+                    success: false,
+                    deleted_count: 0,
+                    error: format!("Qdrant delete failed: {}", e),
+                }))
+            }
+        }
+    }
+}
+
+/// Extracts numerical components securely, ensuring trailing punctuation marks
+/// do not contaminate token evaluations.
+fn extract_numbers(text: &str) -> Vec<String> {
+    let re = Regex::new(r"\d+(?:\.\d+)?").unwrap();
+    re.find_iter(text).map(|m| m.as_str().to_string()).collect()
+}
+
+/// Extracts structured, labeled entities from a prompt using regex-based extractors.
+/// Returns a HashMap where keys are semantic roles (e.g., "source_account", "amount")
+/// and values are the extracted strings. Runs in <1ms — no SLM involved.
+fn extract_entities(text: &str) -> HashMap<String, String> {
+    let mut entities: HashMap<String, String> = HashMap::new();
+    let lower = text.to_lowercase();
+
+    // --- Money Extractor ---
+    // Matches: $100, $1,000.50, 100 dollars, etc.
+    let money_re = Regex::new(r"(?i)\$\s*(\d[\d,]*(?:\.\d+)?)|(\d[\d,]*(?:\.\d+)?)\s*(?:dollars?|usd)").unwrap();
+    if let Some(cap) = money_re.captures(text) {
+        let amount = cap.get(1).or_else(|| cap.get(2))
+            .map(|m| m.as_str().replace(',', ""))
+            .unwrap_or_default();
+        if !amount.is_empty() {
+            entities.insert("amount".to_string(), amount);
+        }
+    }
+
+    // --- Account/ID Extractor ---
+    // Matches: "account 123", "account #456", "id 789", "invoice #101"
+    let id_re = Regex::new(r"(?i)(?:account|acct|id|invoice|order|customer|user)\s*#?\s*(\d+)").unwrap();
+    let id_matches: Vec<_> = id_re.captures_iter(text).collect();
+
+    // --- Directional Transfer Detection ---
+    // Detect "from X to Y" pattern for positional entity labeling
+    let transfer_re = Regex::new(r"(?i)(?:from|source)\s+(?:account\s*#?\s*)?(\d+)\s+(?:to|into|→)\s+(?:account\s*#?\s*)?(\d+)").unwrap();
+    if let Some(cap) = transfer_re.captures(text) {
+        if let Some(src) = cap.get(1) {
+            entities.insert("source_account".to_string(), src.as_str().to_string());
+        }
+        if let Some(dst) = cap.get(2) {
+            entities.insert("target_account".to_string(), dst.as_str().to_string());
+        }
+    } else if id_matches.len() >= 2 {
+        // Fallback: if multiple IDs found but no directional pattern, label generically
+        if let Some(cap) = id_matches.get(0) {
+            if let Some(m) = cap.get(1) {
+                entities.insert("entity_id_1".to_string(), m.as_str().to_string());
+            }
+        }
+        if let Some(cap) = id_matches.get(1) {
+            if let Some(m) = cap.get(1) {
+                entities.insert("entity_id_2".to_string(), m.as_str().to_string());
+            }
+        }
+    } else if let Some(cap) = id_matches.first() {
+        if let Some(m) = cap.get(1) {
+            entities.insert("entity_id".to_string(), m.as_str().to_string());
+        }
+    }
+
+    // --- Action Extractor ---
+    // Detect the primary action verb
+    let actions = [
+        ("transfer", vec!["transfer", "send", "move", "wire"]),
+        ("balance", vec!["balance", "owe", "owes", "outstanding", "dues", "due amount"]),
+        ("lookup", vec!["lookup", "look up", "find", "search", "get", "fetch", "show", "check"]),
+        ("create", vec!["create", "add", "new", "register"]),
+        ("delete", vec!["delete", "remove", "cancel"]),
+        ("update", vec!["update", "edit", "modify", "change"]),
+    ];
+    for (action_key, keywords) in &actions {
+        if keywords.iter().any(|kw| lower.contains(kw)) {
+            entities.insert("action".to_string(), action_key.to_string());
+            break;
+        }
+    }
+
+    // --- Customer/Name Extractor ---
+    // Matches: "customer Raj", "client Acme", "for Raj"
+    let name_re = Regex::new(r"(?i)(?:customer|client|for|user)\s+([A-Z][a-zA-Z]+(?:\s+[A-Z][a-zA-Z]+)?)").unwrap();
+    if let Some(cap) = name_re.captures(text) {
+        if let Some(name) = cap.get(1) {
+            entities.insert("customer".to_string(), name.as_str().to_string());
+        }
+    }
+
+    // --- Date Extractor ---
+    // Matches: 2024-01-15, Jan 15 2024, 15/01/2024
+    let date_re = Regex::new(r"(\d{4}-\d{2}-\d{2}|\d{1,2}/\d{1,2}/\d{4})").unwrap();
+    if let Some(cap) = date_re.captures(text) {
+        if let Some(d) = cap.get(1) {
+            entities.insert("date".to_string(), d.as_str().to_string());
+        }
+    }
+
+    entities
+}
+
+/// Compares two entity maps. Returns true if all keys in the cached entities
+/// exist in current entities with matching values. This is the replacement
+/// for the positional-blind sorted number comparison.
+fn entities_match(current: &HashMap<String, String>, cached: &HashMap<String, String>) -> bool {
+    if cached.is_empty() && current.is_empty() {
+        return true;
+    }
+    if cached.is_empty() || current.is_empty() {
+        return false;
+    }
+    // All cached entity keys must exist in current with same values
+    cached.iter().all(|(k, v)| current.get(k).map_or(false, |cv| cv == v))
+}

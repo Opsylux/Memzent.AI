@@ -5,18 +5,30 @@
 # --- Stage 1: Dependencies ---
 FROM oven/bun:alpine AS deps
 WORKDIR /app
-COPY services/dashboard/package.json services/dashboard/bun.lock ./
+COPY ./package.json ./bun.lock ./
 RUN bun install --frozen-lockfile
 
 # --- Stage 2: Builder ---
 FROM oven/bun:alpine AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
-COPY services/dashboard/ .
+COPY . .
 
 # Enforce production build environment
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV NODE_ENV=production
+
+# NEXT_PUBLIC_* vars are inlined at build time by Next.js — they MUST be present here,
+# not just at container runtime. Declare as ARGs so docker-compose can pass them in.
+ARG NEXT_PUBLIC_SUPABASE_URL
+ARG NEXT_PUBLIC_SUPABASE_ANON_KEY
+ARG NEXT_PUBLIC_GATEWAY_URL
+ARG NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
+
+ENV NEXT_PUBLIC_SUPABASE_URL=$NEXT_PUBLIC_SUPABASE_URL
+ENV NEXT_PUBLIC_SUPABASE_ANON_KEY=$NEXT_PUBLIC_SUPABASE_ANON_KEY
+ENV NEXT_PUBLIC_GATEWAY_URL=$NEXT_PUBLIC_GATEWAY_URL
+ENV NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=$NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
 
 # Compile production-ready static assets
 RUN bun run build

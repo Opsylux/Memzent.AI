@@ -212,7 +212,7 @@ export default function PlaygroundPage() {
       <div className="flex items-center gap-4 mb-4">
         <div className="w-2 h-8 rounded-full bg-gradient-to-b from-memzent-glow to-memzent-purple" />
         <div>
-          <h1 className="text-3xl font-black tracking-tighter uppercase">Neural Playground</h1>
+          <h1 className="text-3xl font-black tracking-tighter uppercase">Playground</h1>
           <p className="text-[10px] font-black text-white/20 uppercase tracking-[0.3em] italic">
             Live Prompt Routing · Conversation Sessions & Semantic Context
           </p>
@@ -296,7 +296,7 @@ export default function PlaygroundPage() {
             ) : messages.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-full text-center">
                 <Bot size={40} className="text-white/5 mb-4 animate-pulse" />
-                <h3 className="text-xs font-black uppercase tracking-widest text-white/40 mb-1">Awaiting Neural Link</h3>
+                <h3 className="text-xs font-black uppercase tracking-widest text-white/40 mb-1">Start a Conversation</h3>
                 <p className="text-[9px] text-white/20 max-w-xs font-bold leading-normal">
                   Select a session on the left or send a prompt below to launch an execution chain.
                 </p>
@@ -435,6 +435,28 @@ export default function PlaygroundPage() {
             ) : (
               <p className="text-[9px] font-black uppercase tracking-widest text-white/10 text-center py-6">
                 {status === 'idle' ? 'No execution yet' : result?.cached ? 'Served from cache' : 'No tools matched'}
+              </p>
+            )}
+          </div>
+
+          {/* Extracted Entities (E1) */}
+          <div className="stat-card neural-bg border-white/5 p-6">
+            <div className="flex items-center gap-3 mb-4">
+              <Layers size={14} className="text-memzent-accent" />
+              <h2 className="text-xs font-black uppercase tracking-widest text-white/60">Extracted Entities</h2>
+            </div>
+            {result?.entities && Object.keys(result.entities).length > 0 ? (
+              <div className="space-y-2">
+                {Object.entries(result.entities).map(([key, value]) => (
+                  <div key={key} className="flex items-center justify-between p-3 rounded-xl bg-white/[0.02] border border-white/5">
+                    <span className="text-[9px] font-black text-white/40 uppercase tracking-wider">{key}</span>
+                    <span className="text-[10px] font-mono font-bold text-memzent-accent">{String(value)}</span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-[9px] font-black uppercase tracking-widest text-white/10 text-center py-6">
+                {status === 'idle' ? 'No execution yet' : 'No entities extracted'}
               </p>
             )}
           </div>

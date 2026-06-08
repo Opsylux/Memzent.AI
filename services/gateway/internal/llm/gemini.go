@@ -33,7 +33,7 @@ func (g *GeminiProvider) GetMetadata() ProviderMetadata {
 
 	models := g.supportedModels
 	if len(models) == 0 {
-		models = []string{"gemini-1.5-flash", "gemini-1.5-pro", "gemini-1.0-pro"}
+		models = []string{"gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.0-flash", "gemini-1.5-pro"}
 	}
 	return ProviderMetadata{
 		Name:            "gemini",
@@ -44,7 +44,7 @@ func (g *GeminiProvider) GetMetadata() ProviderMetadata {
 
 func (g *GeminiProvider) DiscoverModels(ctx context.Context) ([]string, error) {
 	if g.APIKey == "" {
-		return []string{"gemini-1.5-flash", "gemini-1.5-pro", "gemini-1.0-pro"}, nil
+		return []string{"gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.0-flash", "gemini-1.5-pro"}, nil
 	}
 
 	url := fmt.Sprintf("https://generativelanguage.googleapis.com/v1beta/models?key=%s", g.APIKey)
@@ -81,7 +81,7 @@ func (g *GeminiProvider) DiscoverModels(ctx context.Context) ([]string, error) {
 	}
 
 	if len(models) == 0 {
-		models = []string{"gemini-1.5-flash", "gemini-1.5-pro", "gemini-1.0-pro"}
+		models = []string{"gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.0-flash", "gemini-1.5-pro"}
 	}
 
 	g.mu.Lock()

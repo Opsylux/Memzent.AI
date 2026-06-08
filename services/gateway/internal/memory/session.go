@@ -168,7 +168,7 @@ func (sm *SessionManager) GetSessionMessages(ctx context.Context, sessionID stri
 	}
 	defer rows.Close()
 
-	var messages []llm.Message
+	messages := make([]llm.Message, 0) // Always return [] not null in JSON
 	for rows.Next() {
 		var m llm.Message
 		err := rows.Scan(&m.Role, &m.Content)

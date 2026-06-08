@@ -327,6 +327,38 @@ export async function getOrgProfile(orgId: string) {
     return data;
 }
 
+// ─── Similarity Threshold ──────────────────────────────────────────────────
+
+export async function getSimilarityThreshold(orgId: string): Promise<number> {
+    try {
+        const headers = await gatewayHeaders(orgId)
+        const res = await fetch(`${GATEWAY_URL}/v1/settings/threshold`, {
+            cache: 'no-store',
+            headers,
+        });
+        if (!res.ok) return 0.88;
+        const data = await res.json();
+        return data.similarity_threshold ?? 0.88;
+    } catch {
+        return 0.88;
+    }
+}
+
+export async function updateSimilarityThreshold(orgId: string, threshold: number) {
+    const headers = await gatewayHeaders(orgId)
+    const res = await fetch(`${GATEWAY_URL}/v1/settings/threshold`, {
+        method: 'PUT',
+        headers,
+        body: JSON.stringify({ similarity_threshold: threshold }),
+        cache: 'no-store',
+    });
+    if (!res.ok) {
+        const err = await res.text();
+        throw new Error(err || 'Failed to update threshold');
+    }
+    return res.json();
+}
+
 export async function registerMemzentTool(orgId: string, tool: any) {
     try {
         const headers = await gatewayHeaders(orgId)
@@ -522,5 +554,287 @@ export async function getContextAnalytics(orgId?: string) {
             savings_roi: { cache_hits: 0, estimated_saved: 0, llm_cost: 0, net_roi: 0 },
             semantic_clusters: []
         };
+    }
+}
+
+// ─── Tool CRUD API ─────────────────────────────────────────────────────────
+
+export async function getTool(toolId: string, orgId?: string) {
+    try {
+        const headers = await gatewayHeaders(orgId)
+        const res = await fetch(`${GATEWAY_URL}/v1/tools/${toolId}`, {
+            method: "GET",
+            headers,
+            cache: 'no-store'
+        });
+        if (!res.ok) return null;
+        return res.json();
+    } catch (e) {
+        console.error("Gateway tool fetch failed", e);
+        return null;
+    }
+}
+
+export async function updateTool(toolId: string, data: Record<string, any>, orgId?: string) {
+    const headers = await gatewayHeaders(orgId)
+    const res = await fetch(`${GATEWAY_URL}/v1/tools/${toolId}`, {
+        method: "PUT",
+        headers,
+        body: JSON.stringify(data),
+        cache: 'no-store'
+    });
+    if (!res.ok) {
+        const err = await res.text();
+        throw new Error(err || "Failed to update tool");
+    }
+    return res.json();
+}
+
+export async function deleteTool(toolId: string, orgId?: string) {
+    const headers = await gatewayHeaders(orgId)
+    const res = await fetch(`${GATEWAY_URL}/v1/tools/${toolId}`, {
+        method: "DELETE",
+        headers,
+        cache: 'no-store'
+    });
+    if (!res.ok) {
+        const err = await res.text();
+        throw new Error(err || "Failed to delete tool");
+    }
+    return res.json();
+}
+
+// ─── Budget & Spend API ────────────────────────────────────────────────────
+
+export async function getBudgetStatus(orgId?: string) {
+    try {
+        const headers = await gatewayHeaders(orgId)
+        const res = await fetch(`${GATEWAY_URL}/v1/billing/budget`, {
+            method: "GET",
+            headers,
+            cache: 'no-store'
+        });
+        if (!res.ok) return null;
+        return res.json();
+    } catch (e) {
+        console.error("Gateway budget status fetch failed", e);
+        return null;
+    }
+}
+
+export async function getSpendTimeseries(days: number = 30, orgId?: string) {
+    try {
+        const headers = await gatewayHeaders(orgId)
+        const res = await fetch(`${GATEWAY_URL}/v1/billing/spend-timeseries?days=${days}`, {
+            method: "GET",
+            headers,
+            cache: 'no-store'
+        });
+        if (!res.ok) return [];
+        return res.json();
+    } catch (e) {
+        console.error("Gateway spend timeseries fetch failed", e);
+        return [];
+    }
+}
+
+export async function getSpendLimits(orgId?: string) {
+    try {
+        const headers = await gatewayHeaders(orgId)
+        const res = await fetch(`${GATEWAY_URL}/v1/billing/spend-limits`, {
+            method: "GET",
+            headers,
+            cache: 'no-store'
+        });
+        if (!res.ok) return null;
+        return res.json();
+    } catch (e) {
+        console.error("Gateway spend limits fetch failed", e);
+        return null;
+    }
+}
+
+export async function setSpendLimits(data: { daily_limit?: number | null; monthly_limit?: number | null; daily_token_limit?: number | null; monthly_token_limit?: number | null }, orgId?: string) {
+    const headers = await gatewayHeaders(orgId)
+    const res = await fetch(`${GATEWAY_URL}/v1/billing/spend-limits`, {
+        method: "PUT",
+        headers,
+        body: JSON.stringify(data),
+        cache: 'no-store'
+    });
+    if (!res.ok) {
+        const err = await res.text();
+        throw new Error(err || "Failed to set spend limits");
+    }
+    return res.json();
+}
+
+// ─── Webhooks API (Phase 7) ────────────────────────────────────────────────
+
+export async function getWebhooks(orgId?: string) {
+    try {
+        const headers = await gatewayHeaders(orgId)
+        const res = await fetch(`${GATEWAY_URL}/v1/webhooks`, {
+            method: "GET",
+            headers,
+            cache: 'no-store'
+        });
+        if (!res.ok) return [];
+        return res.json();
+    } catch (e) {
+        console.error("Gateway webhooks fetch failed", e);
+        return [];
+    }
+}
+
+export async function createWebhook(data: { url: string; events: string[]; description?: string }, orgId?: string) {
+    const headers = await gatewayHeaders(orgId)
+    const res = await fetch(`${GATEWAY_URL}/v1/webhooks`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify(data),
+        cache: 'no-store'
+    });
+    if (!res.ok) {
+        const err = await res.text();
+        throw new Error(err || "Failed to create webhook");
+    }
+    return res.json();
+}
+
+export async function updateWebhook(webhookId: string, data: Record<string, any>, orgId?: string) {
+    const headers = await gatewayHeaders(orgId)
+    const res = await fetch(`${GATEWAY_URL}/v1/webhooks/${webhookId}`, {
+        method: "PUT",
+        headers,
+        body: JSON.stringify(data),
+        cache: 'no-store'
+    });
+    if (!res.ok) {
+        const err = await res.text();
+        throw new Error(err || "Failed to update webhook");
+    }
+    return res.json();
+}
+
+export async function deleteWebhook(webhookId: string, orgId?: string) {
+    const headers = await gatewayHeaders(orgId)
+    const res = await fetch(`${GATEWAY_URL}/v1/webhooks/${webhookId}`, {
+        method: "DELETE",
+        headers,
+        cache: 'no-store'
+    });
+    if (!res.ok) {
+        const err = await res.text();
+        throw new Error(err || "Failed to delete webhook");
+    }
+    return res.json();
+}
+
+export async function getWebhookDeliveries(webhookId: string, orgId?: string) {
+    try {
+        const headers = await gatewayHeaders(orgId)
+        const res = await fetch(`${GATEWAY_URL}/v1/webhooks/${webhookId}/deliveries`, {
+            method: "GET",
+            headers,
+            cache: 'no-store'
+        });
+        if (!res.ok) return [];
+        return res.json();
+    } catch (e) {
+        console.error("Gateway webhook deliveries fetch failed", e);
+        return [];
+    }
+}
+
+// ── Workflow Registry (E4) ──────────────────────────────────────
+
+export async function getWorkflows(orgId?: string, status?: string) {
+    try {
+        const headers = await gatewayHeaders(orgId)
+        const url = status
+            ? `${GATEWAY_URL}/v1/workflows?status=${status}`
+            : `${GATEWAY_URL}/v1/workflows`
+        const res = await fetch(url, { cache: 'no-store', headers });
+        if (!res.ok) return [];
+        return res.json();
+    } catch (e) {
+        console.error("Gateway workflows fetch failed", e);
+        return [];
+    }
+}
+
+export async function approveWorkflow(orgId: string, workflowId: string) {
+    try {
+        const headers = await gatewayHeaders(orgId)
+        const res = await fetch(`${GATEWAY_URL}/v1/workflows/approve`, {
+            method: 'PUT',
+            headers,
+            body: JSON.stringify({ id: workflowId }),
+        });
+        return res.json();
+    } catch (e) {
+        console.error("Workflow approve failed", e);
+        return { error: 'failed' };
+    }
+}
+
+export async function rejectWorkflow(orgId: string, workflowId: string) {
+    try {
+        const headers = await gatewayHeaders(orgId)
+        const res = await fetch(`${GATEWAY_URL}/v1/workflows/reject`, {
+            method: 'PUT',
+            headers,
+            body: JSON.stringify({ id: workflowId }),
+        });
+        return res.json();
+    } catch (e) {
+        console.error("Workflow reject failed", e);
+        return { error: 'failed' };
+    }
+}
+
+export async function getOfflineStats(orgId?: string) {
+    try {
+        const headers = await gatewayHeaders(orgId)
+        const res = await fetch(`${GATEWAY_URL}/v1/offline/stats`, {
+            cache: 'no-store',
+            headers,
+        });
+        if (!res.ok) return null;
+        return res.json();
+    } catch (e) {
+        console.error("Offline stats fetch failed", e);
+        return null;
+    }
+}
+
+export async function getEntityMetrics(orgId?: string) {
+    try {
+        const headers = await gatewayHeaders(orgId)
+        const res = await fetch(`${GATEWAY_URL}/v1/metrics/entities`, {
+            cache: 'no-store',
+            headers,
+        });
+        if (!res.ok) return null;
+        return res.json();
+    } catch (e) {
+        console.error("Entity metrics fetch failed", e);
+        return null;
+    }
+}
+
+export async function getFeatureFlags(orgId?: string) {
+    try {
+        const headers = await gatewayHeaders(orgId)
+        const res = await fetch(`${GATEWAY_URL}/v1/features`, {
+            cache: 'no-store',
+            headers,
+        });
+        if (!res.ok) return null;
+        return res.json();
+    } catch (e) {
+        console.error("Feature flags fetch failed", e);
+        return null;
     }
 }

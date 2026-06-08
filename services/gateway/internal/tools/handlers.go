@@ -118,6 +118,149 @@ func HandleRegisterTool(registry *Registry, routerClient *router.RouterClient, a
 	}
 }
 
+// HandleUpdateTool updates an existing tool's configuration (admin-only)
+func HandleUpdateTool(registry *Registry, routerClient *router.RouterClient, auditLogger *metrics.PersistentAuditLogger) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPut {
+			http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		userRole, ok := r.Context().Value("user_role").(string)
+		isAdmin := ok && (userRole == "admin" || userRole == "platform_staff")
+		if !isAdmin {
+			http.Error(w, "Forbidden: Administrative access required", http.StatusForbidden)
+			return
+		}
+
+		// Extract tool ID from URL path /v1/tools/{toolId}
+		toolID := strings.TrimPrefix(r.URL.Path, "/v1/tools/")
+		if toolID == "" {
+			http.Error(w, "Bad Request: tool ID required", http.StatusBadRequest)
+			return
+		}
+
+		// Get existing tool first
+		existing, err := registry.GetTool(r.Context(), toolID)
+		if err != nil || existing == nil {
+			http.Error(w, "Tool not found", http.StatusNotFound)
+			return
+		}
+
+		// Decode partial update (only overwrite fields that are present)
+		var req struct {
+			Name           *string                `json:"name"`
+			Description    *string                `json:"description"`
+			ConnectorType  *string                `json:"connector_type"`
+			Endpoint       *string                `json:"endpoint"`
+			Config         map[string]interface{} `json:"config"`
+			InputSchema    map[string]interface{} `json:"input_schema"`
+			OutputSchema   map[string]interface{} `json:"output_schema"`
+			TimeoutSeconds *int                   `json:"timeout_seconds"`
+			Enabled        *bool                  `json:"enabled"`
+			RequiresAuth   *bool                  `json:"requires_auth"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "Invalid request body", http.StatusBadRequest)
+			return
+		}
+
+		// Apply partial updates
+		if req.Name != nil {
+			existing.Name = *req.Name
+		}
+		if req.Description != nil {
+			existing.Description = *req.Description
+		}
+		if req.ConnectorType != nil {
+			existing.ConnectorType = ToolConnectorType(*req.ConnectorType)
+		}
+		if req.Endpoint != nil {
+			existing.Endpoint = *req.Endpoint
+		}
+		if req.Config != nil {
+			existing.Config = req.Config
+		}
+		if req.InputSchema != nil {
+			existing.InputSchema = req.InputSchema
+		}
+		if req.OutputSchema != nil {
+			existing.OutputSchema = req.OutputSchema
+		}
+		if req.TimeoutSeconds != nil {
+			existing.TimeoutSeconds = *req.TimeoutSeconds
+		}
+		if req.Enabled != nil {
+			existing.Enabled = *req.Enabled
+		}
+		if req.RequiresAuth != nil {
+			existing.RequiresAuth = *req.RequiresAuth
+		}
+
+		if err := registry.UpdateTool(r.Context(), existing); err != nil {
+			slog.Error("Failed to update tool", "error", err, "tool_id", toolID)
+			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			return
+		}
+
+		// Re-vectorize if description changed
+		if req.Description != nil && routerClient != nil {
+			orgID, _ := r.Context().Value("org_id").(string)
+			go func() {
+				_, err := routerClient.RegisterTool(context.Background(), existing.ID, existing.Name, existing.Description, orgID)
+				if err != nil {
+					slog.Error("Failed to re-vectorize tool after update", "tool_id", existing.ID, "error", err)
+				}
+			}()
+		}
+
+		slog.Info("Tool updated", "id", toolID, "name", existing.Name)
+		if auditLogger != nil {
+			auditLogger.Log(r.Context(), metrics.AuditEvent{
+				Timestamp: time.Now(),
+				OrgID:     "system",
+				Type:      "REGISTRY",
+				User:      userRole,
+				Detail:    fmt.Sprintf("Tool Updated: %s", existing.Name),
+				Status:    "success",
+			}, map[string]interface{}{"tool_id": toolID})
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(existing)
+	}
+}
+
+// HandleGetTool returns a single tool by ID
+func HandleGetTool(registry *Registry) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		toolID := strings.TrimPrefix(r.URL.Path, "/v1/tools/")
+		if toolID == "" {
+			http.Error(w, "Bad Request: tool ID required", http.StatusBadRequest)
+			return
+		}
+
+		tool, err := registry.GetTool(r.Context(), toolID)
+		if err != nil {
+			slog.Error("Failed to get tool", "error", err, "tool_id", toolID)
+			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			return
+		}
+		if tool == nil {
+			http.Error(w, "Tool not found", http.StatusNotFound)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(tool)
+	}
+}
+
 // HandleDisableTool soft-deletes a tool (admin-only)
 func HandleDisableTool(registry *Registry) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {

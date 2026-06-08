@@ -138,15 +138,37 @@ export default function AuditPage() {
                       <span className="hidden md:inline-block w-1 h-1 rounded-full bg-white/10" />
                       <span className="text-white/40">TYPE:</span> {log.type}
                     </div>
+                    {log.entities && Object.keys(log.entities).length > 0 && (
+                      <div className="flex flex-wrap gap-1.5 mt-2">
+                        {Object.entries(log.entities).map(([key, value]) => (
+                          <span key={key} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-memzent-purple/10 border border-memzent-purple/20 text-[9px] font-mono font-bold text-memzent-purple/80">
+                            <span className="text-white/30">{key}:</span>{String(value)}
+                          </span>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </div>
                 <div className="flex flex-col items-end gap-2 shrink-0">
                   <div className="text-[10px] font-black tracking-widest text-white/40 uppercase font-mono">
                     {formatTimestampUTC(log.timestamp)}
                   </div>
-                  <Badge variant="outline" className={`border-white/10 text-[9px] uppercase font-black tracking-widest px-3 ${log.status === 'success' ? 'bg-green-500/10 text-green-400 border-green-500/20' : 'bg-red-500/10 text-red-500 border-red-500/20'}`}>
-                    {log.status}
-                  </Badge>
+                  <div className="flex items-center gap-2">
+                    {log.cache_layer && (
+                      <Badge variant="outline" className={`text-[9px] uppercase font-black tracking-widest px-2 ${
+                        log.cache_layer === 'L1' ? 'bg-cyan-500/10 text-cyan-400 border-cyan-500/20' :
+                        log.cache_layer === 'L1b' ? 'bg-memzent-purple/10 text-memzent-purple border-memzent-purple/20' :
+                        log.cache_layer === 'L2' ? 'bg-blue-500/10 text-blue-400 border-blue-500/20' :
+                        log.cache_layer === 'L5' ? 'bg-amber-500/10 text-amber-400 border-amber-500/20' :
+                        'bg-white/5 text-white/40 border-white/10'
+                      }`}>
+                        {log.cache_layer}
+                      </Badge>
+                    )}
+                    <Badge variant="outline" className={`border-white/10 text-[9px] uppercase font-black tracking-widest px-3 ${log.status === 'success' ? 'bg-green-500/10 text-green-400 border-green-500/20' : 'bg-red-500/10 text-red-500 border-red-500/20'}`}>
+                      {log.status}
+                    </Badge>
+                  </div>
                 </div>
               </div>
             ))

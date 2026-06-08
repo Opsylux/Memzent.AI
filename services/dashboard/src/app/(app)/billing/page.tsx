@@ -59,10 +59,10 @@ export default function BillingPage() {
     <div className="space-y-12 pb-20">
       <header className="mb-16">
         <h1 className="text-4xl font-black tracking-tighter text-white mb-2 uppercase italic">
-          SUBSCRIPTION_SECTOR
+          Billing & Plans
         </h1>
-        <p className="text-white/20 font-black uppercase tracking-[0.3em] text-[10px] italic">
-          {orgName ? `${orgName} — ` : ''}Scaling Neural Infrastructure Capacity
+        <p className="text-white/40 font-black uppercase tracking-[0.3em] text-[10px] italic">
+          {orgName ? `${orgName} — ` : ''}Manage Your Subscription & Token Balance
         </p>
       </header>
 
@@ -129,7 +129,7 @@ export default function BillingPage() {
                     } ${loadingPlan === plan.id ? 'opacity-50 cursor-wait' : ''}`}
                 >
                   {isCurrent ? (
-                    <span className="flex items-center gap-2 italic"><Shield size={14} /> ACTIVE_SECTOR</span>
+                    <span className="flex items-center gap-2 italic"><Shield size={14} /> Current Plan</span>
                   ) : loadingPlan === plan.id ? (
                     <span className="flex items-center gap-2 italic">PROVISIONING...</span>
                   ) : (
@@ -145,8 +145,8 @@ export default function BillingPage() {
       <section className="stat-card border-white/5 bg-black/40 p-12 rounded-[40px] relative overflow-hidden group mt-16 neural-bg">
         <div className="flex flex-col md:flex-row items-center justify-between gap-12 relative z-10">
           <div className="space-y-4 flex-1">
-            <h3 className="text-2xl font-black tracking-tighter italic uppercase underline decoration-memzent-glow/30 decoration-4 underline-offset-8">Neural Token Top-Up</h3>
-            <p className="text-[10px] font-black text-white/20 max-w-lg leading-relaxed uppercase tracking-[0.2em]">
+            <h3 className="text-2xl font-black tracking-tighter italic uppercase underline decoration-memzent-glow/30 decoration-4 underline-offset-8">Token Top-Up</h3>
+            <p className="text-[10px] font-black text-white/40 max-w-lg leading-relaxed uppercase tracking-[0.2em]">
               Add Pay-As-You-Go tokens to your organization's balance. Tokens are automatically deducted for LLM completions and semantic cache hits.
             </p>
           </div>
@@ -192,8 +192,8 @@ export default function BillingPage() {
       <section className="stat-card border-white/5 bg-black/40 p-12 rounded-[40px] relative overflow-hidden group mt-16 neural-bg">
         <div className="flex flex-col md:flex-row items-center justify-between gap-12 relative z-10">
           <div className="space-y-4">
-            <h3 className="text-2xl font-black tracking-tighter italic uppercase underline decoration-memzent-glow/30 decoration-4 underline-offset-8">Custom Capacity_01</h3>
-            <p className="text-[10px] font-black text-white/20 max-w-lg leading-relaxed uppercase tracking-[0.2em]">
+            <h3 className="text-2xl font-black tracking-tighter italic uppercase underline decoration-memzent-glow/30 decoration-4 underline-offset-8">Enterprise Plan</h3>
+            <p className="text-[10px] font-black text-white/40 max-w-lg leading-relaxed uppercase tracking-[0.2em]">
               Executing over 10M tokens monthly? Require private model hosting or dedicated vector clusters? Contact the infrastructure team for an Enterprise SLA.
             </p>
           </div>

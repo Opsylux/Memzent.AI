@@ -21,6 +21,9 @@ service SemanticRouter {
 
   // Queries semantic memory facts for a prompt
   rpc QueryMemory (QueryMemoryRequest) returns (QueryMemoryResponse);
+
+  // Flushes cached prompt vectors for an org from the prompts_collection
+  rpc FlushPromptCache (FlushPromptCacheRequest) returns (FlushPromptCacheResponse);
 }
 
 message RegisterToolRequest {
@@ -42,6 +45,7 @@ message ToolRequest {
   repeated string allowed_tool_ids = 3; // For RBAC-filtered searches
   float score_threshold_override = 4;   // Override default relevance threshold
   string org_id = 5;                    // Org isolation — required for cache partitioning
+  bool skip_cache = 6;                  // When true, skip semantic cache lookup AND suppress Qdrant prompt storage
 }
 
 message Tool {
@@ -57,6 +61,7 @@ message ToolResponse {
   string compressed_prompt = 3;
   string similar_prompt_hash = 4; // Hash of a previously seen similar prompt (if any)
   string current_prompt_hash = 5; // Canonical hash of the incoming prompt
+  map<string, string> entities = 6; // Extracted structured entities from the prompt
 }
 
 message ToolChainRequest {
@@ -103,6 +108,16 @@ message MemoryHit {
 
 message QueryMemoryResponse {
   repeated MemoryHit memories = 1;
+}
+
+message FlushPromptCacheRequest {
+  string org_id = 1;
+}
+
+message FlushPromptCacheResponse {
+  bool success = 1;
+  int64 deleted_count = 2;
+  string error = 3;
 }
 
 
