@@ -1,7 +1,7 @@
 # Cloudflare Pages configuration for Memzent marketing website
 # https://developers.cloudflare.com/pages/configuration/wrangler-configuration/
 
-name = "memzent-website"
+name = "memzent-web"
 compatibility_date = "2026-06-08"
 
 [assets]
