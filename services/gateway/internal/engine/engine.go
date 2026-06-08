@@ -541,7 +541,7 @@ func (e *MemzentEngine) Process(ctx context.Context, req *PromptRequest) (*Promp
 				CacheLayer: "L1", LatencyMs: time.Since(processStart).Milliseconds(),
 				Provider: req.Provider, Model: resolvedModel, Success: true, Timestamp: time.Now(),
 			})
-			return &PromptResponse{Text: cachedResp, Cached: true, SessionID: req.SessionID}, nil
+			return &PromptResponse{Text: cachedResp, Cached: true, SessionID: req.SessionID, Entities: extractEntitiesLocal(queryPrompt)}, nil
 		}
 
 		// Stage 1.5: Canonical Match (Normalized, Org-Isolated & Model-Scoped)
@@ -575,7 +575,7 @@ func (e *MemzentEngine) Process(ctx context.Context, req *PromptRequest) (*Promp
 				_ = e.sessionMgr.AppendMessage(ctx, req.SessionID, "user", queryPrompt)
 				_ = e.sessionMgr.AppendMessage(ctx, req.SessionID, "assistant", cachedCanon)
 			}
-			return &PromptResponse{Text: cachedCanon, Cached: true, SessionID: req.SessionID}, nil
+			return &PromptResponse{Text: cachedCanon, Cached: true, SessionID: req.SessionID, Entities: extractEntitiesLocal(queryPrompt)}, nil
 		}
 
 		// Stage 1b: Entity-Keyed Hot Path Cache (L1b)
@@ -830,7 +830,7 @@ func (e *MemzentEngine) Process(ctx context.Context, req *PromptRequest) (*Promp
 			if req.SessionID != "" && e.sessionMgr != nil {
 				_ = e.sessionMgr.AppendMessage(ctx, req.SessionID, "assistant", cachedResp)
 			}
-			return &PromptResponse{Text: cachedResp, Cached: true, SessionID: req.SessionID}, nil
+			return &PromptResponse{Text: cachedResp, Cached: true, SessionID: req.SessionID, Entities: extractEntitiesLocal(queryPrompt)}, nil
 		}
 	}
 

@@ -61,9 +61,17 @@ impl SemanticRouter for MyRouter {
 
             if let Ok(cache_res) = self.q_client.search_points(cache_search_request).await {
                 if let Some(hit) = cache_res.result.first() {
-                    println!("🔍 Semantic Cache Candidate: Score {}, Threshold 0.95", hit.score);
+                    // Two-tier threshold: strict 0.95 for general prompts,
+                    // relaxed 0.85 when entity guard confirms identical entities.
+                    // Entity match guarantees semantic equivalence (same subject),
+                    // so a lower vector score is acceptable.
+                    let strict_threshold: f32 = 0.95;
+                    let entity_relaxed_threshold: f32 = 0.85;
 
-                    if hit.score > 0.95 {
+                    println!("🔍 Semantic Cache Candidate: Score {}, Strict Threshold {}, Entity-Relaxed Threshold {}", hit.score, strict_threshold, entity_relaxed_threshold);
+
+                    // Gate on the relaxed threshold first — if score is below even that, skip entirely
+                    if hit.score > entity_relaxed_threshold {
                         let cached_prompt_text = hit.payload.get("prompt_text")
                             .and_then(|v| v.kind.as_ref())
                             .map(|k| match k {
@@ -90,7 +98,7 @@ impl SemanticRouter for MyRouter {
                             })
                             .unwrap_or_default();
 
-                        let guard_pass = if !cached_entities.is_empty() {
+                        let (guard_pass, entities_matched) = if !cached_entities.is_empty() {
                             // New path: entity map comparison (positional-aware)
                             let current_entities = extract_entities(&req.prompt);
                             let matched = entities_match(&current_entities, &cached_entities);
@@ -99,21 +107,26 @@ impl SemanticRouter for MyRouter {
                             } else {
                                 println!("⚠️ Entity Guard REJECT: entities differ (current={:?}, cached={:?})", current_entities, cached_entities);
                             }
-                            matched
+                            (matched, matched)
                         } else {
                             // Legacy fallback: old sorted-number comparison for entries without entity map
                             let mut current_numbers = extract_numbers(&req.prompt);
                             let mut cached_numbers = extract_numbers(&cached_prompt_text);
                             current_numbers.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
                             cached_numbers.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
-                            if cached_prompt_text.is_empty() {
+                            let legacy_pass = if cached_prompt_text.is_empty() {
                                 current_numbers.is_empty()
                             } else {
                                 current_numbers == cached_numbers
-                            }
+                            };
+                            (legacy_pass, false)
                         };
 
-                        if guard_pass {
+                        // Apply the appropriate threshold: relaxed if entities matched, strict otherwise
+                        let effective_threshold = if entities_matched { entity_relaxed_threshold } else { strict_threshold };
+                        let score_pass = hit.score > effective_threshold;
+
+                        if guard_pass && score_pass {
                             similar_prompt_hash = hit.payload.get("prompt_hash")
                                 .and_then(|v| v.kind.as_ref())
                                 .map(|k| match k {
@@ -121,7 +134,9 @@ impl SemanticRouter for MyRouter {
                                     _ => String::new(),
                                 })
                                 .unwrap_or_default();
-                            println!("🎯 Semantic Cache Hit! Hash: {}", similar_prompt_hash);
+                            println!("🎯 Semantic Cache Hit! Hash: {} (threshold: {}, score: {})", similar_prompt_hash, effective_threshold, hit.score);
+                        } else if guard_pass && !score_pass {
+                            println!("⚠️ Semantic Cache REJECTED: score {} below threshold {} (entities_matched={})", hit.score, effective_threshold, entities_matched);
                         } else {
                             println!("⚠️ Semantic Cache REJECTED: entity/numeric guard failed");
                         }
