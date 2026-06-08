@@ -74,36 +74,6 @@ services:
       retries: 3
       start_period: 60s
 
-  # Memzent Gateway (Go) - Optimized
-  # Uncomment and configure to run in Docker.
-  # Copy .env.example to .env and fill in your keys.
-  # gateway:
-  #   build:
-  #     context: .
-  #     dockerfile: services/gateway/Dockerfile
-  #   container_name: memzent-gateway
-  #   ports:
-  #     - "8080:8080"
-  #   volumes:
-  #     - ./services/gateway:/app
-  #     - ./proto:/proto
-  #     - ./migrations:/app/migrations
-  #     - go_modules:/go/pkg/mod
-  #   env_file: .env
-  #   environment:
-  #     - VALKEY_URL=valkey:6379
-  #     - OLLAMA_URL=http://host.docker.internal:11434
-  #     - OLLAMA_MODEL=llama3.2
-  #     - ROUTER_URL=router:50051
-  #   command: >
-  #     sh -c "if [ ! -f go.mod ]; then go mod init memzent-gateway; fi &&
-  #            protoc -I/proto --go_out=internal/router --go_opt=paths=source_relative --go-grpc_out=internal/router --go-grpc_opt=paths=source_relative /proto/router.proto &&
-  #            go mod tidy &&
-  #            go build -o memzent-gateway-bin main.go &&
-  #            ./memzent-gateway-bin"
-  #   depends_on:
-  #     - router
-  #     - mcp-server
 
   # UI Dashboard (Bun/Next.js)
   dashboard:
@@ -127,50 +97,7 @@ services:
       retries: 3
       start_period: 30s
 
-  # Marketing Website (Node/Vite)
-  website:
-    build:
-      context: ./website
-      dockerfile: Dockerfile
-      target: dev
-    container_name: memzent-website
-    volumes:
-      - ./website:/app
-      - /app/node_modules
-    working_dir: /app
-    ports:
-      - "5173:5173"
-    env_file: .env
-    environment:
-      - VITE_APP_URL=http://localhost:3002
-      - VITE_GATEWAY_URL=http://localhost:8080
-      - GATEWAY_INTERNAL_URL=http://memzent-gateway:8080
-    command: >
-      sh -c "npm install && npm run dev -- --host"
-    healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:5173 || exit 1"]
-      interval: 15s
-      timeout: 5s
-      retries: 3
-      start_period: 30s
-
-  # # Open-Source Local Meta LLM Engine
-  # ollama:
-  #   image: ollama/ollama:latest
-  #   container_name: memzent-ollama
-  #   ports:
-  #     - "11434:11434"
-  #   volumes:
-  #     - ollama_data:/root/.ollama
-  #   # Overriding the default entrypoint lets us use shell scripting
-  #   entrypoint: ["/usr/bin/sh", "-c"]
-  #   command: >
-  #     "ollama serve & 
-  #      sleep 5 && 
-  #      ollama pull llama3.2 &&
-  #      wait"
 
 volumes:
   go_modules:
   cargo_cache:
-  ollama_data:
