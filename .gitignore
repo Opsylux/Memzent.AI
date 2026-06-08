@@ -26,10 +26,14 @@ go.work.sum
 
 # env file
 .env
+.env.*
+!.env.example
 
 # Editor/IDE
-# .idea/
-# .vscode/
+.idea/
+.vscode/
+*.swp
+*.swo
 
 #qdrant data
 data/qdrant
@@ -48,3 +52,6 @@ debug
 *.log
 *gateway-bin
 .next
+
+
+docker-compose.local.yml

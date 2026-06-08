@@ -82,7 +82,7 @@ export default function DocsIntroduction() {
           {[
             { label: "Rate Limit & Auth", desc: "Distributed rate limiting per org/tier, then JWT or API key verification with RBAC scope checks." },
             { label: "Billing Pre-check", desc: "Verify token balance and spend limits (daily/monthly caps) before processing." },
-            { label: "Cache Check", desc: "Three-layer lookup: literal hash → canonical hash → semantic similarity (vector match via Qdrant)." },
+            { label: "Cache Check", desc: "Four-layer lookup: L1 literal hash → L1.5 canonical → L1b entity-keyed hot path → L2 semantic similarity (vector match via Qdrant with entity post-filter guard)." },
             { label: "Session & Memory", desc: "Load conversation history, recall long-term semantic memories relevant to this prompt." },
             { label: "Semantic Routing", desc: "gRPC call to Rust Router for tool matching, prompt compression, and vector search." },
             { label: "Tool Execution", desc: "Fire matched MCP/connector tools to gather live context for the LLM." },

@@ -291,7 +291,7 @@ export default function SettingsPage() {
               {/* Rate limit breakdown by role */}
               <div className="mb-8 p-6 rounded-2xl bg-white/[0.02] border border-white/5">
                 <h4 className="text-[10px] font-black uppercase tracking-widest text-white/50 mb-4">Rate Limits by Role</h4>
-                <div className="grid grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                   <div className="p-3 rounded-xl bg-white/[0.03] border border-white/5 text-center">
                     <div className="text-[9px] font-black text-white/40 uppercase mb-1">Viewer</div>
                     <div className="text-sm font-black text-white/60">Read Only</div>
@@ -380,7 +380,7 @@ export default function SettingsPage() {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                   {[
                     { label: 'Relaxed', value: 0.70, desc: 'More cache hits, less precise' },
                     { label: 'Balanced', value: 0.88, desc: 'Default — recommended' },

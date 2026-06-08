@@ -541,7 +541,7 @@ func (e *MemzentEngine) Process(ctx context.Context, req *PromptRequest) (*Promp
 				CacheLayer: "L1", LatencyMs: time.Since(processStart).Milliseconds(),
 				Provider: req.Provider, Model: resolvedModel, Success: true, Timestamp: time.Now(),
 			})
-			return &PromptResponse{Text: cachedResp, Cached: true, SessionID: req.SessionID}, nil
+			return &PromptResponse{Text: cachedResp, Cached: true, SessionID: req.SessionID, Entities: extractEntitiesLocal(queryPrompt)}, nil
 		}
 
 		// Stage 1.5: Canonical Match (Normalized, Org-Isolated & Model-Scoped)
@@ -575,7 +575,7 @@ func (e *MemzentEngine) Process(ctx context.Context, req *PromptRequest) (*Promp
 				_ = e.sessionMgr.AppendMessage(ctx, req.SessionID, "user", queryPrompt)
 				_ = e.sessionMgr.AppendMessage(ctx, req.SessionID, "assistant", cachedCanon)
 			}
-			return &PromptResponse{Text: cachedCanon, Cached: true, SessionID: req.SessionID}, nil
+			return &PromptResponse{Text: cachedCanon, Cached: true, SessionID: req.SessionID, Entities: extractEntitiesLocal(queryPrompt)}, nil
 		}
 
 		// Stage 1b: Entity-Keyed Hot Path Cache (L1b)
@@ -830,7 +830,7 @@ func (e *MemzentEngine) Process(ctx context.Context, req *PromptRequest) (*Promp
 			if req.SessionID != "" && e.sessionMgr != nil {
 				_ = e.sessionMgr.AppendMessage(ctx, req.SessionID, "assistant", cachedResp)
 			}
-			return &PromptResponse{Text: cachedResp, Cached: true, SessionID: req.SessionID}, nil
+			return &PromptResponse{Text: cachedResp, Cached: true, SessionID: req.SessionID, Entities: extractEntitiesLocal(queryPrompt)}, nil
 		}
 	}
 
@@ -1079,11 +1079,10 @@ func (e *MemzentEngine) Process(ctx context.Context, req *PromptRequest) (*Promp
 		}
 	}
 
-	// G. Populate Cache for future requests (Org-Isolated, Model-Scoped & Force Refresh)
-	// Skip all cache writes when SkipCache=true — forced-fresh requests must not
-	// populate Valkey or the persistent DB, otherwise subsequent requests for the
-	// same prompt would return cached=true even though the intent was a fresh hit.
-	if e.cache != nil && !req.SkipCache {
+	// G. Populate Cache for future requests (Org-Isolated, Model-Scoped)
+	// SkipCache only skips cache *reads* — fresh responses are still written so
+	// subsequent non-skip requests benefit from the cached result.
+	if e.cache != nil {
 		cacheKey := e.buildCacheKey(orgID, "p", resolvedModel, queryPrompt)
 		_ = e.cache.SetResult(ctx, cacheKey, aiResp, e.cacheTTL)
 		e.setPersistentCache(ctx, orgID, cacheKey, aiResp, e.cacheTTL)

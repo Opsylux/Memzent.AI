@@ -28,6 +28,20 @@ func (l *PersistentAuditLogger) Log(ctx context.Context, event AuditEvent, metad
 		return
 	}
 
+	// Auto-include cache_layer and entities in metadata for queryability
+	if event.CacheLayer != "" {
+		if metadata == nil {
+			metadata = make(map[string]interface{})
+		}
+		metadata["cache_layer"] = event.CacheLayer
+	}
+	if len(event.Entities) > 0 {
+		if metadata == nil {
+			metadata = make(map[string]interface{})
+		}
+		metadata["entities"] = event.Entities
+	}
+
 	metaBuf, _ := json.Marshal(metadata)
 
 	const systemOrgID = "00000000-0000-0000-0000-000000000000"
@@ -108,14 +122,14 @@ func (l *PersistentAuditLogger) GetLatest(orgID string, limit int) ([]AuditEvent
 
 	if orgID == "" {
 		query := `
-            SELECT org_id, user_id, action, created_at
+            SELECT org_id, user_id, action, metadata, created_at
             FROM audit_logs
             ORDER BY created_at DESC
             LIMIT $1`
 		rows, err = l.db.Query(query, limit)
 	} else {
 		query := `
-            SELECT org_id, user_id, action, created_at
+            SELECT org_id, user_id, action, metadata, created_at
             FROM audit_logs
             WHERE org_id = $1
             ORDER BY created_at DESC
@@ -131,7 +145,8 @@ func (l *PersistentAuditLogger) GetLatest(orgID string, limit int) ([]AuditEvent
 	for rows.Next() {
 		var ev AuditEvent
 		var action string
-		if err := rows.Scan(&ev.OrgID, &ev.User, &action, &ev.Timestamp); err != nil {
+		var metadataJSON sql.NullString
+		if err := rows.Scan(&ev.OrgID, &ev.User, &action, &metadataJSON, &ev.Timestamp); err != nil {
 			return nil, err // Don't silently fail
 		}
 
@@ -142,6 +157,43 @@ func (l *PersistentAuditLogger) GetLatest(orgID string, limit int) ([]AuditEvent
 			ev.Type, ev.Detail = parts[0], parts[1]
 		} else {
 			ev.Type, ev.Detail = "SYSTEM", action
+		}
+
+		// Extract cache_layer and entities from metadata JSONB
+		if metadataJSON.Valid && metadataJSON.String != "" {
+			var meta map[string]interface{}
+			if json.Unmarshal([]byte(metadataJSON.String), &meta) == nil {
+				if cl, ok := meta["cache_layer"].(string); ok {
+					ev.CacheLayer = cl
+				}
+				if stage, ok := meta["stage"].(string); ok && ev.CacheLayer == "" {
+					// Fallback: derive cache_layer from stage field
+					switch stage {
+					case "1":
+						ev.CacheLayer = "L1"
+					case "1b":
+						ev.CacheLayer = "L1b"
+					case "2":
+						ev.CacheLayer = "L2"
+					}
+					} else if stageNum, ok := meta["stage"].(float64); ok && ev.CacheLayer == "" {
+						// JSON unmarshals integers as float64
+						switch int(stageNum) {
+						case 1:
+							ev.CacheLayer = "L1"
+						case 2:
+							ev.CacheLayer = "L2"
+						}
+					}
+				if entMap, ok := meta["entities"].(map[string]interface{}); ok {
+					ev.Entities = make(map[string]string, len(entMap))
+					for k, v := range entMap {
+						if s, ok := v.(string); ok {
+							ev.Entities[k] = s
+						}
+					}
+				}
+			}
 		}
 
 		ev.Status = "success"
@@ -162,12 +214,13 @@ func (l *PersistentAuditLogger) GetCacheStats(orgID string) (uint64, uint64) {
 		return 0, 0
 	}
 
+	// Strict org isolation — only count this org's audit entries
 	query := `
 		SELECT 
 			COUNT(*)::bigint as total_requests,
 			COALESCE(SUM(CASE WHEN action LIKE 'CACHE:%' THEN 1 ELSE 0 END), 0)::bigint as cache_hits
 		FROM audit_logs
-		WHERE ($1::text = '' OR org_id::text = $1 OR org_id::text = '00000000-0000-0000-0000-000000000000')
+		WHERE org_id::text = $1
 	`
 
 	var total, hits sql.NullInt64

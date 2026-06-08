@@ -243,7 +243,7 @@ func sendChat(prompt string, skipCache bool) (*ChatResponse, time.Duration, erro
 }
 
 func flushCache() error {
-	req, _ := http.NewRequest("DELETE", baseURL+"/v1/cache/flush", nil)
+	req, _ := http.NewRequest("POST", baseURL+"/v1/cache/flush", nil)
 	req.Header.Set("X-API-Key", apiKey)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {

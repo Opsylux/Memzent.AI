@@ -43,8 +43,8 @@ You must respect the specific language boundaries. Do not mix responsibilities.
 
 When implementing new routing features, the AI must ensure the Engine (`internal/engine/engine.go` `Process()`) follows this exact sequence:
 
-1. `Rate Limiting` — per-org token bucket, tier resolved from JWT (free 10/min, pro 100/min, business 1000/min). A positive pay-as-you-go balance promotes a free org to the pro limit.
-2. `Billing Pre-Check` — reject orgs with a depleted balance before any compute is consumed (bypassed for internal dashboard / JWT sessions).
+1. `Rate Limiting` — per-org token bucket, tier resolved from JWT (free 10/min, pro 100/min, business 1000/min).
+2. `Billing Pre-Check` — reject API-key orgs with depleted balance (bypassed for dashboard / JWT sessions — unlimited in-app usage).
 3. `L1 Literal Cache` — SHA-256 exact-hash lookup in Valkey, org-isolated and model-scoped. Falls back to the persistent Postgres cache on a Valkey miss/crash, then backfills Valkey.
 4. `L1.5 Canonical Cache` — normalized-prompt hash (`NormalizePrompt`) lookup in Valkey, same Postgres fallback.
 5. `Short-Term Memory` — load prior session messages (`sessionMgr`) when a `SessionID` is present.
@@ -59,6 +59,6 @@ When implementing new routing features, the AI must ensure the Engine (`internal
 ## 5. Agent Skills & Instructions
 
 For detailed implementation patterns, pending roadmap items, and feature checklists, refer to:
-- **[.cursorrules](./.cursorrules)**: IDE-specific rules for Antigravity, Copilot, and Cursor.
 - **[PROJECT_STATUS.md](./PROJECT_STATUS.md)**: Live roadmap and "What's Pending" tracker.
 - **[INSTRUCTIONS.md](./INSTRUCTIONS.md)**: Step-by-step checklists and "Pop Questions" for feature implementation.
+- **[CONTRIBUTING.md](./CONTRIBUTING.md)**: Community contribution guidelines and architecture rules.
