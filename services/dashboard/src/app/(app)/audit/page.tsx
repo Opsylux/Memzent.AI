@@ -153,9 +153,22 @@ export default function AuditPage() {
                   <div className="text-[10px] font-black tracking-widest text-white/40 uppercase font-mono">
                     {formatTimestampUTC(log.timestamp)}
                   </div>
-                  <Badge variant="outline" className={`border-white/10 text-[9px] uppercase font-black tracking-widest px-3 ${log.status === 'success' ? 'bg-green-500/10 text-green-400 border-green-500/20' : 'bg-red-500/10 text-red-500 border-red-500/20'}`}>
-                    {log.status}
-                  </Badge>
+                  <div className="flex items-center gap-2">
+                    {log.cache_layer && (
+                      <Badge variant="outline" className={`text-[9px] uppercase font-black tracking-widest px-2 ${
+                        log.cache_layer === 'L1' ? 'bg-cyan-500/10 text-cyan-400 border-cyan-500/20' :
+                        log.cache_layer === 'L1b' ? 'bg-memzent-purple/10 text-memzent-purple border-memzent-purple/20' :
+                        log.cache_layer === 'L2' ? 'bg-blue-500/10 text-blue-400 border-blue-500/20' :
+                        log.cache_layer === 'L5' ? 'bg-amber-500/10 text-amber-400 border-amber-500/20' :
+                        'bg-white/5 text-white/40 border-white/10'
+                      }`}>
+                        {log.cache_layer}
+                      </Badge>
+                    )}
+                    <Badge variant="outline" className={`border-white/10 text-[9px] uppercase font-black tracking-widest px-3 ${log.status === 'success' ? 'bg-green-500/10 text-green-400 border-green-500/20' : 'bg-red-500/10 text-red-500 border-red-500/20'}`}>
+                      {log.status}
+                    </Badge>
+                  </div>
                 </div>
               </div>
             ))

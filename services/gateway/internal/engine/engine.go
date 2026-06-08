@@ -455,12 +455,13 @@ func (e *MemzentEngine) Process(ctx context.Context, req *PromptRequest) (*Promp
 			e.emitEvent(ctx, orgID, "cache_hit", map[string]any{"query": queryPrompt, "score": 1.0, "latency_ms": time.Since(processStart).Milliseconds(), "model": resolvedModel})
 			if e.auditLogger != nil {
 				e.auditLogger.Log(ctx, metrics.AuditEvent{
-					Timestamp: time.Now(),
-					OrgID:     orgID,
-					Type:      "CACHE",
-					User:      req.UserID,
-					Detail:    "Stage 1 HIT: " + queryPrompt,
-					Status:    "success",
+					Timestamp:  time.Now(),
+					OrgID:      orgID,
+					Type:       "CACHE",
+					User:       req.UserID,
+					Detail:     "Stage 1 HIT: " + queryPrompt,
+					Status:     "success",
+					CacheLayer: "L1",
 				}, map[string]interface{}{"prompt": queryPrompt, "stage": 1})
 			}
 			e.chargeCacheHit(ctx, orgID, req.Provider, req.Model, queryPrompt)
@@ -529,7 +530,20 @@ func (e *MemzentEngine) Process(ctx context.Context, req *PromptRequest) (*Promp
 					hitCounter, _ := e.orgHits.LoadOrStore(orgID, &atomic.Uint64{})
 					hitCounter.(*atomic.Uint64).Add(1)
 					slog.Info("🎯 Stage 1b Cache HIT (Entity-Keyed)", "org_id", orgID, "entities", l1bEntities)
-					e.chargeCacheHit(ctx, orgID, req.Provider, req.Model, queryPrompt)
+						e.emitEvent(ctx, orgID, "cache_hit", map[string]any{"query": queryPrompt, "score": 1.0, "latency_ms": time.Since(processStart).Milliseconds(), "model": resolvedModel, "layer": "L1b"})
+						if e.auditLogger != nil {
+							e.auditLogger.Log(ctx, metrics.AuditEvent{
+								Timestamp:  time.Now(),
+								OrgID:      orgID,
+								Type:       "CACHE",
+								User:       req.UserID,
+								Detail:     "Stage 1b HIT (Entity-Keyed): " + queryPrompt,
+								Status:     "success",
+								CacheLayer: "L1b",
+								Entities:   l1bEntities,
+							}, map[string]interface{}{"prompt": queryPrompt, "stage": "1b", "entities": l1bEntities})
+						}
+						e.chargeCacheHit(ctx, orgID, req.Provider, req.Model, queryPrompt)
 
 					if req.SessionID != "" && e.sessionMgr != nil {
 						_ = e.sessionMgr.AppendMessage(ctx, req.SessionID, "user", queryPrompt)
@@ -921,13 +935,14 @@ func (e *MemzentEngine) Process(ctx context.Context, req *PromptRequest) (*Promp
 	// H. Log Final Result
 	if e.auditLogger != nil {
 		e.auditLogger.Log(ctx, metrics.AuditEvent{
-			Timestamp: time.Now(),
-			OrgID:     orgID,
-			Type:      "GENERATION",
-			User:      req.UserID,
-			Detail:    fmt.Sprintf("Provider: %s", selectedProvider.GetProviderName()),
-			Status:    "success",
-			Entities:  extractedEntities,
+			Timestamp:  time.Now(),
+			OrgID:      orgID,
+			Type:       "GENERATION",
+			User:       req.UserID,
+			Detail:     fmt.Sprintf("Provider: %s", selectedProvider.GetProviderName()),
+			Status:     "success",
+			CacheLayer: "L5",
+			Entities:   extractedEntities,
 		}, map[string]interface{}{"provider": selectedProvider.GetProviderName(), "tools_count": len(llmTools)})
 	}
 
