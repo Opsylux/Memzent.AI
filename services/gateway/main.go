@@ -384,21 +384,33 @@ func main() {
 	)
 
 	// 8.0b Initialize Offline Learning Plane (E3)
-	var offlinePlane *offline.Plane
 	var requestMiner *miners.RequestMiner
 	var cacheMiner *miners.CacheMiner
 	var workflowMiner *miners.WorkflowMiner
+	var streamPlane *offline.StreamPlane
+	var channelPlane *offline.Plane
 	if flags.OfflinePlane {
 		requestMiner = miners.NewRequestMiner(50)
 		cacheMiner = miners.NewCacheMiner(10, 100)
 		workflowMiner = miners.NewWorkflowMiner(100, 0.90)
-		offlinePlane = offline.NewPlane(
-			offline.DefaultConfig(),
-			requestMiner, cacheMiner, workflowMiner,
-		)
-		offlinePlane.Start(ctx)
-		memzentEngine.SetOfflinePlane(offlinePlane)
-		slog.Info("🧠 Offline Learning Plane started")
+
+		if flags.OfflineStreams && vCache != nil {
+			// Valkey Streams mode — crash-durable, multi-instance
+			streamCfg := offline.DefaultStreamConfig("")
+			streamPlane = offline.NewStreamPlane(vCache, streamCfg, requestMiner, cacheMiner, workflowMiner)
+			streamPlane.Start(ctx)
+			memzentEngine.SetOfflinePlane(streamPlane)
+			slog.Info("🌊 Offline Learning Plane started (Valkey Streams mode)")
+		} else {
+			// In-memory channel mode (single instance, fast)
+			channelPlane = offline.NewPlane(
+				offline.DefaultConfig(),
+				requestMiner, cacheMiner, workflowMiner,
+			)
+			channelPlane.Start(ctx)
+			memzentEngine.SetOfflinePlane(channelPlane)
+			slog.Info("🧠 Offline Learning Plane started (channel mode)")
+		}
 	}
 
 	// 8.0c Initialize Workflow Registry (E4)
@@ -992,14 +1004,23 @@ func main() {
 			http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
 			return
 		}
-		if offlinePlane == nil {
+		if channelPlane == nil && streamPlane == nil {
 			w.Header().Set("Content-Type", "application/json")
 			json.NewEncoder(w).Encode(map[string]interface{}{"enabled": false})
 			return
 		}
+		var planeStats map[string]uint64
+		mode := "channel"
+		if streamPlane != nil {
+			planeStats = streamPlane.Stats()
+			mode = "valkey_streams"
+		} else {
+			planeStats = channelPlane.Stats()
+		}
 		stats := map[string]interface{}{
 			"enabled":             true,
-			"plane":              offlinePlane.Stats(),
+			"mode":               mode,
+			"plane":              planeStats,
 			"hot_patterns":       requestMiner.GetHotPatterns(),
 			"cache_misses":       cacheMiner.GetTopMisses(),
 			"workflow_sequences": workflowMiner.GetDetectedSequences(),
@@ -1145,13 +1166,15 @@ func main() {
 		}
 		f := featureflags.Get()
 		response := map[string]interface{}{
-			"l1b_cache":       f.L1bCache,
-			"offline_plane":   f.OfflinePlane,
-			"workflow_engine": f.WorkflowEngine,
-			"entity_metrics":  f.EntityMetrics,
+			"l1b_cache":        f.L1bCache,
+			"offline_plane":    f.OfflinePlane,
+			"offline_streams":  f.OfflineStreams,
+			"workflow_engine":  f.WorkflowEngine,
+			"entity_metrics":   f.EntityMetrics,
 			"env_vars": map[string]string{
 				"MEMZENT_L1B_ENABLED":            "controls L1b entity-keyed hot path cache",
 				"MEMZENT_OFFLINE_ENABLED":        "controls offline learning plane (O1/O2/O3 miners)",
+				"MEMZENT_OFFLINE_STREAMS":        "use Valkey Streams instead of in-memory channels (requires Valkey)",
 				"MEMZENT_WORKFLOW_ENABLED":       "controls workflow registry + engine shortcut",
 				"MEMZENT_ENTITY_METRICS_ENABLED": "controls entity quality + GPU avoidance counters",
 			},
@@ -1331,7 +1354,12 @@ func main() {
 	slog.Info("Shutting down Memzent Gateway...")
 
 	// Stop offline learning plane (drain events, flush miners)
-	offlinePlane.Stop()
+	if channelPlane != nil {
+		channelPlane.Stop()
+	}
+	if streamPlane != nil {
+		streamPlane.Stop()
+	}
 
 	// Stop webhook dispatcher (drain queue)
 	if webhookDispatcher != nil {

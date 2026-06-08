@@ -11,6 +11,7 @@ import (
 type Flags struct {
 	L1bCache        bool // MEMZENT_L1B_ENABLED — entity-keyed hot path cache
 	OfflinePlane    bool // MEMZENT_OFFLINE_ENABLED — offline learning plane (O1/O2/O3 miners)
+	OfflineStreams  bool // MEMZENT_OFFLINE_STREAMS — use Valkey Streams instead of in-memory channels
 	WorkflowEngine  bool // MEMZENT_WORKFLOW_ENABLED — workflow registry + engine shortcut
 	EntityMetrics   bool // MEMZENT_ENTITY_METRICS_ENABLED — entity quality + GPU avoidance counters
 }
@@ -27,6 +28,7 @@ func Load() *Flags {
 		global = &Flags{
 			L1bCache:       envBool("MEMZENT_L1B_ENABLED", true),
 			OfflinePlane:   envBool("MEMZENT_OFFLINE_ENABLED", true),
+			OfflineStreams: envBool("MEMZENT_OFFLINE_STREAMS", false),
 			WorkflowEngine: envBool("MEMZENT_WORKFLOW_ENABLED", true),
 			EntityMetrics:  envBool("MEMZENT_ENTITY_METRICS_ENABLED", true),
 		}

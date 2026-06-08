@@ -84,7 +84,7 @@ type MemzentEngine struct {
 	eventEmitter EventEmitter
 
 	// Offline Learning Plane (E3)
-	offlinePlane *offline.Plane
+	offlinePlane OfflinePlane
 
 	// Workflow Registry (E4)
 	workflowRegistry WorkflowRegistry
@@ -108,8 +108,15 @@ func (e *MemzentEngine) SetEventEmitter(emitter EventEmitter) {
 	e.eventEmitter = emitter
 }
 
+// OfflinePlane abstracts the offline event bus so the engine works with both
+// channel-based (Plane) and Valkey Streams-based (StreamPlane) implementations.
+type OfflinePlane interface {
+	Emit(event offline.OfflineEvent)
+	Stats() map[string]uint64
+}
+
 // SetOfflinePlane attaches the offline learning plane to the engine.
-func (e *MemzentEngine) SetOfflinePlane(plane *offline.Plane) {
+func (e *MemzentEngine) SetOfflinePlane(plane OfflinePlane) {
 	e.offlinePlane = plane
 }
 
