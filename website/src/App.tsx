@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Routes, Route, Link, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Shield,
@@ -25,6 +26,8 @@ import {
 
 
 import FeatureCard from './components/FeatureCard';
+import BlogListPage from './pages/BlogList';
+import BlogPostPage from './pages/BlogPost';
 
 const appUrl = import.meta.env.VITE_APP_URL || "http://localhost:3000"
 
@@ -33,17 +36,18 @@ const Navbar = () => {
 
   return (
     <nav className="fixed top-0 left-0 right-0 z-50 glass px-6 py-4 flex justify-between items-center m-4 rounded-2xl">
-      <div className="flex items-center gap-2">
+      <Link to="/" className="flex items-center gap-2">
         <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-memzent-glow to-memzent-purple flex items-center justify-center shadow-[0_0_15px_rgba(0,243,255,0.3)]">
           <span className="text-black font-black text-sm italic select-none">M</span>
         </div>
         <span className="text-2xl font-black tracking-tighter">MEMZENT</span>
-      </div>
+      </Link>
       <div className="hidden md:flex gap-8 text-sm font-medium opacity-80">
         <a href="#payg" className="hover:text-memzent-glow transition-colors">Pricing</a>
         <a href="#why" className="hover:text-memzent-glow transition-colors">Why Memzent</a>
         <a href="#security" className="hover:text-memzent-glow transition-colors">Security</a>
         <a href="#observability" className="hover:text-memzent-glow transition-colors">Observability</a>
+        <Link to="/blog" className="hover:text-memzent-glow transition-colors">Blog</Link>
       </div>
       <div className="hidden md:flex gap-4">
         <a href="https://github.com/Opsylux/Memzent.AI" target="_blank" rel="noopener" className="text-sm font-bold opacity-75 hover:opacity-100 px-3 py-2 transition-all cursor-pointer flex items-center gap-2">
@@ -71,6 +75,7 @@ const Navbar = () => {
             <a href="#why" onClick={() => setMobileOpen(false)} className="text-sm font-bold opacity-80 hover:text-memzent-glow py-2">Why Memzent</a>
             <a href="#security" onClick={() => setMobileOpen(false)} className="text-sm font-bold opacity-80 hover:text-memzent-glow py-2">Security</a>
             <a href="#observability" onClick={() => setMobileOpen(false)} className="text-sm font-bold opacity-80 hover:text-memzent-glow py-2">Observability</a>
+            <Link to="/blog" onClick={() => setMobileOpen(false)} className="text-sm font-bold opacity-80 hover:text-memzent-glow py-2">Blog</Link>
             <hr className="border-white/10" />
             <a href="https://github.com/Opsylux/Memzent.AI" target="_blank" rel="noopener" className="text-sm font-bold opacity-80 flex items-center gap-2"><Github size={16} /> GitHub</a>
             <a href={appUrl + "/login"} className="bg-memzent-glow text-black text-sm font-black px-6 py-3 rounded-xl text-center">Get Started Free</a>
@@ -524,6 +529,7 @@ const Footer = () => (
         <div className="font-black text-white mb-4">COMPANY</div>
         <a href={appUrl + "/login"} className="block hover:text-memzent-glow">Dashboard</a>
         <a href={appUrl + "/docs"} className="block hover:text-memzent-glow">Documentation</a>
+        <Link to="/blog" className="block hover:text-memzent-glow">Blog</Link>
         <a href={appUrl + "/docs/quickstart"} className="block hover:text-memzent-glow">Quickstart</a>
         <a href={appUrl + "/playground"} className="block hover:text-memzent-glow">Playground</a>
       </div>
@@ -535,15 +541,27 @@ const Footer = () => (
   </footer>
 );
 
+const LandingPage = () => (
+  <>
+    <Hero />
+    <PAYGSection />
+    <WhyMemzent />
+    <EvolutionPipeline />
+    <Pillars />
+  </>
+);
+
 export default function App() {
+  const location = useLocation();
+
   return (
     <div className="bg-memzent-dark text-white min-h-screen selection:bg-memzent-glow selection:text-black font-outfit">
       <Navbar />
-      <Hero />
-      <PAYGSection />
-      <WhyMemzent />
-      <EvolutionPipeline />
-      <Pillars />
+      <Routes location={location} key={location.pathname}>
+        <Route path="/" element={<LandingPage />} />
+        <Route path="/blog" element={<BlogListPage />} />
+        <Route path="/blog/:slug" element={<BlogPostPage />} />
+      </Routes>
       <Footer />
     </div>
   );
