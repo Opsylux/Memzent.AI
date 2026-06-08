@@ -2,7 +2,15 @@
 [package]
 name = "memzent-router"
 version = "0.1.0"
-edition = "2021" 
+edition = "2021"
+
+[lib]
+name = "memzent_router"
+path = "src/lib.rs"
+
+[[bin]]
+name = "memzent-router"
+path = "src/main.rs"
 
 [dependencies]
 # Async runtime

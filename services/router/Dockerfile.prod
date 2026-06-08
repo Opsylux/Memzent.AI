@@ -18,7 +18,7 @@ WORKDIR /app
 # Copy cargo dependency specs first to leverage docker caching
 COPY services/router/Cargo.toml ./
 # Create dummy main to build dependencies
-RUN mkdir src && echo "fn main() {}" > src/main.rs
+RUN mkdir src && echo "fn main() {}" > src/main.rs && echo "pub fn _dummy() {}" > src/lib.rs
 RUN cargo build --release
 RUN rm -rf src
 
