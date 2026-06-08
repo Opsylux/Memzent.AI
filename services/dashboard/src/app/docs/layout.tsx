@@ -1,6 +1,20 @@
 import Link from "next/link";
 import { Shield, ChevronRight, Menu } from "lucide-react";
 import { DocsSidebar } from "@/components/docs/docs-sidebar";
+import type { Metadata } from "next";
+
+export const metadata: Metadata = {
+  title: {
+    default: "Documentation",
+    template: "%s — Memzent Docs",
+  },
+  description: "Memzent documentation — semantic caching, entity extraction, RBAC, MCP tool routing, and GPU avoidance for AI agents.",
+  openGraph: {
+    title: "Memzent Documentation",
+    description: "Complete guide to the AI agent memory layer: semantic caching, entity-aware routing, RBAC, and multi-LLM orchestration.",
+    type: "website",
+  },
+};
 
 export default function DocsLayout({
   children,

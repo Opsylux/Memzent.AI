@@ -2,8 +2,19 @@ import { getAllPosts } from "@/lib/blog";
 import { BLOG_CATEGORIES } from "@/lib/blog-types";
 import Link from "next/link";
 import { Calendar, Clock, ArrowRight, BookOpen } from "lucide-react";
+import type { Metadata } from "next";
 
 export const dynamic = "force-dynamic";
+
+export const metadata: Metadata = {
+  title: "Engineering Blog",
+  description: "Technical deep-dives on semantic caching, entity extraction, GPU avoidance, and building the AI agent memory layer.",
+  openGraph: {
+    title: "Memzent Engineering Blog",
+    description: "Insights on building intelligent semantic proxies for AI agents.",
+    type: "website",
+  },
+};
 
 export default async function BlogPage() {
   const posts = await getAllPosts();
