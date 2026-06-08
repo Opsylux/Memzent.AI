@@ -41,18 +41,24 @@ You must respect the specific language boundaries. Do not mix responsibilities.
 
 ## 4. Execution Flow Policy
 
-When implementing new routing features, the AI must ensure the Engine follows this exact sequence:
-1. `Rate Limiting` (Token bucket check - Not implemented or need to review it, make sure its alinged with tiers)
-2. `Cache Check` (Hash lookup in Valkey)
-3. `RBAC Check` (Postgres query for user permissions)
-4. `Semantic Routing` (gRPC call to Rust/Qdrant)
-5. `Tool Execution` (Fire off matched MCP tools)
-6. `Synthesis` (Pass context + prompt to Ollama/OpenAI/Anthropic)
-7. `Cache Set` (Store synthesized output in Valkey)
+When implementing new routing features, the AI must ensure the Engine (`internal/engine/engine.go` `Process()`) follows this exact sequence:
+
+1. `Rate Limiting` — per-org token bucket, tier resolved from JWT (free 10/min, pro 100/min, business 1000/min). A positive pay-as-you-go balance promotes a free org to the pro limit.
+2. `Billing Pre-Check` — reject orgs with a depleted balance before any compute is consumed (bypassed for internal dashboard / JWT sessions).
+3. `L1 Literal Cache` — SHA-256 exact-hash lookup in Valkey, org-isolated and model-scoped. Falls back to the persistent Postgres cache on a Valkey miss/crash, then backfills Valkey.
+4. `L1.5 Canonical Cache` — normalized-prompt hash (`NormalizePrompt`) lookup in Valkey, same Postgres fallback.
+5. `Short-Term Memory` — load prior session messages (`sessionMgr`) when a `SessionID` is present.
+6. `Long-Term Memory` — retrieve related semantic facts from the Qdrant memory collection (`memoryMgr`).
+7. `RBAC Check` — Postgres org-scoped `chat:execute` permission check plus allowed-tools lookup.
+8. `Semantic Routing` — gRPC call to the Rust router for vector tool selection and prompt compression.
+9. `L2 Semantic Cache` — fuzzy vector match on the router's similar-prompt hash, org-isolated and model-scoped, same Postgres fallback.
+10. `Tool Execution` — multi-connector dispatch (MCP / REST / SQL / Core), with sequential `PlanToolChain` chaining when the prompt implies ordering.
+11. `Synthesis` — provider `Generate` (Ollama / OpenAI / Anthropic / Gemini) with SSE typewriter streaming.
+12. `Cache Populate + Cost Deduct` — write L1 / L1.5 / L2 (Valkey + Postgres) and deduct the token cost from the billing ledger.
 
 ## 5. Agent Skills & Instructions
 
 For detailed implementation patterns, pending roadmap items, and feature checklists, refer to:
-- **[.cursorrules](file:///c:/Users/nnaga/OneDrive/Documents/GitHub/MemzentMCP/.cursorrules)**: IDE-specific rules for Antigravity, Copilot, and Cursor.
-- **[PROJECT_STATUS.md](file:///c:/Users/nnaga/OneDrive/Documents/GitHub/MemzentMCP/PROJECT_STATUS.md)**: Live roadmap and "What's Pending" tracker.
-- **[INSTRUCTIONS.md](file:///c:/Users/nnaga/OneDrive/Documents/GitHub/MemzentMCP/INSTRUCTIONS.md)**: Step-by-step checklists and "Pop Questions" for feature implementation.
+- **[.cursorrules](./.cursorrules)**: IDE-specific rules for Antigravity, Copilot, and Cursor.
+- **[PROJECT_STATUS.md](./PROJECT_STATUS.md)**: Live roadmap and "What's Pending" tracker.
+- **[INSTRUCTIONS.md](./INSTRUCTIONS.md)**: Step-by-step checklists and "Pop Questions" for feature implementation.
