@@ -66,11 +66,12 @@ services:
     container_name: memzent-gateway-prod
     ports:
       - "8080:8080"
+    env_file: .env
     environment:
       - VALKEY_URL=valkey:6379
       - ROUTER_URL=envoy:50051
-      - JWT_SECRET=memzent-enterprise-secret-2026
-      - OLLAMA_ENABLED=false # Production leverages scalable OpenAI/Anthropic SaaS endpoints
+      - JWT_SECRET=${JWT_SECRET}
+      - OLLAMA_ENABLED=false
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY}
       - STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET}
