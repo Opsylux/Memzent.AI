@@ -82,7 +82,7 @@ async function getDBPosts(): Promise<BlogPost[]> {
       author: row.author || "Memzent Team",
       author_avatar: row.author_avatar,
       cover_image: row.cover_image,
-      category: row.category || "engineering",
+      category: row.category || "blog",
       tags: row.tags || [],
       published_at: row.published_at,
       updated_at: row.updated_at,
