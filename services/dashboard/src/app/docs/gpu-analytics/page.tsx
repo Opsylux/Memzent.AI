@@ -168,7 +168,7 @@ memzent_gpu_required_total                          567
         </p>
       </section>
 
-      <DocsPager currentPath="/docs/gpu-analytics" />
+      <DocsPager />
     </div>
   );
 }

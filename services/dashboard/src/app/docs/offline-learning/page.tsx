@@ -1,7 +1,6 @@
 import { Activity, Cpu, BarChart3, Gauge, TrendingDown } from "lucide-react";
 import { DocsPager } from "@/components/docs/docs-pager";
 import { CodeBlock } from "@/components/docs/code-block";
-import { DOCS_CONFIG } from "@/config/docs-config";
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
@@ -132,7 +131,7 @@ MEMZENT_PATTERN_MINING_ENABLED=false  # E6 Markov chain (experimental)`;
         <CodeBlock code={featureFlags} language="bash" />
       </section>
 
-      <DocsPager currentPath="/docs/offline-learning" />
+      <DocsPager />
     </div>
   );
 }

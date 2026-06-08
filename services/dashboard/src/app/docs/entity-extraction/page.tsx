@@ -1,7 +1,6 @@
 import { Scan, Shield, Fingerprint, Tag, Zap, AlertTriangle } from "lucide-react";
 import { DocsPager } from "@/components/docs/docs-pager";
 import { CodeBlock } from "@/components/docs/code-block";
-import { DOCS_CONFIG } from "@/config/docs-config";
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
@@ -145,7 +144,7 @@ export default function EntityExtractionPage() {
         </p>
       </section>
 
-      <DocsPager currentPath="/docs/entity-extraction" />
+      <DocsPager />
     </div>
   );
 }

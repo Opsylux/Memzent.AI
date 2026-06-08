@@ -160,7 +160,7 @@ org:abc123:m:gpt-4o-mini:e:account_dest=456|account_source=123|amount=100
         </div>
       </section>
 
-      <DocsPager currentPath="/docs/cache-layers" />
+      <DocsPager />
     </div>
   );
 }
