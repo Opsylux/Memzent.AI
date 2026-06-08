@@ -60,5 +60,7 @@ When implementing new routing features, the AI must ensure the Engine (`internal
 
 For detailed implementation patterns, pending roadmap items, and feature checklists, refer to:
 - **[.cursorrules](./.cursorrules)**: IDE-specific rules for Antigravity, Copilot, and Cursor.
-- **[PROJECT_STATUS.md](./PROJECT_STATUS.md)**: Live roadmap and "What's Pending" tracker.
+- **[PROJECT_STATUS.md](./PROJECT_STATUS.md)**: Code-verified feature matrix and honest completion status.
+- **[GO_LIVE_CHECKLIST.md](./GO_LIVE_CHECKLIST.md)**: File-level production hardening tasks.
 - **[INSTRUCTIONS.md](./INSTRUCTIONS.md)**: Step-by-step checklists and "Pop Questions" for feature implementation.
+- **[ARCHITECTURE.md](./ARCHITECTURE.md)**: System topology, execution sequence, and phase roadmap (reconciled June 2026).

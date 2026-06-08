@@ -9,18 +9,22 @@ This document defines the high-level data flow, service boundaries, and networki
 The system operates as an **Intelligent Proxy** between user clients, MCP-enabled tools, and Large Language Models (LLMs).
 
 ### Execution Sequence:
-1. **Ingress**: The Go Gateway receives an HTTP request containing a user prompt + JWT token.
-2. **Rate Limiting**: Token bucket per user — 10 requests/minute max.
-3. **Triple-Layer Cache Check** (skipped if `X-Skip-Cache: true`):
+1. **Ingress**: Gateway receives `POST /v1/chat` with `messages[]` + JWT or API key.
+2. **Rate Limiting**: Tier-based token bucket per org/user (`engine.go`) — free 10/min, pro 100/min, business 1000/min.
+3. **Billing Pre-Check**: API-key orgs with zero token balance are blocked (JWT dashboard sessions exempt).
+4. **Cache L1 + L1.5** (skipped if `X-Skip-Cache: true`; org+model-scoped keys; Postgres fallback):
    - **Layer 1 – Literal**: Exact SHA-256 hash lookup in Valkey (`<5ms`).
-   - **Layer 1.5 – Canonical**: Numeric IDs masked (`write011` → `write<ID>`), hash lookup in Valkey. Catches logically identical queries with minor numeric variations.
-   - **Layer 2 – Semantic (Vector)**: Gateway calls Rust Router via gRPC; Router performs cosine similarity search in Qdrant at ≥ 0.88 threshold.
-4. **RBAC Check**: Postgres query for user permissions and allowed tool list.
-5. **Semantic Routing**: gRPC call to the Rust Router returns the best-matched tools + compressed prompt.
-6. **Tool Orchestration** *(Extensible Platform)*: Gateway executes matched tools. *Current: MCP protocol. Future: Dynamic tool registry with REST/GraphQL/SQL/webhook connectors (to be implemented)*.
-7. **Provider Selection**: Gateway routes to Ollama / OpenAI / Anthropic / Gemini based on `X-Memzent-Provider` header or `provider` field in request body.
-8. **LLM Synthesis**: The compressed prompt + tool context is dispatched to the selected LLM.
-9. **Cache Population**: Synthesized answer is stored in all three cache layers (Literal, Canonical, Semantic).
+   - **Layer 1.5 – Canonical**: Numeric IDs masked (`write011` → `write<ID>`), hash lookup in Valkey.
+5. **Session / Memory**: Optional `session_id` history; semantic memory from Qdrant.
+6. **RBAC Check**: Postgres `org_tools` permission check (production strict — see `auth/rbac.go`).
+7. **Semantic Routing**: gRPC `SelectTools` → Rust Router + Qdrant cosine ≥ 0.88.
+8. **Cache L2**: Similar-prompt hash lookup after routing.
+9. **Tool Orchestration**: Core, MCP, REST, SQL connectors; optional `PlanToolChain` for multi-step prompts.
+10. **Provider Selection**: Ollama / OpenAI / Anthropic / Gemini via header or body `provider`.
+11. **LLM Synthesis**: Compressed prompt + tool context + memory → selected LLM.
+12. **Cache Population**: Write L1, L1.5, L2 + Postgres persistent cache.
+
+> **Cache + RBAC:** Cache HITs at steps 4 and 8 return before RBAC re-check. Keys are org+model isolated (Option A — documented in `engine.go`).
 
 ---
 
@@ -152,53 +156,47 @@ Memzent is architected as a **Universal AI Gateway** with pluggable tool connect
 - Rust-based semantic routing with Qdrant vector search
 - Dashboard REST API integration
 
-### Phase 1.a: Rate limit and throttle ( Not started, need to start for go live)
-**Goal**: Enable rate limit and throttle
-- [ ] Implement rate limit based on tier
-- [ ] Implement throttle based on tier
+### Phase 1.a: Rate Limiting (✅ COMPLETE)
+**Goal**: Tier-based rate limits aligned with subscription tier
+- [x] Token bucket per org/user in `engine.Process` (free/pro/business)
+- [x] PAYG balance boost (free → pro limits when balance > 0)
+- [x] Stale limiter eviction (`StartRateLimiterEviction`)
+- [ ] Per-tier throttle/backpressure UI in dashboard (future)
 
-### Phase 1.b: Qdrant Optimization (✅ IN PROGRESS)
+### Phase 1.b: Qdrant Optimization (🟡 IN PROGRESS)
 **Goal**: Enable Qdrant optimization
-- [x] Enable Scalar Quantization to save 75% on RAM costs.
-- [x] Set memmap_threshold to allow Qdrant to offload cold data to disk automatically.
-- [x] Index your org_id and user_id fields in the payload.
-- [ ] Enable Snapshots: Schedule automatic snapshots to an S3 bucket for disaster recovery.
+- [x] Scalar Quantization (~75% RAM savings)
+- [x] `memmap_threshold` for cold data offload to disk
+- [x] Payload indexes on `org_id` and `user_id`
+- [x] Scheduled local snapshots (`SNAPSHOT_INTERVAL_HOURS` in router)
+- [ ] S3 offsite snapshot upload (configure `QDRANT__STORAGE__SNAPSHOTS_CONFIG` in compose)
 
-### Phase 2: Dynamic Tool Registry (🚀 IN PROGRESS)
-**Goal**: Enable tool registration without gateway/MCP restarts
-- [ ] Create Postgres schema: `tools` table with metadata + connection details
-- [ ] Implement `POST /v1/tools/register` endpoint (admin-only)
-- [ ] Implement `DELETE /v1/tools/{toolId}` endpoint (disable tool)
-- [ ] Load tools from Postgres at startup + periodically refresh
-- [ ] Embed tool metadata in Qdrant for semantic matching
-- [ ] Return tool connector type in `/v1/tools` list
+### Phase 2: Dynamic Tool Registry (✅ COMPLETE)
+**Goal**: Tool registration without gateway/MCP restarts
+- [x] Postgres `tools` schema + `org_id`, `last_synced_at`, `config`
+- [x] `POST /v1/tools/register`, `POST /v1/tools` (list), `POST /v1/tools/sync`
+- [x] `GET /v1/tools/status` health timestamp
+- [x] 30s refresh loop → Qdrant vectorization via gRPC `RegisterTool`
+- [x] Connector type in `/v1/tools` list + live health probes
+- [ ] `DELETE /v1/tools/{id}` disable endpoint (not implemented)
 
-
-### Phase 3: Multi-Connector Framework (📋 PLANNED Q2)
+### Phase 3: Multi-Connector Framework (🟠 PARTIAL)
 **Goal**: Support non-MCP tool types
-- [ ] Add tool connector abstraction layer in engine
-- [ ] REST API connector (HTTP GET/POST with schema validation)
-- [ ] GraphQL connector (query execution + response mapping)
-- [ ] SQL connector (direct DB query routing with RBAC)
-- [ ] gRPC connector (service call marshaling)
-- [ ] Webhook connector (async callbacks with job queue)
-- [ ] ML inference connector (model API calls: Hugging Face, Replicate, etc.)
+- [x] Connector abstraction (`internal/connectors/`)
+- [x] **Implemented:** Core (native), MCP, REST, SQL
+- [ ] **Not implemented:** GraphQL, Webhook, gRPC, ML inference connectors
+- [x] Core tools (`read_database`, `memzent_search`) — currently mock responses in `main.go`
 
-### Phase 4: Advanced Orchestration (📋 PLANNED Q3)
+### Phase 4: Advanced Orchestration (🟠 PARTIAL)
 **Goal**: Enable multi-step AI workflows
-- [ ] Tool chaining (output of tool N → input of tool N+1)
-- [ ] Async job queue (Bull/RabbitMQ) for long-running tools
-- [ ] Result streaming (SSE/WebSocket for live progress)
-- [ ] Tool composition (input/output schema matching)
-- [ ] Error recovery & retry logic
-
-### Phase 4: Advanced Orchestration (📋 PLANNED Q3)
-**Goal**: Enable multi-step AI workflows
-- [ ] Tool chaining (output of tool N → input of tool N+1)
-- [ ] Async job queue (Bull/RabbitMQ) for long-running tools
-- [ ] Result streaming (SSE/WebSocket for live progress)
-- [ ] Tool composition (input/output schema matching)
-- [ ] Error recovery & retry logic
+- [x] `PlanToolChain` gRPC + sequential execution in engine
+- [x] LLM parameter fitting (`fitToolParameters`) from tool JSON Schema
+- [x] Model-scoped cache keys (`org:<id>:m:<model>:...`)
+- [x] SSE endpoint — **simulated** typewriter (full response generated first, word-split)
+- [x] Tool chaining trigger — **keyword heuristic** ("then", "after", "chain") in `engine.go`
+- [ ] Provider-native streaming (true token-by-token)
+- [ ] Async job queue for long-running tools
+- [ ] Error recovery & exponential backoff on tool failures
 
 ### Phase 5: BYO LLM Providers
 **Goal**: Enable users to bring their own LLM providers
