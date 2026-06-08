@@ -34,4 +34,8 @@ test-memory:
 test-entity:
 	cd services/gateway && go run scripts/test_entity_extraction/main.go
 
-.PHONY: gen-proto up down test-flow test-cache test-memory test-entity
+# Run full Evolution Pipeline integration test E1-E5 (requires MEMZENT_API_KEY + running gateway)
+test-evolution:
+	cd services/gateway && go run scripts/test_evolution/main.go
+
+.PHONY: gen-proto up down test-flow test-cache test-memory test-entity test-evolution
