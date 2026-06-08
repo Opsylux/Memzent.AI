@@ -38,6 +38,13 @@ const navItems = [
   { name: 'Settings', href: '/settings', icon: Settings },
 ]
 
+// Items only visible to org admins (not viewers/members)
+const adminItems = [
+  { name: 'Providers', href: '/providers', icon: Cpu },
+  { name: 'API Keys', href: '/keys', icon: Key },
+  { name: 'Settings', href: '/settings', icon: Settings },
+]
+
 const staffItems = [
   { name: 'Global Nodes', href: '/admin/nodes', icon: Shield },
   { name: 'System Logs', href: '/admin/logs', icon: Database },
@@ -92,7 +99,15 @@ export function Sidebar({ orgName, tier, initials, role }: SidebarProps) {
       {/* Navigation */}
       <nav className="flex-1 space-y-2">
         <div className="text-[10px] font-black uppercase text-white/20 tracking-[0.2em] mb-4 px-4 italic">Navigation</div>
-        {navItems.map((item) => {
+        {navItems
+          .filter((item) => {
+            // Hide admin-only items from viewer role
+            if (role === 'viewer') {
+              return !adminItems.some(ai => ai.href === item.href)
+            }
+            return true
+          })
+          .map((item) => {
           const isActive = pathname === item.href
           return (
             <Link

@@ -777,13 +777,12 @@ func main() {
 	startupTime := time.Now()
 	mux.Handle("/v1/stats", middleware(requireScope("audit:read", func(w http.ResponseWriter, r *http.Request) {
 		orgID, _ := r.Context().Value("org_id").(string)
+		userRole, _ := r.Context().Value("user_role").(string)
 
 		var reqs, hits uint64
 		if auditLogger != nil {
-			// Pull durable stats from Postgres
 			reqs, hits = auditLogger.GetCacheStats(orgID)
 		} else {
-			// Fallback to ephemeral in-memory stats
 			reqs, hits = memzentEngine.GetStats(orgID)
 		}
 
@@ -792,22 +791,26 @@ func main() {
 			tokenBalance, _ = billingLedger.GetBalance(r.Context(), orgID)
 		}
 
-		// Build list of active provider names
-		activeProviders := make([]string, 0, len(providers))
-		for name := range providers {
-			activeProviders = append(activeProviders, name)
+		stats := map[string]any{
+			"total_requests": reqs,
+			"cache_hits":     hits,
+			"token_balance":  tokenBalance,
+			"status":         "online",
+			"org_id":         orgID,
 		}
 
-		stats := map[string]any{
-			"total_requests":   reqs,
-			"cache_hits":       hits,
-			"token_balance":    tokenBalance,
-			"uptime_seconds":   int(time.Since(startupTime).Seconds()),
-			"status":           "online",
-			"org_id":           orgID,
-			"active_providers": activeProviders,
-			"default_provider": defaultProvider,
+		// Platform-wide info only visible to admin/platform_staff
+		if userRole == "admin" || userRole == "platform_staff" {
+			activeProviders := make([]string, 0, len(providers))
+			for name := range providers {
+				activeProviders = append(activeProviders, name)
+			}
+			stats["uptime_seconds"] = int(time.Since(startupTime).Seconds())
+			stats["active_providers"] = activeProviders
+			stats["default_provider"] = defaultProvider
+			stats["provider_count"] = len(providers)
 		}
+
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(stats)
 	})))
@@ -1320,6 +1323,11 @@ func main() {
 	})))
 
 	// Cache Flush API: invalidate stale canonical/semantic cache entries for an org
+	// Query params:
+	//   ?scope=valkey   — flush Valkey keys only (fast, preserves Qdrant + DB)
+	//   ?scope=db       — flush Valkey + persistent DB cache (preserves Qdrant)
+	//   ?scope=all      — flush Valkey + DB + Qdrant prompt vectors (full reset)
+	//   (no scope)      — defaults to "db" (safe: preserves semantic history)
 	mux.Handle("/v1/cache/flush", middleware(requireScope("tools:write", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
@@ -1336,7 +1344,12 @@ func main() {
 			return
 		}
 
-		// Flush all cache keys for this org (literal, canonical, semantic)
+		scope := r.URL.Query().Get("scope")
+		if scope == "" {
+			scope = "db" // safe default: flush valkey + DB, preserve Qdrant
+		}
+
+		// Always flush Valkey cache keys for this org
 		pattern := fmt.Sprintf("org:%s:*", orgID)
 		deleted, err := vCache.FlushByPattern(r.Context(), pattern)
 		if err != nil {
@@ -1345,31 +1358,39 @@ func main() {
 			return
 		}
 
-		// Purge persistent DB cache for this org
+		// Purge persistent DB cache for this org (unless scope=valkey)
 		var dbDeleted int64
-		if rbacClient != nil && rbacClient.GetDB() != nil {
-			result, dbErr := rbacClient.GetDB().ExecContext(r.Context(),
-				"DELETE FROM persistent_cache WHERE org_id = $1", orgID)
-			if dbErr != nil {
-				slog.Warn("Persistent cache flush failed (non-fatal)", "error", dbErr, "org_id", orgID)
-			} else if result != nil {
-				dbDeleted, _ = result.RowsAffected()
+		if scope != "valkey" {
+			if rbacClient != nil && rbacClient.GetDB() != nil {
+				result, dbErr := rbacClient.GetDB().ExecContext(r.Context(),
+					"DELETE FROM persistent_cache WHERE org_id = $1", orgID)
+				if dbErr != nil {
+					slog.Warn("Persistent cache flush failed (non-fatal)", "error", dbErr, "org_id", orgID)
+				} else if result != nil {
+					dbDeleted, _ = result.RowsAffected()
+				}
 			}
 		}
 
-		// Flush Qdrant prompts_collection for this org (semantic Stage 2 cache)
-		if rClient != nil {
+		// Flush Qdrant prompts_collection (only when scope=all — destructive operation)
+		var qdrantFlushed bool
+		if scope == "all" && rClient != nil {
 			if flushErr := rClient.FlushPromptCache(r.Context(), orgID); flushErr != nil {
 				slog.Warn("Qdrant prompt cache flush failed (non-fatal)", "error", flushErr, "org_id", orgID)
+			} else {
+				qdrantFlushed = true
 			}
 		}
 
-		slog.Info("🗑️ Cache flushed", "org_id", orgID, "valkey_keys_deleted", deleted, "db_rows_deleted", dbDeleted)
+		slog.Info("🗑️ Cache flushed", "org_id", orgID, "scope", scope,
+			"valkey_keys_deleted", deleted, "db_rows_deleted", dbDeleted, "qdrant_flushed", qdrantFlushed)
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]interface{}{
 			"success":             true,
+			"scope":              scope,
 			"valkey_keys_deleted": deleted,
 			"db_rows_deleted":     dbDeleted,
+			"qdrant_flushed":      qdrantFlushed,
 			"org_id":              orgID,
 		})
 	})))
