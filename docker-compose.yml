@@ -75,6 +75,8 @@ services:
       start_period: 60s
 
   # Memzent Gateway (Go) - Optimized
+  # Uncomment and configure to run in Docker.
+  # Copy .env.example to .env and fill in your keys.
   # gateway:
   #   build:
   #     context: .
@@ -87,27 +89,12 @@ services:
   #     - ./proto:/proto
   #     - ./migrations:/app/migrations
   #     - go_modules:/go/pkg/mod
+  #   env_file: .env
   #   environment:
   #     - VALKEY_URL=valkey:6379
-  #     #- VALKEY_URL=127.0.0.1:6379
-  #     - OPENAI_MODEL=gpt-5.1
-  #     - JWT_SECRET=memzent-enterprise-secret-2026
-  #     - JWKS_URL=https://qjzhikynowfbswcjwvhu.supabase.co/auth/v1/jwks
-  #     - OLLAMA_ENABLED=true
   #     - OLLAMA_URL=http://host.docker.internal:11434
   #     - OLLAMA_MODEL=llama3.2
-  #     - OPENAI_API_KEY=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
-  #     - STRIPE_SECRET_KEY=sk_test_51TJcl8EDOc5eVcRWk20jOFZKgYLTAcbYpgOGiIeUGPQcYGPVzu7Xw0zfIg0ugwGnRiPd5coljmqOekJxICwR6nn5000Pgh5dui
-  #     - STRIPE_WEBHOOK_SECRET=whsec_1234567890
-  #     - STRIPE_PRO_PRODUCT_ID=prod_UMQ6bFWBDSWT7u
-  #     - STRIPE_BIZ_PRODUCT_ID=prod_UMQ6Wf66UAVBNC
-  #     - STRIPE_PRO_PRICE_ID=price_1TNhGOEDOc5eVcRWYgWqKiUK
-  #     - STRIPE_BIZ_PRICE_ID=price_1TNhHNEDOc5eVcRWxqTYbmTn
-  #     - STRIPE_SUCCESS_URL=http://localhost:3000/dashboard/billing?session_id={CHECKOUT_SESSION_ID}
-  #     - STRIPE_CANCEL_URL=http://localhost:3000/dashboard/billing?status=cancel
-  #     - POSTGRES_URL=postgresql://postgres.qjzhikynowfbswcjwvhu:ZgJg3B0ezU2Z2coO@aws-1-us-east-1.pooler.supabase.com:6543/postgres?binary_parameters=yes
-  #     - SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFqemhpa3lub3dmYnN3Y2p3dmh1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU1NDIxNjYsImV4cCI6MjA5MTExODE2Nn0.rX5Sq3iGwaZkA2zs1bFCQONTC8Q9mSvybIlkH6NvOKU
-  #   # OPTIMIZED: Checks for mod file, compiles to binary, and fires up instantly!
+  #     - ROUTER_URL=router:50051
   #   command: >
   #     sh -c "if [ ! -f go.mod ]; then go mod init memzent-gateway; fi &&
   #            protoc -I/proto --go_out=internal/router --go_opt=paths=source_relative --go-grpc_out=internal/router --go-grpc_opt=paths=source_relative /proto/router.proto &&
@@ -127,14 +114,10 @@ services:
     working_dir: /app
     ports:
       - "3002:3000"
+    env_file: .env
     environment:
-      #- NEXT_PUBLIC_GATEWAY_URL=http://localhost:8080
       - NEXT_PUBLIC_GATEWAY_URL=http://host.docker.internal:8080
-      #- GATEWAY_INTERNAL_URL=http://memzent-gateway:8080
       - GATEWAY_INTERNAL_URL=http://host.docker.internal:8080
-      - NEXT_PUBLIC_SUPABASE_URL=https://qjzhikynowfbswcjwvhu.supabase.co
-      - NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFqemhpa3lub3dmYnN3Y2p3dmh1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU1NDIxNjYsImV4cCI6MjA5MTExODE2Nn0.rX5Sq3iGwaZkA2zs1bFCQONTC8Q9mSvybIlkH6NvOKU
-      - NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=pk_test_51TJcl8EDOc5eVcRWBTjNQcd75tzlETcasRx8Pb5Yu7r4Jd4pixLGKlIR8SMZx6sNH71JJawcaEjaptkVfcU9kK88003DPuaRh9
     command: >
       sh -c "bun install && bun dev"
     healthcheck:
@@ -157,12 +140,11 @@ services:
     working_dir: /app
     ports:
       - "5173:5173"
+    env_file: .env
     environment:
       - VITE_APP_URL=http://localhost:3002
       - VITE_GATEWAY_URL=http://localhost:8080
       - GATEWAY_INTERNAL_URL=http://memzent-gateway:8080
-      - VITE_SUPABASE_URL=https://qjzhikynowfbswcjwvhu.supabase.co
-      - VITE_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFqemhpa3lub3dmYnN3Y2p3dmh1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU1NDIxNjYsImV4cCI6MjA5MTExODE2Nn0.rX5Sq3iGwaZkA2zs1bFCQONTC8Q9mSvybIlkH6NvOKU
     command: >
       sh -c "npm install && npm run dev -- --host"
     healthcheck:
