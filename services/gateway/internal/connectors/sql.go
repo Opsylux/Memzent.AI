@@ -18,7 +18,7 @@ type SQLConnector struct {
 }
 
 // Dangerous SQL statements that modify data or schema
-var dangerousStmtPattern = regexp.MustCompile(`(?i)^\s*(INSERT|UPDATE|DELETE|DROP|ALTER|TRUNCATE|CREATE|GRANT|REVOKE|EXEC|EXECUTE)\b`)
+var dangerousStmtPattern = regexp.MustCompile(`(?i)\b(INSERT|UPDATE|DELETE|DROP|ALTER|TRUNCATE|CREATE|GRANT|REVOKE|EXEC|EXECUTE)\b`)
 
 // Multiple statement detection (prevents chaining attacks)
 var multiStmtPattern = regexp.MustCompile(`;\s*\S`)
