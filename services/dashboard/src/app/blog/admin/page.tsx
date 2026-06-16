@@ -28,7 +28,7 @@ export default function BlogAdminPage() {
   };
 
   const safeBlogHref = (s: string): string => {
-    const sanitized = s.replace(/[^a-z0-9\-]/g, "");
+    const sanitized = generateSlug(s);
     return sanitized ? `/blog/${sanitized}` : "#";
   };
 
