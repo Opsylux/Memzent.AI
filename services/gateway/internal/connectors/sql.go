@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"log/slog"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -13,12 +14,20 @@ import (
 type SQLConnector struct {
 	db         *sql.DB
 	connString string
+	readOnly   bool
 }
+
+// Dangerous SQL statements that modify data or schema
+var dangerousStmtPattern = regexp.MustCompile(`(?i)\b(INSERT|UPDATE|DELETE|DROP|ALTER|TRUNCATE|CREATE|GRANT|REVOKE|EXEC|EXECUTE)\b`)
+
+// Multiple statement detection (prevents chaining attacks)
+var multiStmtPattern = regexp.MustCompile(`;\s*\S`)
 
 // NewSQLConnector creates a SQL connector for a database
 func NewSQLConnector(connString string) *SQLConnector {
 	return &SQLConnector{
 		connString: connString,
+		readOnly:   true,
 	}
 }
 
@@ -80,7 +89,30 @@ func (c *SQLConnector) Execute(ctx context.Context, req *ExecutionRequest) (*Exe
 		}, nil
 	}
 
-	// Execute query
+	// Guard: reject multiple statements (prevents injection chaining)
+	if multiStmtPattern.MatchString(query) {
+		return &ExecutionResponse{
+			ToolID:   req.ToolID,
+			Status:   "error",
+			Error:    "multiple SQL statements are not allowed",
+			Duration: int(time.Since(start).Milliseconds()),
+		}, nil
+	}
+
+	// Guard: reject write/DDL operations when in read-only mode
+	if c.readOnly && dangerousStmtPattern.MatchString(query) {
+		return &ExecutionResponse{
+			ToolID:   req.ToolID,
+			Status:   "error",
+			Error:    "write operations are not permitted — SQL connector is read-only",
+			Duration: int(time.Since(start).Milliseconds()),
+		}, nil
+	}
+
+	slog.Info("SQL connector executing query", "tool_id", req.ToolID, "query_length", len(query))
+
+	// Execute query with row limit
+	const maxRows = 1000
 	rows, err := c.db.QueryContext(ctx, query)
 	if err != nil {
 		if ctx.Err() == context.DeadlineExceeded {
@@ -111,9 +143,13 @@ func (c *SQLConnector) Execute(ctx context.Context, req *ExecutionRequest) (*Exe
 		}, nil
 	}
 
-	// Fetch all rows as maps
+	// Fetch all rows as maps (capped at maxRows)
 	var result []map[string]interface{}
 	for rows.Next() {
+		if len(result) >= maxRows {
+			slog.Warn("SQL query hit row limit", "tool_id", req.ToolID, "max_rows", maxRows)
+			break
+		}
 		values := make([]interface{}, len(cols))
 		valuePtrs := make([]interface{}, len(cols))
 		for i := range cols {

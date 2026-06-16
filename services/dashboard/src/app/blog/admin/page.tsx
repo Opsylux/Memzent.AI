@@ -23,7 +23,13 @@ export default function BlogAdminPage() {
     return text
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-|-$/g, "");
+      .replace(/^-|-$/g, "")
+      .slice(0, 128);
+  };
+
+  const safeBlogHref = (s: string): string => {
+    const sanitized = generateSlug(s);
+    return sanitized ? `/blog/${sanitized}` : "#";
   };
 
   const handleTitleChange = (val: string) => {
@@ -232,7 +238,7 @@ export default function BlogAdminPage() {
           <div className="flex items-center justify-between">
             <label className="text-[10px] font-black uppercase tracking-widest text-white/40">Content (Markdown)</label>
             <Link
-              href={slug ? `/blog/${slug}` : "#"}
+              href={safeBlogHref(slug)}
               target="_blank"
               className="flex items-center gap-1 text-[10px] text-white/30 hover:text-memzent-glow transition-colors"
             >
