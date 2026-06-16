@@ -10,6 +10,9 @@ on:
     paths:
       - 'website/**'
 
+permissions:
+  contents: read
+
 jobs:
   build:
     name: Build & Type Check
@@ -38,6 +41,8 @@ jobs:
   lint:
     name: Lint
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v4
 

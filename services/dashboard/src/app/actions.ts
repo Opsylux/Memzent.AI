@@ -8,6 +8,15 @@ import crypto from 'crypto'
 
 const GATEWAY_URL = process.env.GATEWAY_INTERNAL_URL || process.env.NEXT_PUBLIC_GATEWAY_URL || 'http://localhost:8080';
 
+/** Validate a resource ID (session, tool, webhook) to prevent SSRF via path traversal. */
+function assertSafeResourceId(id: string, label = "resource"): string {
+    const value = id?.trim()
+    if (!value || !/^[A-Za-z0-9_\-:.]{1,256}$/.test(value)) {
+        throw new Error(`Invalid ${label} id`)
+    }
+    return value
+}
+
 /**
  * Build standard headers for Gateway calls.
  * Injects org_id from Supabase session so the Gateway can scope responses.
@@ -492,7 +501,8 @@ export async function createSession(orgId: string, title?: string) {
 export async function getSessionMessages(sessionId: string, orgId?: string) {
     try {
         const headers = await gatewayHeaders(orgId)
-        const res = await fetch(`${GATEWAY_URL}/v1/sessions/${sessionId}/messages`, {
+        const safeId = encodeURIComponent(assertSafeResourceId(sessionId, "session"))
+        const res = await fetch(`${GATEWAY_URL}/v1/sessions/${safeId}/messages`, {
             method: "GET",
             headers,
             cache: 'no-store'
@@ -509,7 +519,8 @@ export async function getSessionMessages(sessionId: string, orgId?: string) {
 export async function deleteSession(sessionId: string, orgId?: string) {
     try {
         const headers = await gatewayHeaders(orgId)
-        const res = await fetch(`${GATEWAY_URL}/v1/sessions/${sessionId}`, {
+        const safeId = encodeURIComponent(assertSafeResourceId(sessionId, "session"))
+        const res = await fetch(`${GATEWAY_URL}/v1/sessions/${safeId}`, {
             method: "DELETE",
             headers,
             cache: 'no-store'
@@ -562,7 +573,8 @@ export async function getContextAnalytics(orgId?: string) {
 export async function getTool(toolId: string, orgId?: string) {
     try {
         const headers = await gatewayHeaders(orgId)
-        const res = await fetch(`${GATEWAY_URL}/v1/tools/${toolId}`, {
+        const safeId = encodeURIComponent(assertSafeResourceId(toolId, "tool"))
+        const res = await fetch(`${GATEWAY_URL}/v1/tools/${safeId}`, {
             method: "GET",
             headers,
             cache: 'no-store'
@@ -577,7 +589,8 @@ export async function getTool(toolId: string, orgId?: string) {
 
 export async function updateTool(toolId: string, data: Record<string, any>, orgId?: string) {
     const headers = await gatewayHeaders(orgId)
-    const res = await fetch(`${GATEWAY_URL}/v1/tools/${toolId}`, {
+    const safeId = encodeURIComponent(assertSafeResourceId(toolId, "tool"))
+    const res = await fetch(`${GATEWAY_URL}/v1/tools/${safeId}`, {
         method: "PUT",
         headers,
         body: JSON.stringify(data),
@@ -592,7 +605,8 @@ export async function updateTool(toolId: string, data: Record<string, any>, orgI
 
 export async function deleteTool(toolId: string, orgId?: string) {
     const headers = await gatewayHeaders(orgId)
-    const res = await fetch(`${GATEWAY_URL}/v1/tools/${toolId}`, {
+    const safeId = encodeURIComponent(assertSafeResourceId(toolId, "tool"))
+    const res = await fetch(`${GATEWAY_URL}/v1/tools/${safeId}`, {
         method: "DELETE",
         headers,
         cache: 'no-store'
@@ -704,7 +718,8 @@ export async function createWebhook(data: { url: string; events: string[]; descr
 
 export async function updateWebhook(webhookId: string, data: Record<string, any>, orgId?: string) {
     const headers = await gatewayHeaders(orgId)
-    const res = await fetch(`${GATEWAY_URL}/v1/webhooks/${webhookId}`, {
+    const safeId = encodeURIComponent(assertSafeResourceId(webhookId, "webhook"))
+    const res = await fetch(`${GATEWAY_URL}/v1/webhooks/${safeId}`, {
         method: "PUT",
         headers,
         body: JSON.stringify(data),
@@ -719,7 +734,8 @@ export async function updateWebhook(webhookId: string, data: Record<string, any>
 
 export async function deleteWebhook(webhookId: string, orgId?: string) {
     const headers = await gatewayHeaders(orgId)
-    const res = await fetch(`${GATEWAY_URL}/v1/webhooks/${webhookId}`, {
+    const safeId = encodeURIComponent(assertSafeResourceId(webhookId, "webhook"))
+    const res = await fetch(`${GATEWAY_URL}/v1/webhooks/${safeId}`, {
         method: "DELETE",
         headers,
         cache: 'no-store'
@@ -734,7 +750,8 @@ export async function deleteWebhook(webhookId: string, orgId?: string) {
 export async function getWebhookDeliveries(webhookId: string, orgId?: string) {
     try {
         const headers = await gatewayHeaders(orgId)
-        const res = await fetch(`${GATEWAY_URL}/v1/webhooks/${webhookId}/deliveries`, {
+        const safeId = encodeURIComponent(assertSafeResourceId(webhookId, "webhook"))
+        const res = await fetch(`${GATEWAY_URL}/v1/webhooks/${safeId}/deliveries`, {
             method: "GET",
             headers,
             cache: 'no-store'
@@ -752,10 +769,11 @@ export async function getWebhookDeliveries(webhookId: string, orgId?: string) {
 export async function getWorkflows(orgId?: string, status?: string) {
     try {
         const headers = await gatewayHeaders(orgId)
-        const url = status
-            ? `${GATEWAY_URL}/v1/workflows?status=${status}`
-            : `${GATEWAY_URL}/v1/workflows`
-        const res = await fetch(url, { cache: 'no-store', headers });
+        const url = new URL('/v1/workflows', GATEWAY_URL)
+        if (status) {
+            url.searchParams.set('status', status)
+        }
+        const res = await fetch(url.toString(), { cache: 'no-store', headers });
         if (!res.ok) return [];
         return res.json();
     } catch (e) {
