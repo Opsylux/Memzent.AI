@@ -8,6 +8,14 @@ import crypto from 'crypto'
 
 const GATEWAY_URL = process.env.GATEWAY_INTERNAL_URL || process.env.NEXT_PUBLIC_GATEWAY_URL || 'http://localhost:8080';
 
+function assertSafeWebhookId(webhookId: string): string {
+    const value = webhookId?.trim()
+    if (!value || !/^[A-Za-z0-9_-]{1,128}$/.test(value)) {
+        throw new Error("Invalid webhook id")
+    }
+    return value
+}
+
 /**
  * Build standard headers for Gateway calls.
  * Injects org_id from Supabase session so the Gateway can scope responses.
@@ -704,7 +712,8 @@ export async function createWebhook(data: { url: string; events: string[]; descr
 
 export async function updateWebhook(webhookId: string, data: Record<string, any>, orgId?: string) {
     const headers = await gatewayHeaders(orgId)
-    const res = await fetch(`${GATEWAY_URL}/v1/webhooks/${webhookId}`, {
+    const safeWebhookId = encodeURIComponent(assertSafeWebhookId(webhookId))
+    const res = await fetch(`${GATEWAY_URL}/v1/webhooks/${safeWebhookId}`, {
         method: "PUT",
         headers,
         body: JSON.stringify(data),
@@ -719,7 +728,8 @@ export async function updateWebhook(webhookId: string, data: Record<string, any>
 
 export async function deleteWebhook(webhookId: string, orgId?: string) {
     const headers = await gatewayHeaders(orgId)
-    const res = await fetch(`${GATEWAY_URL}/v1/webhooks/${webhookId}`, {
+    const safeWebhookId = encodeURIComponent(assertSafeWebhookId(webhookId))
+    const res = await fetch(`${GATEWAY_URL}/v1/webhooks/${safeWebhookId}`, {
         method: "DELETE",
         headers,
         cache: 'no-store'
@@ -734,7 +744,8 @@ export async function deleteWebhook(webhookId: string, orgId?: string) {
 export async function getWebhookDeliveries(webhookId: string, orgId?: string) {
     try {
         const headers = await gatewayHeaders(orgId)
-        const res = await fetch(`${GATEWAY_URL}/v1/webhooks/${webhookId}/deliveries`, {
+        const safeWebhookId = encodeURIComponent(assertSafeWebhookId(webhookId))
+        const res = await fetch(`${GATEWAY_URL}/v1/webhooks/${safeWebhookId}/deliveries`, {
             method: "GET",
             headers,
             cache: 'no-store'
@@ -752,10 +763,11 @@ export async function getWebhookDeliveries(webhookId: string, orgId?: string) {
 export async function getWorkflows(orgId?: string, status?: string) {
     try {
         const headers = await gatewayHeaders(orgId)
-        const url = status
-            ? `${GATEWAY_URL}/v1/workflows?status=${status}`
-            : `${GATEWAY_URL}/v1/workflows`
-        const res = await fetch(url, { cache: 'no-store', headers });
+        const url = new URL('/v1/workflows', GATEWAY_URL)
+        if (status) {
+            url.searchParams.set('status', status)
+        }
+        const res = await fetch(url.toString(), { cache: 'no-store', headers });
         if (!res.ok) return [];
         return res.json();
     } catch (e) {
