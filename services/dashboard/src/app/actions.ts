@@ -11,7 +11,7 @@ const GATEWAY_URL = process.env.GATEWAY_INTERNAL_URL || process.env.NEXT_PUBLIC_
 /** Validate a resource ID (session, tool, webhook) to prevent SSRF via path traversal. */
 function assertSafeResourceId(id: string, label = "resource"): string {
     const value = id?.trim()
-    if (!value || !/^[A-Za-z0-9_\-:.]{1,256}$/.test(value)) {
+    if (!value || !/^[A-Za-z0-9_-]{1,256}$/.test(value)) {
         throw new Error(`Invalid ${label} id`)
     }
     return value
