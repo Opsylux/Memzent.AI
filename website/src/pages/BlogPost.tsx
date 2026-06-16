@@ -1,13 +1,34 @@
 import { useParams, Link } from "react-router-dom";
 import { ArrowLeft, Calendar, Clock, User } from "lucide-react";
+import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { Helmet } from "react-helmet-async";
-import { getPostBySlug, getAllPosts, renderMarkdown } from "../lib/blog";
+import { getPostBySlug, getPostBySlugAsync, getAllPostsAsync, renderMarkdown } from "../lib/blog";
 import { BLOG_CATEGORIES } from "../lib/blog-types";
+import type { BlogPost } from "../lib/blog-types";
 
 export default function BlogPostPage() {
   const { slug } = useParams<{ slug: string }>();
-  const post = slug ? getPostBySlug(slug) : null;
+  const [post, setPost] = useState<BlogPost | null>(slug ? getPostBySlug(slug) : null);
+  const [loading, setLoading] = useState(!post);
+
+  useEffect(() => {
+    if (!slug) return;
+    if (post) return;
+    setLoading(true);
+    getPostBySlugAsync(slug).then((p) => {
+      setPost(p);
+      setLoading(false);
+    });
+  }, [slug]);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-memzent-dark pt-24 flex items-center justify-center">
+        <div className="text-white/30 text-sm">Loading...</div>
+      </div>
+    );
+  }
 
   if (!post) {
     return (
@@ -26,17 +47,23 @@ export default function BlogPostPage() {
   const cat = BLOG_CATEGORIES[post.category] || BLOG_CATEGORIES.engineering;
 
   // Find related posts
-  const allPosts = getAllPosts();
-  const related = allPosts
-    .filter((p) => p.slug !== post.slug)
-    .map((p) => {
-      const sharedTags = p.tags.filter((t) => post.tags.includes(t)).length;
-      const sameCategory = p.category === post.category ? 1 : 0;
-      return { post: p, score: sharedTags * 2 + sameCategory };
-    })
-    .sort((a, b) => b.score - a.score)
-    .slice(0, 2)
-    .map((r) => r.post);
+  const [related, setRelated] = useState<BlogPost[]>([]);
+  useEffect(() => {
+    if (!post) return;
+    getAllPostsAsync().then((allPosts) => {
+      const rel = allPosts
+        .filter((p) => p.slug !== post.slug)
+        .map((p) => {
+          const sharedTags = p.tags.filter((t) => post.tags.includes(t)).length;
+          const sameCategory = p.category === post.category ? 1 : 0;
+          return { post: p, score: sharedTags * 2 + sameCategory };
+        })
+        .sort((a, b) => b.score - a.score)
+        .slice(0, 2)
+        .map((r) => r.post);
+      setRelated(rel);
+    });
+  }, [post]);
 
   return (
     <div className="min-h-screen bg-memzent-dark pt-24">

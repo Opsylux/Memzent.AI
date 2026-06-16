@@ -1,8 +1,9 @@
 import { redirect } from "next/navigation";
 
-// Blog has moved to the public website (memzent.ai/blog)
+// Individual blog posts are viewed on the public website
+// Edit links route to /blog/admin?slug=...
 export default async function BlogPostPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
-  redirect(`https://memzent.ai/blog/${slug}`);
+  redirect(`/blog/admin?slug=${encodeURIComponent(slug)}`);
 }
 

@@ -2,11 +2,17 @@ import { Link } from "react-router-dom";
 import { Calendar, Clock, ArrowRight, BookOpen } from "lucide-react";
 import { motion } from "framer-motion";
 import { Helmet } from "react-helmet-async";
-import { getAllPosts } from "../lib/blog";
+import { useState, useEffect } from "react";
+import { getAllPosts, getAllPostsAsync } from "../lib/blog";
 import { BLOG_CATEGORIES } from "../lib/blog-types";
+import type { BlogPost } from "../lib/blog-types";
 
 export default function BlogListPage() {
-  const posts = getAllPosts();
+  const [posts, setPosts] = useState<BlogPost[]>(getAllPosts());
+
+  useEffect(() => {
+    getAllPostsAsync().then(setPosts);
+  }, []);
 
   return (
     <div className="min-h-screen bg-memzent-dark pt-24">

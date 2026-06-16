@@ -1,4 +1,8 @@
+import { createClient } from "@supabase/supabase-js";
 import type { BlogPost } from "./blog-types";
+
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || "";
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || "";
 
 function parseFrontmatter(raw: string): { meta: Record<string, string>; content: string } {
   const meta: Record<string, string> = {};
@@ -63,15 +67,109 @@ function loadPosts(): BlogPost[] {
   return posts;
 }
 
-// Cached posts (loaded once at module init since they're build-time static)
-const allPosts = loadPosts();
+// Build-time static posts from markdown files
+const staticPosts = loadPosts();
 
+// Runtime cache for DB posts
+let dbPostsCache: BlogPost[] | null = null;
+let dbFetchPromise: Promise<BlogPost[]> | null = null;
+
+async function fetchDBPosts(): Promise<BlogPost[]> {
+  if (!supabaseUrl || !supabaseAnonKey) return [];
+  try {
+    const supabase = createClient(supabaseUrl, supabaseAnonKey);
+    const { data, error } = await supabase
+      .from("blog_posts")
+      .select("slug, title, description, content, author, author_avatar, cover_image, category, tags, published_at, updated_at")
+      .eq("published", true)
+      .order("published_at", { ascending: false });
+
+    if (error || !data) return [];
+
+    return data.map((row: Record<string, unknown>) => ({
+      slug: row.slug as string,
+      title: row.title as string,
+      description: (row.description as string) || "",
+      content: (row.content as string) || "",
+      author: (row.author as string) || "Memzent Team",
+      author_avatar: row.author_avatar as string | undefined,
+      cover_image: row.cover_image as string | undefined,
+      category: ((row.category as string) || "engineering") as BlogPost["category"],
+      tags: (row.tags as string[]) || [],
+      published_at: row.published_at as string,
+      updated_at: row.updated_at as string | undefined,
+      reading_time: estimateReadingTime((row.content as string) || ""),
+    }));
+  } catch {
+    return [];
+  }
+}
+
+function mergePosts(filePosts: BlogPost[], dbPosts: BlogPost[]): BlogPost[] {
+  const slugSet = new Set<string>();
+  const merged: BlogPost[] = [];
+
+  // DB posts take precedence over file posts with the same slug
+  for (const post of dbPosts) {
+    if (!slugSet.has(post.slug)) {
+      slugSet.add(post.slug);
+      merged.push(post);
+    }
+  }
+  for (const post of filePosts) {
+    if (!slugSet.has(post.slug)) {
+      slugSet.add(post.slug);
+      merged.push(post);
+    }
+  }
+
+  merged.sort((a, b) => new Date(b.published_at).getTime() - new Date(a.published_at).getTime());
+  return merged;
+}
+
+/** Get all posts (static + database). Returns static immediately, fetches DB in background. */
 export function getAllPosts(): BlogPost[] {
-  return allPosts;
+  // If we already have DB posts cached, return merged
+  if (dbPostsCache !== null) {
+    return mergePosts(staticPosts, dbPostsCache);
+  }
+
+  // Kick off DB fetch (non-blocking) for next call
+  if (!dbFetchPromise) {
+    dbFetchPromise = fetchDBPosts().then((posts) => {
+      dbPostsCache = posts;
+      return posts;
+    });
+  }
+
+  return staticPosts;
+}
+
+/** Async version that waits for DB posts */
+export async function getAllPostsAsync(): Promise<BlogPost[]> {
+  if (dbPostsCache !== null) {
+    return mergePosts(staticPosts, dbPostsCache);
+  }
+
+  if (!dbFetchPromise) {
+    dbFetchPromise = fetchDBPosts().then((posts) => {
+      dbPostsCache = posts;
+      return posts;
+    });
+  }
+
+  const dbPosts = await dbFetchPromise;
+  return mergePosts(staticPosts, dbPosts);
 }
 
 export function getPostBySlug(slug: string): BlogPost | null {
-  return allPosts.find((p) => p.slug === slug) || null;
+  const all = getAllPosts();
+  return all.find((p) => p.slug === slug) || null;
+}
+
+export async function getPostBySlugAsync(slug: string): Promise<BlogPost | null> {
+  const all = await getAllPostsAsync();
+  return all.find((p) => p.slug === slug) || null;
 }
 
 /**
