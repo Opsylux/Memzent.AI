@@ -8,9 +8,9 @@
 //   - Version-tagged cache keys: a per-org cache version is embedded in cache
 //     keys. Bumping it (on policy/config/tool changes) makes prior entries
 //     unreachable so they fall away through natural TTL eviction.
-//   - Preference drift detection: a preference fingerprint is stored with each
-//     entry; on a cache hit the current fingerprint is compared and, if it has
-//     drifted beyond a threshold, the hit is treated as a miss.
+//   - Preference isolation: a preference tag (role + system prompt) is embedded
+//     in the cache key, so callers with different preferences never share (or
+//     overwrite) each other's cached answers.
 package invalidation
 
 import (
@@ -56,7 +56,6 @@ type Result struct {
 type Store interface {
 	Incr(ctx context.Context, key string) (int64, error)
 	GetRaw(ctx context.Context, key string) (string, error)
-	SetRaw(ctx context.Context, key, value string, ttl time.Duration) error
 	SAdd(ctx context.Context, key string, ttl time.Duration, members ...string) error
 	SPopAll(ctx context.Context, key string) ([]string, error)
 	DelKeys(ctx context.Context, keys ...string) (int64, error)
@@ -65,10 +64,9 @@ type Store interface {
 // Invalidator implements the engine-facing invalidation behaviour and the
 // operator-facing event handling. It is safe for concurrent use.
 type Invalidator struct {
-	store          Store
-	db             *sql.DB       // optional: purge durable persistent_cache rows too
-	ttl            time.Duration // TTL for reverse-index sets and fingerprints
-	driftThreshold float64       // min Jaccard similarity to accept a cached entry
+	store Store
+	db    *sql.DB       // optional: purge durable persistent_cache rows too
+	ttl   time.Duration // TTL for reverse-index sets
 
 	mu       sync.RWMutex
 	verCache map[string]verEntry // in-memory org->version cache (hot-path guard)
@@ -80,29 +78,23 @@ type verEntry struct {
 	expires time.Time
 }
 
-// New builds an Invalidator. driftThreshold is the minimum preference-fingerprint
-// similarity (0..1) required to serve a cached entry; ttl bounds the lifetime of
-// reverse-index and fingerprint bookkeeping (typically the LLM cache TTL).
-func New(store Store, db *sql.DB, ttl time.Duration, driftThreshold float64) *Invalidator {
+// New builds an Invalidator. ttl bounds the lifetime of reverse-index
+// bookkeeping (typically the LLM cache TTL).
+func New(store Store, db *sql.DB, ttl time.Duration) *Invalidator {
 	if ttl <= 0 {
 		ttl = time.Hour
 	}
-	if driftThreshold <= 0 || driftThreshold > 1 {
-		driftThreshold = 0.85
-	}
 	return &Invalidator{
-		store:          store,
-		db:             db,
-		ttl:            ttl,
-		driftThreshold: driftThreshold,
-		verCache:       make(map[string]verEntry),
-		verTTL:         5 * time.Second,
+		store:    store,
+		db:       db,
+		ttl:      ttl,
+		verCache: make(map[string]verEntry),
+		verTTL:   5 * time.Second,
 	}
 }
 
-func versionKey(orgID string) string        { return "cachever:" + orgID }
-func toolIndexKey(org, tool string) string  { return fmt.Sprintf("toolkeys:%s:%s", org, tool) }
-func fingerprintKey(cacheKey string) string { return "preffp:" + cacheKey }
+func versionKey(orgID string) string       { return "cachever:" + orgID }
+func toolIndexKey(org, tool string) string { return fmt.Sprintf("toolkeys:%s:%s", org, tool) }
 
 // Version returns the current cache version tag for an org. Missing => "0".
 // Uses a short in-memory cache so the hot path avoids a Valkey round-trip on
@@ -234,34 +226,4 @@ func (i *Invalidator) HandleEvent(ctx context.Context, ev InvalidationEvent) (Re
 		return res, fmt.Errorf("unknown change_type %q", ev.ChangeType)
 	}
 	return res, nil
-}
-
-// StoreFingerprint persists the preference fingerprint associated with a cache
-// key so future hits can be checked for drift. Fire-and-forget.
-func (i *Invalidator) StoreFingerprint(ctx context.Context, cacheKey, fingerprint string) {
-	if i == nil || i.store == nil || cacheKey == "" || fingerprint == "" {
-		return
-	}
-	if err := i.store.SetRaw(ctx, fingerprintKey(cacheKey), fingerprint, i.ttl); err != nil {
-		slog.Debug("failed to store preference fingerprint", "key", cacheKey, "error", err)
-	}
-}
-
-// IsStale reports whether a cached entry should be rejected because the caller's
-// current preference fingerprint has drifted from the one stored at write time.
-// Returns false (not stale) when no fingerprint was recorded, so behaviour is
-// unchanged for entries written before this feature or without preferences.
-func (i *Invalidator) IsStale(ctx context.Context, cacheKey, currentFingerprint string) bool {
-	if i == nil || i.store == nil || cacheKey == "" {
-		return false
-	}
-	stored, err := i.store.GetRaw(ctx, fingerprintKey(cacheKey))
-	if err != nil || stored == "" {
-		return false
-	}
-	if Similarity(stored, currentFingerprint) < i.driftThreshold {
-		metrics.StaleHitAvoidedTotal.Inc()
-		return true
-	}
-	return false
 }

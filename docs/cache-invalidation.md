@@ -14,16 +14,21 @@ several complementary mechanisms so stale answers are not served.
 | Entity-aware guard (E1) | Per request | Per entry | Rejects semantic matches with different operational entities |
 | Version-tagged keys | Config/policy/tool-config change | Per org | Prior entries become unreachable |
 | Event-driven invalidation | Tool data change | Per tool | Busts entries produced from that tool's output |
-| Preference-drift detection | Per cache hit | Per entry | Rejects hits whose preference context drifted |
+| Preference-partitioned keys | Per request | Per preference | Callers with different preferences never share/overwrite entries |
 | Manual flush (`/v1/cache/flush`) | Operator action | Per org | Purges Valkey / durable / Qdrant |
 
 ## 1. Version-tagged cache keys
 
-Every cache key embeds the org's current **cache version**:
+Every cache key embeds the org's current **cache version** and, when the caller
+has preference signals, a **preference tag**:
 
 ```
-org:{orgID}:ver:{version}:m:{model}:{type}:{value}
+org:{orgID}:ver:{version}:pf:{prefTag}:m:{model}:{type}:{value}
 ```
+
+Both segments are optional: an org with no bumps and a request with no preference
+signals produces the legacy `org:{orgID}:m:{model}:{type}:{value}` form, so
+existing keys and maximum cache sharing are preserved.
 
 The version is an integer counter stored in Valkey at `cachever:{orgID}` and
 resolved once per request (with a short in-process cache so the hot path avoids a
@@ -71,21 +76,25 @@ Content-Type: application/json
 The org is always taken from the authenticated request context — never from the
 body — preserving tenant isolation.
 
-## 3. Preference-drift detection
+## 3. Preference-partitioned keys
 
 Two users (or the same user over time) may share a prompt but differ in the
-context that shapes a good answer — role, provider/model, and the system prompt /
-persona. Memzent records a **preference fingerprint** with each cached entry and
-compares it on retrieval.
+context that shapes a good answer — RBAC role and the system prompt / persona.
+Rather than storing one shared answer and comparing preferences on read (which
+lets different callers overwrite each other's value), Memzent folds a
+**preference tag** directly into the cache key. Callers with different
+preferences therefore address *different* cache slots and can never serve or
+clobber one another's answers.
 
-- **Fingerprint:** an order-independent token set derived from role, provider,
-  model, and normalized system-prompt words (stop-words removed).
-- **Comparison:** on a cache hit, the current fingerprint is compared with the
-  stored one using **Jaccard similarity**. If similarity is below
-  `PREFERENCE_DRIFT_THRESHOLD` (default `0.85`), the hit is treated as a **miss**
-  and a fresh response is generated.
-- Entries written without a fingerprint (or before this feature) are never
-  considered stale, so behaviour degrades gracefully.
+- **Fingerprint:** an order-independent token set derived from role and
+  normalized system-prompt words (stop-words removed). Provider and model are
+  intentionally excluded because the key already partitions on the model.
+- **Tag:** a short SHA-256 hash of the fingerprint, inserted as a `pf:{tag}`
+  key segment. When there are no preference signals the tag is empty and the
+  key stays un-partitioned for maximum sharing.
+- **Effect:** any change in a caller's preferences yields a new key — a clean
+  cache miss and a fresh response — with no read-time comparison or extra
+  round-trip.
 
 ## Metrics
 
@@ -94,20 +103,18 @@ Exposed on `/metrics` (Prometheus):
 | Metric | Type | Meaning |
 |--------|------|---------|
 | `memzent_cache_invalidation_events_total{change_type}` | counter | Invalidation events processed, by change type |
-| `memzent_stale_hit_avoided_total` | counter | Cache hits rejected due to preference drift (served fresh instead) |
 
 ## Configuration
 
 | Env var | Default | Purpose |
 |---------|---------|---------|
-| `LLM_CACHE_TTL` | `1h` | Lifetime of cache entries, reverse-index sets, and fingerprints |
-| `PREFERENCE_DRIFT_THRESHOLD` | `0.85` | Min fingerprint similarity to serve a cached entry |
+| `LLM_CACHE_TTL` | `1h` | Lifetime of cache entries and reverse-index sets |
 
 ## Implementation map
 
-- `internal/invalidation/` — event schema, `Invalidator`, fingerprint + Jaccard,
-  and the `POST /v1/cache/invalidate` handler.
+- `internal/invalidation/` — event schema, `Invalidator`, preference fingerprint
+  + tag, and the `POST /v1/cache/invalidate` handler.
 - `internal/cache/invalidation_ops.go` — low-level Valkey ops (version counter,
-  reverse-index sets, fingerprint keys).
-- `internal/engine/engine.go` — version threading into cache keys, staleness
-  guard on every cache hit, and reverse-index / fingerprint writes on populate.
+  reverse-index sets).
+- `internal/engine/engine.go` — version + preference threading into cache keys
+  and reverse-index writes on populate.

@@ -87,7 +87,7 @@ func itoa(n int64) string {
 }
 
 func TestVersion_DefaultAndBump(t *testing.T) {
-	inv := New(newFakeStore(), nil, time.Minute, 0.85)
+	inv := New(newFakeStore(), nil, time.Minute)
 	ctx := context.Background()
 
 	if v := inv.Version(ctx, "org1"); v != "0" {
@@ -111,14 +111,11 @@ func TestVersion_NilSafe(t *testing.T) {
 	if v := inv.Version(context.Background(), "org1"); v != "" {
 		t.Errorf("nil invalidator Version = %q, want empty", v)
 	}
-	if inv.IsStale(context.Background(), "k", "fp") {
-		t.Error("nil invalidator must not report stale")
-	}
 }
 
 func TestInvalidateTool_TargetedBust(t *testing.T) {
 	store := newFakeStore()
-	inv := New(store, nil, time.Minute, 0.85)
+	inv := New(store, nil, time.Minute)
 	ctx := context.Background()
 
 	keys := []string{"org:o1:m:gpt:p:hello", "org:o1:m:gpt:c:hash"}
@@ -147,7 +144,7 @@ func TestInvalidateTool_TargetedBust(t *testing.T) {
 
 func TestHandleEvent_ToolDataBustsKeys(t *testing.T) {
 	store := newFakeStore()
-	inv := New(store, nil, time.Minute, 0.85)
+	inv := New(store, nil, time.Minute)
 	ctx := context.Background()
 
 	_ = store.SetRaw(ctx, "k1", "v", time.Minute)
@@ -163,7 +160,7 @@ func TestHandleEvent_ToolDataBustsKeys(t *testing.T) {
 }
 
 func TestHandleEvent_PolicyBumpsVersion(t *testing.T) {
-	inv := New(newFakeStore(), nil, time.Minute, 0.85)
+	inv := New(newFakeStore(), nil, time.Minute)
 	ctx := context.Background()
 
 	res, err := inv.HandleEvent(ctx, InvalidationEvent{OrgID: "o1", ChangeType: ChangePolicy})
@@ -176,30 +173,8 @@ func TestHandleEvent_PolicyBumpsVersion(t *testing.T) {
 }
 
 func TestHandleEvent_UnknownType(t *testing.T) {
-	inv := New(newFakeStore(), nil, time.Minute, 0.85)
+	inv := New(newFakeStore(), nil, time.Minute)
 	if _, err := inv.HandleEvent(context.Background(), InvalidationEvent{OrgID: "o1", ChangeType: "bogus"}); err == nil {
 		t.Error("expected error for unknown change_type")
-	}
-}
-
-func TestIsStale_DriftDetection(t *testing.T) {
-	inv := New(newFakeStore(), nil, time.Minute, 0.85)
-	ctx := context.Background()
-
-	fpAdmin := Fingerprint(PreferenceInputs{Role: "admin", Model: "gpt-4o"})
-	inv.StoreFingerprint(ctx, "key1", fpAdmin)
-
-	// Same fingerprint -> not stale.
-	if inv.IsStale(ctx, "key1", fpAdmin) {
-		t.Error("identical fingerprint should not be stale")
-	}
-	// Very different fingerprint -> stale.
-	fpOther := Fingerprint(PreferenceInputs{Role: "viewer", Model: "llama3.2", SystemPrompt: "pirate persona"})
-	if !inv.IsStale(ctx, "key1", fpOther) {
-		t.Error("drifted fingerprint should be stale")
-	}
-	// No stored fingerprint -> never stale.
-	if inv.IsStale(ctx, "unknown-key", fpOther) {
-		t.Error("missing fingerprint should not be stale")
 	}
 }

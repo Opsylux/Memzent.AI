@@ -4,7 +4,7 @@ package invalidation
 import "testing"
 
 func TestFingerprint_Deterministic(t *testing.T) {
-	in := PreferenceInputs{Role: "admin", Provider: "openai", Model: "gpt-4o", SystemPrompt: "You are a concise financial assistant."}
+	in := PreferenceInputs{Role: "admin", SystemPrompt: "You are a concise financial assistant."}
 	a := Fingerprint(in)
 	b := Fingerprint(in)
 	if a != b {
@@ -23,25 +23,23 @@ func TestFingerprint_IgnoresStopWordsAndCase(t *testing.T) {
 	}
 }
 
-func TestSimilarity_IdenticalAndDisjoint(t *testing.T) {
-	fp := Fingerprint(PreferenceInputs{Role: "admin", Model: "gpt-4o"})
-	if s := Similarity(fp, fp); s != 1.0 {
-		t.Errorf("identical fingerprints similarity = %v, want 1.0", s)
-	}
-	if s := Similarity("role:admin", "role:viewer provider:openai"); s != 0.0 {
-		t.Errorf("disjoint fingerprints similarity = %v, want 0.0", s)
-	}
-	if s := Similarity("", ""); s != 1.0 {
-		t.Errorf("empty fingerprints similarity = %v, want 1.0", s)
+func TestPreferenceTag_EmptyForNoSignals(t *testing.T) {
+	if tag := PreferenceTag("", ""); tag != "" {
+		t.Errorf("no preference signals should yield empty tag, got %q", tag)
 	}
 }
 
-func TestSimilarity_PartialDrift(t *testing.T) {
-	// Same role+model, different persona wording -> partial overlap, < 1.0.
-	a := Fingerprint(PreferenceInputs{Role: "admin", Model: "gpt-4o", SystemPrompt: "concise helpful assistant"})
-	b := Fingerprint(PreferenceInputs{Role: "admin", Model: "gpt-4o", SystemPrompt: "verbose detailed assistant"})
-	s := Similarity(a, b)
-	if s <= 0.0 || s >= 1.0 {
-		t.Errorf("partial drift similarity = %v, want between 0 and 1", s)
+func TestPreferenceTag_StableAndDistinct(t *testing.T) {
+	admin := PreferenceTag("admin", "concise assistant")
+	if admin == "" {
+		t.Fatal("expected non-empty tag for role+system prompt")
+	}
+	// Deterministic for identical inputs.
+	if again := PreferenceTag("admin", "concise assistant"); again != admin {
+		t.Errorf("tag not stable: %q vs %q", admin, again)
+	}
+	// Different preferences produce a different tag (key partitioning).
+	if viewer := PreferenceTag("viewer", "verbose assistant"); viewer == admin {
+		t.Error("distinct preferences must produce distinct tags")
 	}
 }

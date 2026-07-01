@@ -98,11 +98,4 @@ var (
 		},
 		[]string{"change_type"},
 	)
-
-	StaleHitAvoidedTotal = promauto.NewCounter(
-		prometheus.CounterOpts{
-			Name: "memzent_stale_hit_avoided_total",
-			Help: "Total cache hits rejected due to preference drift (served fresh instead).",
-		},
-	)
 )

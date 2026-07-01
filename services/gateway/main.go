@@ -378,7 +378,7 @@ func main() {
 	}
 
 	// Cache invalidation layer (issue #11): version-tagged keys, event-driven
-	// tool invalidation, and preference-drift detection. Uses Valkey for the
+	// tool invalidation, and preference-partitioned keys. Uses Valkey for the
 	// version counter + reverse index, with optional durable purge via Postgres.
 	var cacheInvalidator *invalidation.Invalidator
 	if vCache != nil {
@@ -386,10 +386,9 @@ func main() {
 		if rbacClient != nil {
 			invDB = rbacClient.GetDB()
 		}
-		cacheInvalidator = invalidation.New(vCache, invDB, cfg.LLMCacheTTL, cfg.PreferenceDriftThreshold)
+		cacheInvalidator = invalidation.New(vCache, invDB, cfg.LLMCacheTTL)
 		memzentEngine.SetCacheInvalidator(cacheInvalidator)
-		slog.Info("♻️ Cache invalidation layer enabled",
-			"drift_threshold", cfg.PreferenceDriftThreshold, "ttl", cfg.LLMCacheTTL)
+		slog.Info("♻️ Cache invalidation layer enabled", "ttl", cfg.LLMCacheTTL)
 	}
 
 	// Load feature flags from environment

@@ -51,10 +51,13 @@ func (c *MemzentCache) SAdd(ctx context.Context, key string, ttl time.Duration, 
 	return nil
 }
 
-// SPopAll returns all members of the set at key and deletes the set atomically-ish
-// (SMEMBERS then DEL). Returns an empty slice when the set is missing.
+// SPopAll atomically returns all members of the set at key and deletes the set in
+// a single server-side operation (Lua EVAL of SMEMBERS + DEL), so a concurrent
+// SADD cannot be silently dropped between the read and the delete. Returns an
+// empty slice when the set is missing.
 func (c *MemzentCache) SPopAll(ctx context.Context, key string) ([]string, error) {
-	resp := c.client.Do(ctx, c.client.B().Smembers().Key(key).Build())
+	const script = `local m = redis.call('SMEMBERS', KEYS[1]); redis.call('DEL', KEYS[1]); return m`
+	resp := c.client.Do(ctx, c.client.B().Eval().Script(script).Numkeys(1).Key(key).Build())
 	if err := resp.Error(); err != nil {
 		if valkey.IsValkeyNil(err) {
 			return nil, nil
@@ -64,9 +67,6 @@ func (c *MemzentCache) SPopAll(ctx context.Context, key string) ([]string, error
 	members, err := resp.AsStrSlice()
 	if err != nil {
 		return nil, err
-	}
-	if len(members) > 0 {
-		_ = c.client.Do(ctx, c.client.B().Del().Key(key).Build()).Error()
 	}
 	return members, nil
 }

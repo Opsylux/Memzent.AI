@@ -2,6 +2,8 @@
 package invalidation
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"regexp"
 	"sort"
 	"strings"
@@ -19,29 +21,22 @@ var stopWords = map[string]bool{
 }
 
 // PreferenceInputs captures the request-level signals that make up a user's
-// effective preference/context fingerprint. When any of these drift
-// significantly between when a response was cached and when it is served, the
-// cached answer may no longer be appropriate.
+// effective preference/context fingerprint. When these differ between callers
+// (or drift for one caller over time) a cached answer may no longer be
+// appropriate, so the fingerprint is folded into the cache key to isolate them.
 type PreferenceInputs struct {
 	Role         string // RBAC role from auth context (e.g. "admin", "member")
-	Provider     string // resolved LLM provider
-	Model        string // resolved model
 	SystemPrompt string // system message / persona steering the response
 }
 
 // Fingerprint produces a deterministic, order-independent token string from the
-// preference inputs. Stored alongside a cache entry and compared on retrieval.
+// preference inputs. Provider and model are intentionally excluded because the
+// cache key already partitions on them.
 func Fingerprint(in PreferenceInputs) string {
 	set := map[string]struct{}{}
-	add := func(prefix, v string) {
-		v = strings.TrimSpace(strings.ToLower(v))
-		if v != "" {
-			set[prefix+":"+v] = struct{}{}
-		}
+	if r := strings.TrimSpace(strings.ToLower(in.Role)); r != "" {
+		set["role:"+r] = struct{}{}
 	}
-	add("role", in.Role)
-	add("provider", in.Provider)
-	add("model", in.Model)
 
 	for _, w := range wordRe.FindAllString(strings.ToLower(in.SystemPrompt), -1) {
 		if len(w) < 2 || stopWords[w] {
@@ -58,34 +53,15 @@ func Fingerprint(in PreferenceInputs) string {
 	return strings.Join(tokens, " ")
 }
 
-// Similarity returns the Jaccard similarity (0..1) between two fingerprints.
-// Two empty fingerprints are considered identical (1.0).
-func Similarity(a, b string) float64 {
-	sa := tokenSet(a)
-	sb := tokenSet(b)
-	if len(sa) == 0 && len(sb) == 0 {
-		return 1.0
+// PreferenceTag returns a short, stable hash of the preference fingerprint,
+// suitable for embedding as a cache-key segment. Returns "" when there are no
+// preference signals, so default requests keep un-partitioned keys and maximum
+// cache sharing.
+func PreferenceTag(role, systemPrompt string) string {
+	fp := Fingerprint(PreferenceInputs{Role: role, SystemPrompt: systemPrompt})
+	if fp == "" {
+		return ""
 	}
-	if len(sa) == 0 || len(sb) == 0 {
-		return 0.0
-	}
-	inter := 0
-	for t := range sa {
-		if _, ok := sb[t]; ok {
-			inter++
-		}
-	}
-	union := len(sa) + len(sb) - inter
-	if union == 0 {
-		return 1.0
-	}
-	return float64(inter) / float64(union)
-}
-
-func tokenSet(s string) map[string]struct{} {
-	out := map[string]struct{}{}
-	for _, t := range strings.Fields(s) {
-		out[t] = struct{}{}
-	}
-	return out
+	h := sha256.Sum256([]byte(fp))
+	return hex.EncodeToString(h[:6]) // 12 hex chars — ample to avoid collisions
 }
