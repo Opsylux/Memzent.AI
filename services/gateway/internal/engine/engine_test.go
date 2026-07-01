@@ -1,8 +1,8 @@
 package engine
 
 import (
-	"testing"
 	"memzent-gateway/internal/llm"
+	"testing"
 )
 
 // ---------------------------------------------------------------------------
@@ -78,6 +78,78 @@ func TestBuildCacheKey_EmptyComponents(t *testing.T) {
 	want := "org::m:::"
 	if got != want {
 		t.Errorf("buildCacheKey empty = %q, want %q", got, want)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// buildCacheKeyV — version-tagged cache keys (issue #11)
+// ---------------------------------------------------------------------------
+
+func TestBuildCacheKeyV_EmptyVersionMatchesLegacy(t *testing.T) {
+	e := newTestEngine()
+	legacy := e.buildCacheKey("org1", "p", "gpt-4o", "hello")
+	versioned := e.buildCacheKeyV("org1", "", "", "p", "gpt-4o", "hello")
+	if legacy != versioned {
+		t.Errorf("empty version must reproduce legacy format: %q vs %q", legacy, versioned)
+	}
+}
+
+func TestBuildCacheKeyV_VersionSegmentAndFlushable(t *testing.T) {
+	e := newTestEngine()
+	got := e.buildCacheKeyV("org1", "3", "", "p", "gpt-4o", "hello")
+	want := "org:org1:ver:3:m:gpt-4o:p:hello"
+	if got != want {
+		t.Errorf("buildCacheKeyV = %q, want %q", got, want)
+	}
+	// Must remain under the org:<orgID>: prefix so FlushByPattern("org:org1:*") works.
+	if len(got) < len("org:org1:") || got[:len("org:org1:")] != "org:org1:" {
+		t.Errorf("versioned key %q lost org prefix", got)
+	}
+}
+
+func TestBuildCacheKeyV_DifferentVersionsIsolate(t *testing.T) {
+	e := newTestEngine()
+	k1 := e.buildCacheKeyV("org1", "1", "", "p", "gpt-4o", "hello")
+	k2 := e.buildCacheKeyV("org1", "2", "", "p", "gpt-4o", "hello")
+	if k1 == k2 {
+		t.Error("different cache versions must produce different keys (invalidation)")
+	}
+}
+
+func TestBuildCacheKeyV_PreferenceSegmentIsolates(t *testing.T) {
+	e := newTestEngine()
+	// A preference tag inserts a pf: segment while preserving the org prefix.
+	got := e.buildCacheKeyV("org1", "3", "abc123", "p", "gpt-4o", "hello")
+	want := "org:org1:ver:3:pf:abc123:m:gpt-4o:p:hello"
+	if got != want {
+		t.Errorf("buildCacheKeyV with pref = %q, want %q", got, want)
+	}
+	// Different preference tags must not collide (per-preference isolation).
+	other := e.buildCacheKeyV("org1", "3", "def456", "p", "gpt-4o", "hello")
+	if got == other {
+		t.Error("different preference tags must produce different keys")
+	}
+	// Empty pref with a version keeps the version-only format.
+	noPref := e.buildCacheKeyV("org1", "3", "", "p", "gpt-4o", "hello")
+	if noPref != "org:org1:ver:3:m:gpt-4o:p:hello" {
+		t.Errorf("empty pref changed version-only format: %q", noPref)
+	}
+}
+
+func TestBuildEntityCacheKeyV_Versioned(t *testing.T) {
+	e := newTestEngine()
+	ents := map[string]string{"action": "transfer"}
+	legacy := e.buildEntityCacheKey("org1", "gpt-4", ents)
+	if legacy != "org:org1:m:gpt-4:e:action=transfer" {
+		t.Errorf("legacy entity key = %q", legacy)
+	}
+	versioned := e.buildEntityCacheKeyV("org1", "7", "", "gpt-4", ents)
+	if versioned != "org:org1:ver:7:m:gpt-4:e:action=transfer" {
+		t.Errorf("versioned entity key = %q", versioned)
+	}
+	withPref := e.buildEntityCacheKeyV("org1", "7", "abc123", "gpt-4", ents)
+	if withPref != "org:org1:ver:7:pf:abc123:m:gpt-4:e:action=transfer" {
+		t.Errorf("pref entity key = %q", withPref)
 	}
 }
 

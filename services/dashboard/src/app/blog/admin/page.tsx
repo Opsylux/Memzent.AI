@@ -20,9 +20,6 @@ function renderPreviewMarkdown(md: string): string {
     return `%%CB_${idx}%%`;
   });
 
-  // Escape raw HTML so preview can't execute injected markup/scripts.
-  html = html.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-
   html = html.replace(/!\[([^\]]*)\]\(([^)]+)\)/g,
     '<figure class="my-4"><img src="$2" alt="$1" class="rounded-lg border border-white/10 max-w-full" /><figcaption class="text-[10px] text-white/30 text-center mt-1">$1</figcaption></figure>');
   html = html.replace(/^### (.+)$/gm, '<h3 class="text-base font-bold mt-6 mb-2">$1</h3>');
