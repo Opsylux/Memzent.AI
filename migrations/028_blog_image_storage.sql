@@ -31,4 +31,5 @@ ON storage.objects FOR DELETE
 USING (
   bucket_id = 'blog-images'
   AND auth.role() = 'authenticated'
+  AND owner = auth.uid()
 );
