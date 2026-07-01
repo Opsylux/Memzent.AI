@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"crypto/rand"
+	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -22,6 +23,7 @@ import (
 	"memzent-gateway/internal/db"
 	"memzent-gateway/internal/engine"
 	"memzent-gateway/internal/featureflags"
+	"memzent-gateway/internal/invalidation"
 	"memzent-gateway/internal/llm"
 	"memzent-gateway/internal/mcp"
 	"memzent-gateway/internal/memory"
@@ -373,6 +375,21 @@ func main() {
 	// Attach webhook event emitter to engine
 	if webhookDispatcher != nil {
 		memzentEngine.SetEventEmitter(webhookDispatcher)
+	}
+
+	// Cache invalidation layer (issue #11): version-tagged keys, event-driven
+	// tool invalidation, and preference-drift detection. Uses Valkey for the
+	// version counter + reverse index, with optional durable purge via Postgres.
+	var cacheInvalidator *invalidation.Invalidator
+	if vCache != nil {
+		var invDB *sql.DB
+		if rbacClient != nil {
+			invDB = rbacClient.GetDB()
+		}
+		cacheInvalidator = invalidation.New(vCache, invDB, cfg.LLMCacheTTL, cfg.PreferenceDriftThreshold)
+		memzentEngine.SetCacheInvalidator(cacheInvalidator)
+		slog.Info("♻️ Cache invalidation layer enabled",
+			"drift_threshold", cfg.PreferenceDriftThreshold, "ttl", cfg.LLMCacheTTL)
 	}
 
 	// Load feature flags from environment
@@ -1062,43 +1079,43 @@ func main() {
 			}
 			if patternMiner != nil {
 				stats["pattern_mining"] = map[string]interface{}{
-					"enabled":          true,
-					"hot_transitions":  patternMiner.GetAllHotTransitions(),
+					"enabled":         true,
+					"hot_transitions": patternMiner.GetAllHotTransitions(),
 				}
 			}
 			w.Header().Set("Content-Type", "application/json")
 			json.NewEncoder(w).Encode(stats)
 		})))
 
-	// Pattern Mining Prediction API (E6 - experimental)
-	mux.Handle("/v1/patterns/predict", middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet {
-			http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
-			return
-		}
-		if patternMiner == nil {
-			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(map[string]interface{}{"enabled": false, "message": "Set MEMZENT_PATTERN_MINING_ENABLED=true"})
-			return
-		}
-		orgID, _ := r.Context().Value("org_id").(string)
-		tool := r.URL.Query().Get("tool")
+		// Pattern Mining Prediction API (E6 - experimental)
+		mux.Handle("/v1/patterns/predict", middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.Method != http.MethodGet {
+				http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+				return
+			}
+			if patternMiner == nil {
+				w.Header().Set("Content-Type", "application/json")
+				json.NewEncoder(w).Encode(map[string]interface{}{"enabled": false, "message": "Set MEMZENT_PATTERN_MINING_ENABLED=true"})
+				return
+			}
+			orgID, _ := r.Context().Value("org_id").(string)
+			tool := r.URL.Query().Get("tool")
 
-		if tool != "" {
-			// Predict next tool
-			result := patternMiner.Predict(orgID, tool)
-			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(result)
-		} else {
-			// Return full transition matrix for org
-			matrix := patternMiner.GetTransitionMatrix(orgID)
-			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(map[string]interface{}{
-				"org_id": orgID,
-				"states": matrix,
-			})
-		}
-	})))
+			if tool != "" {
+				// Predict next tool
+				result := patternMiner.Predict(orgID, tool)
+				w.Header().Set("Content-Type", "application/json")
+				json.NewEncoder(w).Encode(result)
+			} else {
+				// Return full transition matrix for org
+				matrix := patternMiner.GetTransitionMatrix(orgID)
+				w.Header().Set("Content-Type", "application/json")
+				json.NewEncoder(w).Encode(map[string]interface{}{
+					"org_id": orgID,
+					"states": matrix,
+				})
+			}
+		})))
 
 		// Workflow Registry API (E4)
 		mux.Handle("/v1/workflows", middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -1243,12 +1260,12 @@ func main() {
 				"entity_metrics":  f.EntityMetrics,
 				"pattern_mining":  f.PatternMining,
 				"env_vars": map[string]string{
-					"MEMZENT_L1B_ENABLED":              "controls L1b entity-keyed hot path cache",
-					"MEMZENT_OFFLINE_ENABLED":          "controls offline learning plane (O1/O2/O3 miners)",
-					"MEMZENT_OFFLINE_STREAMS":          "use Valkey Streams instead of in-memory channels (requires Valkey)",
-					"MEMZENT_WORKFLOW_ENABLED":         "controls workflow registry + engine shortcut",
-					"MEMZENT_ENTITY_METRICS_ENABLED":   "controls entity quality + GPU avoidance counters",
-					"MEMZENT_PATTERN_MINING_ENABLED":   "E6 Markov chain agent pattern mining (experimental, default: false)",
+					"MEMZENT_L1B_ENABLED":            "controls L1b entity-keyed hot path cache",
+					"MEMZENT_OFFLINE_ENABLED":        "controls offline learning plane (O1/O2/O3 miners)",
+					"MEMZENT_OFFLINE_STREAMS":        "use Valkey Streams instead of in-memory channels (requires Valkey)",
+					"MEMZENT_WORKFLOW_ENABLED":       "controls workflow registry + engine shortcut",
+					"MEMZENT_ENTITY_METRICS_ENABLED": "controls entity quality + GPU avoidance counters",
+					"MEMZENT_PATTERN_MINING_ENABLED": "E6 Markov chain agent pattern mining (experimental, default: false)",
 				},
 			}
 			w.Header().Set("Content-Type", "application/json")
@@ -1313,6 +1330,13 @@ func main() {
 			if err != nil {
 				http.Error(w, `{"error":"failed to update threshold"}`, http.StatusInternalServerError)
 				return
+			}
+			// Issue #11: config changed — bump the org cache version so entries
+			// cached under the previous similarity setting become unreachable.
+			if cacheInvalidator != nil {
+				if _, bumpErr := cacheInvalidator.Bump(r.Context(), orgID); bumpErr != nil {
+					slog.Warn("cache version bump failed after threshold change (non-fatal)", "org_id", orgID, "error", bumpErr)
+				}
 			}
 			w.Header().Set("Content-Type", "application/json")
 			json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "similarity_threshold": body.Threshold})
@@ -1387,13 +1411,22 @@ func main() {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]interface{}{
 			"success":             true,
-			"scope":              scope,
+			"scope":               scope,
 			"valkey_keys_deleted": deleted,
 			"db_rows_deleted":     dbDeleted,
 			"qdrant_flushed":      qdrantFlushed,
 			"org_id":              orgID,
 		})
 	})))
+
+	// Cache Invalidation API (issue #11): event-driven, targeted invalidation.
+	// POST /v1/cache/invalidate with an InvalidationEvent body. Tool-data changes
+	// bust indexed entries precisely; policy/config/tool-config changes bump the
+	// org cache version so prior entries become unreachable.
+	if cacheInvalidator != nil {
+		mux.Handle("/v1/cache/invalidate", middleware(requireScope("tools:write",
+			invalidation.HandleInvalidate(cacheInvalidator))))
+	}
 
 	// /generate-token is a dev-only convenience endpoint for issuing admin JWTs.
 	// It is disabled in production. Set ENABLE_DEV_TOKEN=true to enable locally.

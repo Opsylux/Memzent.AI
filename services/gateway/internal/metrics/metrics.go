@@ -89,4 +89,20 @@ var (
 			Help: "Total requests that required GPU/LLM invocation.",
 		},
 	)
+
+	// Cache Invalidation Metrics (issue #11)
+	CacheInvalidationEventsTotal = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "memzent_cache_invalidation_events_total",
+			Help: "Total cache invalidation events processed, by change_type.",
+		},
+		[]string{"change_type"},
+	)
+
+	StaleHitAvoidedTotal = promauto.NewCounter(
+		prometheus.CounterOpts{
+			Name: "memzent_stale_hit_avoided_total",
+			Help: "Total cache hits rejected due to preference drift (served fresh instead).",
+		},
+	)
 )

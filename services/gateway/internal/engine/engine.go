@@ -18,6 +18,7 @@ import (
 	cch "memzent-gateway/internal/cache"
 	"memzent-gateway/internal/connectors"
 	"memzent-gateway/internal/featureflags"
+	"memzent-gateway/internal/invalidation"
 	lp "memzent-gateway/internal/llm"
 	mc "memzent-gateway/internal/mcp"
 	"memzent-gateway/internal/memory"
@@ -92,6 +93,9 @@ type MemzentEngine struct {
 	// Feature flags for evolution layers
 	flags *featureflags.Flags
 
+	// Cache invalidation layer (issue #11): version tags + preference drift
+	invalidator CacheInvalidator
+
 	TotalRequests atomic.Uint64
 	CacheHits     atomic.Uint64
 	orgRequests   sync.Map // Tracks requests per org (map[string]*atomic.Uint64)
@@ -106,6 +110,48 @@ type EventEmitter interface {
 // SetEventEmitter attaches a webhook dispatcher to the engine
 func (e *MemzentEngine) SetEventEmitter(emitter EventEmitter) {
 	e.eventEmitter = emitter
+}
+
+// CacheInvalidator abstracts the cache-invalidation layer (issue #11) so the
+// engine can version cache keys, tag them by originating tool, and detect
+// preference drift without importing the invalidation package's concrete type.
+// All methods must be safe to call when the implementation is a nil interface.
+type CacheInvalidator interface {
+	// Version returns the current per-org cache version tag ("" disables versioning).
+	Version(ctx context.Context, orgID string) string
+	// IsStale reports whether a cached entry's stored preference fingerprint has
+	// drifted too far from the caller's current fingerprint.
+	IsStale(ctx context.Context, cacheKey, fingerprint string) bool
+	// StoreFingerprint records the fingerprint for a freshly written cache key.
+	StoreFingerprint(ctx context.Context, cacheKey, fingerprint string)
+	// TagKeys records which tools' output produced the given cache keys.
+	TagKeys(ctx context.Context, orgID string, toolIDs, keys []string)
+}
+
+// SetCacheInvalidator attaches the invalidation layer to the engine.
+func (e *MemzentEngine) SetCacheInvalidator(ci CacheInvalidator) {
+	e.invalidator = ci
+}
+
+// cacheVersion returns the org's active cache version tag, or "" when the
+// invalidation layer is not wired (keeps legacy key format & tests intact).
+func (e *MemzentEngine) cacheVersion(ctx context.Context, orgID string) string {
+	if e.invalidator == nil {
+		return ""
+	}
+	return e.invalidator.Version(ctx, orgID)
+}
+
+// invStale reports whether a cache hit should be rejected due to preference drift.
+func (e *MemzentEngine) invStale(ctx context.Context, cacheKey, fingerprint string) bool {
+	if e.invalidator == nil || cacheKey == "" {
+		return false
+	}
+	if e.invalidator.IsStale(ctx, cacheKey, fingerprint) {
+		slog.Info("♻️ Cache hit rejected due to preference drift", "key", cacheKey)
+		return true
+	}
+	return false
 }
 
 // OfflinePlane abstracts the offline event bus so the engine works with both
@@ -495,9 +541,25 @@ func (e *MemzentEngine) Process(ctx context.Context, req *PromptRequest) (*Promp
 		resolvedModel = "default"
 	}
 
+	// Issue #11: resolve the org's active cache version tag and the caller's
+	// preference fingerprint once per request. cacheVer partitions all cache
+	// keys so a version bump makes prior entries unreachable; prefFP is compared
+	// on cache hits to reject answers whose preference context has drifted.
+	cacheVer := e.cacheVersion(ctx, orgID)
+	var systemPrompt string
+	for _, m := range req.Messages {
+		if m.Role == "system" {
+			systemPrompt = m.Content
+			break
+		}
+	}
+	prefFP := invalidation.Fingerprint(invalidation.PreferenceInputs{
+		Role: userRole, Provider: providerKey, Model: resolvedModel, SystemPrompt: systemPrompt,
+	})
+
 	// B. Stage 1-2 Cache Lookup (Org-Isolated & Model-Scoped)
 	if e.cache != nil && !req.SkipCache {
-		cacheKey := e.buildCacheKey(orgID, "p", resolvedModel, queryPrompt)
+		cacheKey := e.buildCacheKeyV(orgID, cacheVer, "p", resolvedModel, queryPrompt)
 		cachedResp, err := e.cache.GetSemanticResult(ctx, cacheKey)
 		if err != nil || cachedResp == "" {
 			// Valkey cache miss or restart/crash - fallback to persistent DB cache
@@ -511,7 +573,7 @@ func (e *MemzentEngine) Process(ctx context.Context, req *PromptRequest) (*Promp
 			}
 		}
 
-		if cachedResp != "" {
+		if cachedResp != "" && !e.invStale(ctx, cacheKey, prefFP) {
 			e.CacheHits.Add(1)
 			hitCounter, _ := e.orgHits.LoadOrStore(orgID, &atomic.Uint64{})
 			hitCounter.(*atomic.Uint64).Add(1)
@@ -546,7 +608,7 @@ func (e *MemzentEngine) Process(ctx context.Context, req *PromptRequest) (*Promp
 
 		// Stage 1.5: Canonical Match (Normalized, Org-Isolated & Model-Scoped)
 		_, cHash := NormalizePrompt(queryPrompt)
-		canonKey := e.buildCacheKey(orgID, "c", resolvedModel, cHash)
+		canonKey := e.buildCacheKeyV(orgID, cacheVer, "c", resolvedModel, cHash)
 		cachedCanon, err := e.cache.GetSemanticResult(ctx, canonKey)
 		if err != nil || cachedCanon == "" {
 			// Fallback to persistent DB cache
@@ -560,7 +622,7 @@ func (e *MemzentEngine) Process(ctx context.Context, req *PromptRequest) (*Promp
 			}
 		}
 
-		if cachedCanon != "" {
+		if cachedCanon != "" && !e.invStale(ctx, canonKey, prefFP) {
 			e.CacheHits.Add(1)
 			hitCounter, _ := e.orgHits.LoadOrStore(orgID, &atomic.Uint64{})
 			hitCounter.(*atomic.Uint64).Add(1)
@@ -584,7 +646,7 @@ func (e *MemzentEngine) Process(ctx context.Context, req *PromptRequest) (*Promp
 		if e.flags.L1bCache {
 			l1bEntities := extractEntitiesLocal(queryPrompt)
 			if len(l1bEntities) > 0 {
-				entityKey := e.buildEntityCacheKey(orgID, resolvedModel, l1bEntities)
+				entityKey := e.buildEntityCacheKeyV(orgID, cacheVer, resolvedModel, l1bEntities)
 				if entityKey != "" {
 					cachedEntity, err := e.cache.GetSemanticResult(ctx, entityKey)
 					if err != nil || cachedEntity == "" {
@@ -596,7 +658,7 @@ func (e *MemzentEngine) Process(ctx context.Context, req *PromptRequest) (*Promp
 						}
 					}
 
-					if cachedEntity != "" {
+					if cachedEntity != "" && !e.invStale(ctx, entityKey, prefFP) {
 						e.CacheHits.Add(1)
 						hitCounter, _ := e.orgHits.LoadOrStore(orgID, &atomic.Uint64{})
 						hitCounter.(*atomic.Uint64).Add(1)
@@ -626,7 +688,7 @@ func (e *MemzentEngine) Process(ctx context.Context, req *PromptRequest) (*Promp
 							PromptHash: sha256Hex(queryPrompt), Entities: l1bEntities,
 							EntitySource: "regex", CacheLayer: "L1b",
 							LatencyMs: time.Since(processStart).Milliseconds(),
-							Provider: req.Provider, Model: resolvedModel, Success: true, Timestamp: time.Now(),
+							Provider:  req.Provider, Model: resolvedModel, Success: true, Timestamp: time.Now(),
 						})
 						return &PromptResponse{Text: cachedEntity, Cached: true, SessionID: req.SessionID, Entities: l1bEntities}, nil
 					}
@@ -711,25 +773,25 @@ func (e *MemzentEngine) Process(ctx context.Context, req *PromptRequest) (*Promp
 			slog.Info("⚡ Workflow shortcut activated — skipping LLM", "org_id", orgID, "workflow_id", workflowID, "tools", workflowToolIDs)
 			wfStart := time.Now()
 
-				// Pre-fetch all tools once (avoid N+1 query)
-				var orgTools []*toolspkg.Tool
-				if e.registry != nil {
-					orgTools, _ = e.registry.ListTools(ctx, orgID)
-				}
+			// Pre-fetch all tools once (avoid N+1 query)
+			var orgTools []*toolspkg.Tool
+			if e.registry != nil {
+				orgTools, _ = e.registry.ListTools(ctx, orgID)
+			}
 
-				// Execute the workflow's tools directly
-				var wfResults []string
-				for _, toolID := range workflowToolIDs {
-					var toolMeta *toolspkg.Tool
-					for _, t := range orgTools {
-						if t.ID == toolID || t.Name == toolID {
-							toolMeta = t
-							break
-						}
-				}
-					if toolMeta == nil {
-						continue
+			// Execute the workflow's tools directly
+			var wfResults []string
+			for _, toolID := range workflowToolIDs {
+				var toolMeta *toolspkg.Tool
+				for _, t := range orgTools {
+					if t.ID == toolID || t.Name == toolID {
+						toolMeta = t
+						break
 					}
+				}
+				if toolMeta == nil {
+					continue
+				}
 
 				var connector connectors.Connector
 				switch toolMeta.ConnectorType {
@@ -778,15 +840,15 @@ func (e *MemzentEngine) Process(ctx context.Context, req *PromptRequest) (*Promp
 			if wfSuccess {
 				wfResponse := strings.Join(wfResults, "\n")
 				recordCacheLayerHit("L1b") // Workflow shortcut counts as GPU avoidance
-					// Charge a reduced cost for workflow execution (tool invocation without LLM)
-					e.chargeCacheHit(ctx, orgID, req.Provider, req.Model, queryPrompt)
-					e.emitOffline(offline.OfflineEvent{
+				// Charge a reduced cost for workflow execution (tool invocation without LLM)
+				e.chargeCacheHit(ctx, orgID, req.Provider, req.Model, queryPrompt)
+				e.emitOffline(offline.OfflineEvent{
 					OrgID: orgID, UserID: req.UserID,
 					PromptHash: sha256Hex(queryPrompt), Entities: extractedEntities,
 					EntitySource: entitySource, CacheLayer: "workflow",
 					ToolIDs: workflowToolIDs, WorkflowID: workflowID,
 					LatencyMs: int64(wfLatency),
-					Provider: "none", Model: "none", Success: true, Timestamp: time.Now(),
+					Provider:  "none", Model: "none", Success: true, Timestamp: time.Now(),
 				})
 				if req.SessionID != "" && e.sessionMgr != nil {
 					_ = e.sessionMgr.AppendMessage(ctx, req.SessionID, "assistant", wfResponse)
@@ -806,7 +868,7 @@ func (e *MemzentEngine) Process(ctx context.Context, req *PromptRequest) (*Promp
 
 	// NEW: Stage 2 Cache Check (Fuzzy Vector Semantic Match) — Org-Isolated & Model-Scoped
 	if similarPromptHash != "" && e.cache != nil && !req.SkipCache {
-		simKey := e.buildCacheKey(orgID, "s", resolvedModel, similarPromptHash)
+		simKey := e.buildCacheKeyV(orgID, cacheVer, "s", resolvedModel, similarPromptHash)
 		cachedResp, err := e.cache.GetSemanticResult(ctx, simKey)
 		if err != nil || cachedResp == "" {
 			// Fallback to persistent DB cache
@@ -820,7 +882,7 @@ func (e *MemzentEngine) Process(ctx context.Context, req *PromptRequest) (*Promp
 			}
 		}
 
-		if cachedResp != "" {
+		if cachedResp != "" && !e.invStale(ctx, simKey, prefFP) {
 			e.CacheHits.Add(1)
 			hitCounter, _ := e.orgHits.LoadOrStore(orgID, &atomic.Uint64{})
 			hitCounter.(*atomic.Uint64).Add(1)
@@ -836,6 +898,7 @@ func (e *MemzentEngine) Process(ctx context.Context, req *PromptRequest) (*Promp
 
 	// E. Tool Execution (Multi-Connector: Universal Provisioning & Chaining support)
 	var toolResults []string
+	var executedToolIDs []string // issue #11: tools whose output fed this response
 	useChaining := false
 	if len(tools) > 1 && (strings.Contains(strings.ToLower(queryPrompt), "then") ||
 		strings.Contains(strings.ToLower(queryPrompt), "after") ||
@@ -913,7 +976,7 @@ func (e *MemzentEngine) Process(ctx context.Context, req *PromptRequest) (*Promp
 
 				startTime := time.Now()
 				toolCtx, cancel := context.WithTimeout(ctx, time.Duration(toolMetadata.TimeoutSeconds+1)*time.Second)
-					execResp, err := connectors.ExecuteWithRetry(toolCtx, connector, execReq, connectors.DefaultRetryConfig())
+				execResp, err := connectors.ExecuteWithRetry(toolCtx, connector, execReq, connectors.DefaultRetryConfig())
 				cancel()
 				duration := time.Since(startTime)
 
@@ -923,7 +986,7 @@ func (e *MemzentEngine) Process(ctx context.Context, req *PromptRequest) (*Promp
 					status = "failure"
 					errMsg = err.Error()
 					slog.Error("Chain step execution failed", "tool_id", toolMetadata.ID, "error", err)
-					} else if execResp != nil && execResp.Status == "failure" {
+				} else if execResp != nil && execResp.Status == "failure" {
 					status = "failure"
 					errMsg = fmt.Sprintf("%v", execResp.Data)
 				}
@@ -935,6 +998,7 @@ func (e *MemzentEngine) Process(ctx context.Context, req *PromptRequest) (*Promp
 				if status == "success" && execResp.Data != nil {
 					lastOutput = fmt.Sprintf("%v", execResp.Data)
 					toolResults = append(toolResults, fmt.Sprintf("Step %d (%s): %s", step.StepOrder, toolMetadata.Name, lastOutput))
+					executedToolIDs = append(executedToolIDs, toolMetadata.ID)
 				}
 			}
 			useChaining = len(toolResults) > 0
@@ -995,7 +1059,7 @@ func (e *MemzentEngine) Process(ctx context.Context, req *PromptRequest) (*Promp
 
 				startTime := time.Now()
 				toolCtx, cancel := context.WithTimeout(ctx, time.Duration(toolMetadata.TimeoutSeconds+1)*time.Second)
-					execResp, err := connectors.ExecuteWithRetry(toolCtx, connector, execReq, connectors.DefaultRetryConfig())
+				execResp, err := connectors.ExecuteWithRetry(toolCtx, connector, execReq, connectors.DefaultRetryConfig())
 				cancel()
 				duration := time.Since(startTime)
 
@@ -1005,7 +1069,7 @@ func (e *MemzentEngine) Process(ctx context.Context, req *PromptRequest) (*Promp
 					status = "failure"
 					errMsg = err.Error()
 					slog.Error("Tool execution failed", "tool_id", t.Id, "error", err)
-					} else if execResp != nil && execResp.Status == "failure" {
+				} else if execResp != nil && execResp.Status == "failure" {
 					status = "failure"
 					errMsg = fmt.Sprintf("%v", execResp.Data)
 				}
@@ -1016,6 +1080,7 @@ func (e *MemzentEngine) Process(ctx context.Context, req *PromptRequest) (*Promp
 
 				if status == "success" && execResp.Data != nil {
 					toolResults = append(toolResults, fmt.Sprintf("%v", execResp.Data))
+					executedToolIDs = append(executedToolIDs, t.Id)
 				}
 			}
 		}
@@ -1083,28 +1148,44 @@ func (e *MemzentEngine) Process(ctx context.Context, req *PromptRequest) (*Promp
 	// SkipCache only skips cache *reads* — fresh responses are still written so
 	// subsequent non-skip requests benefit from the cached result.
 	if e.cache != nil {
-		cacheKey := e.buildCacheKey(orgID, "p", resolvedModel, queryPrompt)
+		writtenKeys := make([]string, 0, 4)
+		cacheKey := e.buildCacheKeyV(orgID, cacheVer, "p", resolvedModel, queryPrompt)
 		_ = e.cache.SetResult(ctx, cacheKey, aiResp, e.cacheTTL)
 		e.setPersistentCache(ctx, orgID, cacheKey, aiResp, e.cacheTTL)
+		writtenKeys = append(writtenKeys, cacheKey)
 
 		_, cHash := NormalizePrompt(queryPrompt)
-		canonKey := e.buildCacheKey(orgID, "c", resolvedModel, cHash)
+		canonKey := e.buildCacheKeyV(orgID, cacheVer, "c", resolvedModel, cHash)
 		_ = e.cache.SetResult(ctx, canonKey, aiResp, e.cacheTTL)
 		e.setPersistentCache(ctx, orgID, canonKey, aiResp, e.cacheTTL)
+		writtenKeys = append(writtenKeys, canonKey)
 
 		if currentPromptHash != "" {
-			simKey := e.buildCacheKey(orgID, "s", resolvedModel, currentPromptHash)
+			simKey := e.buildCacheKeyV(orgID, cacheVer, "s", resolvedModel, currentPromptHash)
 			_ = e.cache.SetResult(ctx, simKey, aiResp, e.cacheTTL)
 			e.setPersistentCache(ctx, orgID, simKey, aiResp, e.cacheTTL)
+			writtenKeys = append(writtenKeys, simKey)
 		}
 
 		// L1b Dual-Write: entity-keyed cache entry (only if entities were extracted)
 		if len(extractedEntities) > 0 {
-			entityKey := e.buildEntityCacheKey(orgID, resolvedModel, extractedEntities)
+			entityKey := e.buildEntityCacheKeyV(orgID, cacheVer, resolvedModel, extractedEntities)
 			if entityKey != "" {
 				_ = e.cache.SetResult(ctx, entityKey, aiResp, e.cacheTTL)
 				e.setPersistentCache(ctx, orgID, entityKey, aiResp, e.cacheTTL)
+				writtenKeys = append(writtenKeys, entityKey)
 				slog.Debug("💾 L1b entity-keyed cache written", "key", entityKey)
+			}
+		}
+
+		// Issue #11: record the preference fingerprint for drift detection, and
+		// index these keys by the tools that produced them for targeted busting.
+		if e.invalidator != nil {
+			for _, k := range writtenKeys {
+				e.invalidator.StoreFingerprint(ctx, k, prefFP)
+			}
+			if len(executedToolIDs) > 0 {
+				e.invalidator.TagKeys(ctx, orgID, executedToolIDs, writtenKeys)
 			}
 		}
 	}
@@ -1153,7 +1234,7 @@ func (e *MemzentEngine) Process(ctx context.Context, req *PromptRequest) (*Promp
 		Entities: extractedEntities, EntitySource: entitySource,
 		ToolsUsed: toolNames, CacheLayer: "L5",
 		LatencyMs: time.Since(processStart).Milliseconds(),
-		Provider: selectedProvider.GetProviderName(), Model: resolvedModel,
+		Provider:  selectedProvider.GetProviderName(), Model: resolvedModel,
 		Success: true, Timestamp: time.Now(),
 	})
 
@@ -1227,13 +1308,31 @@ func (e *MemzentEngine) setPersistentCache(ctx context.Context, orgID, cacheKey,
 }
 
 func (e *MemzentEngine) buildCacheKey(orgID, keyType, model, value string) string {
-	return fmt.Sprintf("org:%s:m:%s:%s:%s", orgID, model, keyType, value)
+	return e.buildCacheKeyV(orgID, "", keyType, model, value)
+}
+
+// buildCacheKeyV is buildCacheKey with an explicit per-org cache version tag
+// (issue #11). An empty version reproduces the legacy format exactly, so old
+// keys and unit tests are unaffected; a non-empty version inserts a `ver:{v}`
+// segment right after the org so bumping the version makes prior entries
+// unreachable. The `org:{orgID}:*` prefix is preserved for FlushByPattern.
+func (e *MemzentEngine) buildCacheKeyV(orgID, version, keyType, model, value string) string {
+	if version == "" {
+		return fmt.Sprintf("org:%s:m:%s:%s:%s", orgID, model, keyType, value)
+	}
+	return fmt.Sprintf("org:%s:ver:%s:m:%s:%s:%s", orgID, version, model, keyType, value)
 }
 
 // buildEntityCacheKey creates a deterministic L1b cache key from extracted entities.
 // Format: org:{orgID}:m:{model}:e:{action}:{sorted_key=value pairs}
 // Returns empty string if entities are empty or have no action.
 func (e *MemzentEngine) buildEntityCacheKey(orgID, model string, entities map[string]string) string {
+	return e.buildEntityCacheKeyV(orgID, "", model, entities)
+}
+
+// buildEntityCacheKeyV is buildEntityCacheKey with an explicit cache version tag
+// (issue #11). Empty version preserves the legacy format for backward compat.
+func (e *MemzentEngine) buildEntityCacheKeyV(orgID, version, model string, entities map[string]string) string {
 	if len(entities) == 0 {
 		return ""
 	}
@@ -1253,7 +1352,10 @@ func (e *MemzentEngine) buildEntityCacheKey(orgID, model string, entities map[st
 	}
 
 	entityStr := strings.Join(parts, ":")
-	return fmt.Sprintf("org:%s:m:%s:e:%s", orgID, model, entityStr)
+	if version == "" {
+		return fmt.Sprintf("org:%s:m:%s:e:%s", orgID, model, entityStr)
+	}
+	return fmt.Sprintf("org:%s:ver:%s:m:%s:e:%s", orgID, version, model, entityStr)
 }
 
 // sortStrings sorts a slice of strings in place (simple insertion sort for small slices)
