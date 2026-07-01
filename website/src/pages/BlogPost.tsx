@@ -16,11 +16,11 @@ export default function BlogPostPage() {
     if (!slug) return;
     if (post) return;
     setLoading(true);
-    getPostBySlugAsync(slug).then((p) => {
-      setPost(p);
-      setLoading(false);
-    });
-  }, [slug]);
+    getPostBySlugAsync(slug)
+      .then((p) => setPost(p))
+      .catch(() => setPost(null))
+      .finally(() => setLoading(false));
+  }, [slug, post]);
 
   if (loading) {
     return (

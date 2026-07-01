@@ -37,7 +37,8 @@ export default function BlogPage() {
       if (filter === "published") query = query.eq("published", true);
       if (filter === "draft") query = query.eq("published", false);
 
-      const { data } = await query;
+      const { data, error } = await query;
+      if (error) console.error("Failed to load blog posts:", error);
       setPosts(data || []);
       setLoading(false);
     };
