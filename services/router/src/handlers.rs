@@ -22,6 +22,23 @@ pub struct MyRouter {
     pub embedder: Embedder,
 }
 
+/// Resolves an optional caller-supplied similarity threshold override, rejecting
+/// non-finite (NaN/Infinity) or out-of-range values that would otherwise silently
+/// disable score filtering (NaN comparisons are always false).
+fn resolve_threshold(override_value: f32, default: f32) -> f32 {
+    if override_value.is_finite() && override_value > 0.0 && override_value <= 1.0 {
+        override_value
+    } else {
+        default
+    }
+}
+
+/// Logs a request summary without echoing raw prompt/fact content, which may
+/// contain PII or sensitive business data.
+fn slog_prompt(action: &str, org_id: &str, content_len: usize) {
+    println!("{} (org: {}, content_len: {})", action, org_id, content_len);
+}
+
 #[tonic::async_trait]
 impl SemanticRouter for MyRouter {
     async fn select_tools(
@@ -30,8 +47,14 @@ impl SemanticRouter for MyRouter {
     ) -> Result<Response<ToolResponse>, Status> {
         let req = request.into_inner();
 
-        println!("Received request for user: {}", req.user_id);
-        println!("Prompt to route: \"{}\"", req.prompt);
+        if req.org_id.is_empty() {
+            return Err(Status::invalid_argument("org_id is required"));
+        }
+        if req.prompt.trim().is_empty() {
+            return Err(Status::invalid_argument("prompt is required"));
+        }
+
+        slog_prompt("Received tool selection request", &req.org_id, req.prompt.len());
 
         // 1. Vector Embedding (Map embedding errors to gRPC Status)
         let real_vector = self.embedder.embed(&req.prompt)
@@ -242,7 +265,7 @@ impl SemanticRouter for MyRouter {
 
         // 4. Map Results to ToolResponse
         let mut tools = Vec::new();
-        let threshold = if req.score_threshold_override > 0.0 { req.score_threshold_override } else { 0.65 };
+        let threshold = resolve_threshold(req.score_threshold_override, 0.65);
 
         for scored_point in search_result.result {
             if scored_point.score < threshold {
@@ -302,7 +325,12 @@ impl SemanticRouter for MyRouter {
         request: Request<RegisterToolRequest>,
     ) -> Result<Response<RegisterToolResponse>, Status> {
         let req = request.into_inner();
-        println!("📝 Registering new tool semantic intent: {} (ID: {})", req.name, req.id);
+
+        if req.id.trim().is_empty() || req.name.trim().is_empty() {
+            return Err(Status::invalid_argument("id and name are required"));
+        }
+
+        println!("📝 Registering new tool semantic intent (ID: {}, org: {})", req.id, req.org_id);
 
         let vector = self.embedder.embed(&req.description)
             .map_err(|e| Status::internal(format!("Embedding generation failed: {}", e)))?;
@@ -313,7 +341,20 @@ impl SemanticRouter for MyRouter {
         payload.insert("description".to_string(), Value::from(req.description.clone()));
         payload.insert("org_id".to_string(), Value::from(req.org_id.clone()));
 
-        let tool_uuid = uuid::Uuid::new_v5(&uuid::Uuid::NAMESPACE_OID, req.id.as_bytes());
+        // The point UUID is derived from org_id + tool id (not id alone) so that
+        // the same tool id registered by two different organizations maps to two
+        // distinct Qdrant points, instead of one org silently overwriting the
+        // other's vector/payload. Tools with no org_id (system-wide/shared tools,
+        // org_id IS NULL in Postgres) keep the legacy id-only UUID scheme for
+        // backward compatibility, since there is only one such namespace.
+        // NOTE: org-owned tools registered under the prior id-only UUID scheme
+        // will be orphaned in Qdrant until the next full re-sync recreates them.
+        let uuid_seed = if req.org_id.is_empty() {
+            req.id.clone()
+        } else {
+            format!("{}:{}", req.org_id, req.id)
+        };
+        let tool_uuid = uuid::Uuid::new_v5(&uuid::Uuid::NAMESPACE_OID, uuid_seed.as_bytes());
         let result = self.q_client.upsert_points(UpsertPointsBuilder::new(
             "tools_collection",
             vec![PointStruct::new(tool_uuid.to_string(), vector, payload)],
@@ -339,7 +380,15 @@ impl SemanticRouter for MyRouter {
         request: Request<ToolChainRequest>,
     ) -> Result<Response<ToolChainResponse>, Status> {
         let req = request.into_inner();
-        println!("🔮 Planning sequential tool chain for prompt: \"{}\"", req.prompt);
+
+        if req.org_id.is_empty() {
+            return Err(Status::invalid_argument("org_id is required"));
+        }
+        if req.prompt.trim().is_empty() {
+            return Err(Status::invalid_argument("prompt is required"));
+        }
+
+        slog_prompt("Planning sequential tool chain", &req.org_id, req.prompt.len());
 
         let real_vector = self.embedder.embed(&req.prompt)
             .map_err(|e| Status::internal(format!("Embedding generation failed: {}", e)))?;
@@ -390,7 +439,7 @@ impl SemanticRouter for MyRouter {
             let mut matched_tools = search_res.result;
             matched_tools.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
 
-            let threshold = if req.score_threshold_override > 0.0 { req.score_threshold_override } else { 0.65 };
+            let threshold = resolve_threshold(req.score_threshold_override, 0.65);
 
             for (idx, hit) in matched_tools.iter().enumerate() {
                 if hit.score > threshold {
@@ -423,7 +472,15 @@ impl SemanticRouter for MyRouter {
         request: Request<StoreMemoryRequest>,
     ) -> Result<Response<StoreMemoryResponse>, Status> {
         let req = request.into_inner();
-        println!("💾 Storing semantic memory fact: \"{}\" for org: {}", req.fact, req.org_id);
+
+        if req.org_id.is_empty() || req.user_id.is_empty() {
+            return Err(Status::invalid_argument("org_id and user_id are required"));
+        }
+        if req.fact.trim().is_empty() {
+            return Err(Status::invalid_argument("fact is required"));
+        }
+
+        slog_prompt("Storing semantic memory fact", &req.org_id, req.fact.len());
 
         let vector = self.embedder.embed(&req.fact)
             .map_err(|e| Status::internal(format!("Embedding generation failed: {}", e)))?;
@@ -456,18 +513,37 @@ impl SemanticRouter for MyRouter {
         request: Request<QueryMemoryRequest>,
     ) -> Result<Response<QueryMemoryResponse>, Status> {
         let req = request.into_inner();
-        println!("🔍 Querying semantic memories for prompt: \"{}\" under org: {}", req.prompt, req.org_id);
+
+        if req.org_id.is_empty() {
+            return Err(Status::invalid_argument("org_id is required"));
+        }
+        if req.prompt.trim().is_empty() {
+            return Err(Status::invalid_argument("prompt is required"));
+        }
+
+        slog_prompt("Querying semantic memories", &req.org_id, req.prompt.len());
 
         let real_vector = self.embedder.embed(&req.prompt)
             .map_err(|e| Status::internal(format!("Embedding generation failed: {}", e)))?;
 
         let mut filter_conditions = Vec::new();
-        if !req.org_id.is_empty() {
+        filter_conditions.push(Condition {
+            condition_one_of: Some(ConditionOneOf::Field(FieldCondition {
+                key: "org_id".to_string(),
+                r#match: Some(Match {
+                    match_value: Some(MatchValue::Keyword(req.org_id.clone())),
+                }),
+                ..Default::default()
+            })),
+        });
+        // Scope memory recall to the requesting user within the org so that one
+        // user's stored facts are never leaked into another user's context.
+        if !req.user_id.is_empty() {
             filter_conditions.push(Condition {
                 condition_one_of: Some(ConditionOneOf::Field(FieldCondition {
-                    key: "org_id".to_string(),
+                    key: "user_id".to_string(),
                     r#match: Some(Match {
-                        match_value: Some(MatchValue::Keyword(req.org_id.clone())),
+                        match_value: Some(MatchValue::Keyword(req.user_id.clone())),
                     }),
                     ..Default::default()
                 })),
@@ -488,7 +564,7 @@ impl SemanticRouter for MyRouter {
         };
 
         let mut memories = Vec::new();
-        let threshold = if req.score_threshold_override > 0.0 { req.score_threshold_override } else { 0.65 };
+        let threshold = resolve_threshold(req.score_threshold_override, 0.65);
 
         for scored_point in search_result.result {
             if scored_point.score < threshold {

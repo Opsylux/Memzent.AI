@@ -1,11 +1,17 @@
 package config
 
 import (
+	"fmt"
 	"os"
 	"strconv"
 	"strings"
 	"time"
 )
+
+// insecureDefaultJWTSecret is the historical placeholder secret. It's fine
+// for local development but must never be used in production, since it is
+// public (visible in this source file / git history).
+const insecureDefaultJWTSecret = "memzent-enterprise-secret-2026"
 
 type Config struct {
 	Port                   string
@@ -46,7 +52,7 @@ func LoadConfig() *Config {
 		OllamaEnabled:          getEnv("OLLAMA_ENABLED", "true") == "true",
 		OllamaURL:              getEnv("OLLAMA_URL", "http://host.docker.internal:11434"),
 		OllamaModel:            getEnv("OLLAMA_MODEL", "llama3.2"),
-		JWTSecret:              getEnv("JWT_SECRET", "memzent-enterprise-secret-2026"),
+		JWTSecret:              getEnv("JWT_SECRET", insecureDefaultJWTSecret),
 		JWKSURL:                getEnv("JWKS_URL", ""),
 		SupabaseKey:            getEnv("SUPABASE_ANON_KEY", ""),
 		LLMCacheTTL:            getEnvDuration("LLM_CACHE_TTL", 1*time.Hour),
@@ -92,4 +98,36 @@ func getEnvList(key string, fallback string) []string {
 		}
 	}
 	return result
+}
+
+// Validate fails closed on insecure configuration when running in production.
+// It intentionally does not block development/test environments so local
+// setup keeps working without extra ceremony.
+func (c *Config) Validate() error {
+	if c.Environment != "production" {
+		return nil
+	}
+
+	var problems []string
+
+	if c.JWTSecret == insecureDefaultJWTSecret || len(c.JWTSecret) < 32 {
+		problems = append(problems, "JWT_SECRET must be set to a unique value of at least 32 characters in production")
+	}
+	for _, origin := range c.AllowedOrigins {
+		if origin == "*" {
+			problems = append(problems, "ALLOWED_ORIGINS must not be \"*\" in production")
+			break
+		}
+	}
+	if strings.Contains(c.PostgresURL, "sslmode=disable") {
+		problems = append(problems, "POSTGRES_URL must not use sslmode=disable in production")
+	}
+	if c.DevAdminBypass {
+		problems = append(problems, "MEMZENT_DEV_ADMIN_BYPASS must not be enabled in production")
+	}
+
+	if len(problems) > 0 {
+		return fmt.Errorf("insecure production configuration:\n  - %s", strings.Join(problems, "\n  - "))
+	}
+	return nil
 }

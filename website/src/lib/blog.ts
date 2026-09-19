@@ -172,28 +172,53 @@ export async function getPostBySlugAsync(slug: string): Promise<BlogPost | null>
   return all.find((p) => p.slug === slug) || null;
 }
 
+/** Escapes HTML metacharacters so raw markup/scripts embedded in stored
+ * content cannot execute when rendered via dangerouslySetInnerHTML. */
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+/** Only allow safe URL schemes (or relative/hash URLs) in href/src attributes,
+ * rejecting javascript:/vbscript:/data: URIs that could execute script. */
+function sanitizeUrl(url: string): string {
+  const trimmed = url.trim();
+  if (/^(https?:|mailto:|tel:|#|\/)/i.test(trimmed)) return trimmed;
+  if (/^[a-z][a-z0-9+.-]*:/i.test(trimmed)) return "about:blank";
+  return trimmed;
+}
+
 /**
  * Markdown to HTML renderer
  */
 export function renderMarkdown(md: string): string {
   const codeBlocks: string[] = [];
   let html = md.replace(/```(\w*)\n([\s\S]*?)```/g, (_match, lang, code) => {
-    const escaped = code.replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    const escaped = escapeHtml(code);
+    const safeLang = escapeHtml(lang);
     const idx = codeBlocks.length;
     codeBlocks.push(
       `<div class="relative group my-6 rounded-xl overflow-hidden border border-white/5 bg-black/60">` +
         (lang
-          ? `<div class="px-4 py-1.5 border-b border-white/5 bg-white/[0.02]"><span class="text-[10px] font-black uppercase tracking-widest text-white/20">${lang}</span></div>`
+          ? `<div class="px-4 py-1.5 border-b border-white/5 bg-white/[0.02]"><span class="text-[10px] font-black uppercase tracking-widest text-white/20">${safeLang}</span></div>`
           : "") +
-        `<pre class="p-4 overflow-x-auto text-[13px] font-mono leading-relaxed text-slate-300"><code class="language-${lang}">${escaped}</code></pre></div>`
+        `<pre class="p-4 overflow-x-auto text-[13px] font-mono leading-relaxed text-slate-300"><code class="language-${safeLang}">${escaped}</code></pre></div>`
     );
     return `%%CODEBLOCK_${idx}%%`;
   });
 
+  // Escape raw HTML in the remaining content so injected markup/scripts can't
+  // execute; markdown syntax characters (*, #, -, |, [, ], etc.) are untouched.
+  html = escapeHtml(html);
+
   // Images
   html = html.replace(
     /!\[([^\]]*)\]\(([^)]+)\)/g,
-    '<figure class="my-6"><img src="$2" alt="$1" class="rounded-xl border border-white/5 w-full" /><figcaption class="text-[10px] text-white/30 text-center mt-2">$1</figcaption></figure>'
+    (_match, alt, url) => `<figure class="my-6"><img src="${sanitizeUrl(url)}" alt="${alt}" class="rounded-xl border border-white/5 w-full" /><figcaption class="text-[10px] text-white/30 text-center mt-2">${alt}</figcaption></figure>`
   );
 
   // Tables (GFM)
@@ -223,7 +248,7 @@ export function renderMarkdown(md: string): string {
 
   // Blockquotes
   html = html.replace(
-    /^> (.+)$/gm,
+    /^&gt; (.+)$/gm,
     '<blockquote class="border-l-2 border-memzent-glow/30 pl-4 my-4 text-white/40 italic text-sm">$1</blockquote>'
   );
 
@@ -243,7 +268,7 @@ export function renderMarkdown(md: string): string {
   html = html.replace(/\*(.+?)\*/g, "<em>$1</em>");
 
   // Links
-  html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>');
+  html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_match, text, url) => `<a href="${sanitizeUrl(url)}">${text}</a>`);
 
   // Ordered lists
   html = html.replace(/^(\d+)\. (.+)$/gm, '<li class="list-decimal">$2</li>');

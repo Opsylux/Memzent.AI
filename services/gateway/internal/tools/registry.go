@@ -195,31 +195,37 @@ func (r *Registry) RegisterTool(ctx context.Context, tool *Tool) error {
 	return err
 }
 
-// GetTool retrieves a single tool by ID
-func (r *Registry) GetTool(ctx context.Context, toolID string) (*Tool, error) {
+// GetTool retrieves a single tool by ID, scoped to tools owned by orgID or
+// system-wide tools (org_id IS NULL) — mirrors the visibility rule used by
+// ListTools so callers can never fetch another organization's private tool.
+func (r *Registry) GetTool(ctx context.Context, toolID, orgID string) (*Tool, error) {
 	tool := &Tool{}
 	var configData, inputData, outputData []byte
 	query := `
 		SELECT id, org_id, name, description, connector_type, endpoint,
 		       config, input_schema, output_schema, timeout_seconds,
 		       enabled, requires_auth, created_at, updated_at
-		FROM tools WHERE id = $1 AND enabled = true
+		FROM tools WHERE id = $1 AND enabled = true AND (org_id = $2 OR org_id IS NULL)
 	`
 
-	err := r.db.QueryRowContext(ctx, query, toolID).Scan(
+	err := r.db.QueryRowContext(ctx, query, toolID, orgID).Scan(
 		&tool.ID, &tool.OrgID, &tool.Name, &tool.Description, &tool.ConnectorType, &tool.Endpoint,
 		&configData, &inputData, &outputData, &tool.TimeoutSeconds,
 		&tool.Enabled, &tool.RequiresAuth, &tool.CreatedAt, &tool.UpdatedAt,
 	)
 
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+
 	json.Unmarshal(configData, &tool.Config)
 	json.Unmarshal(inputData, &tool.InputSchema)
 	json.Unmarshal(outputData, &tool.OutputSchema)
 
-	if err == sql.ErrNoRows {
-		return nil, nil
-	}
-	return tool, err
+	return tool, nil
 }
 
 // ListTools retrieves all tools available for an organization (scoped to org or system)
@@ -259,40 +265,64 @@ func (r *Registry) ListTools(ctx context.Context, orgID string) ([]*Tool, error)
 	return tools, rows.Err()
 }
 
-// DisableTool soft-deletes a tool (sets enabled = false)
-func (r *Registry) DisableTool(ctx context.Context, toolID string) error {
-	query := `UPDATE tools SET enabled = false, updated_at = $1 WHERE id = $2`
-	_, err := r.db.ExecContext(ctx, query, time.Now(), toolID)
-	return err
+// DisableTool soft-deletes a tool (sets enabled = false). Only tools owned by
+// orgID can be disabled through this path — system-wide tools (org_id IS NULL)
+// are intentionally excluded and require direct platform administration.
+func (r *Registry) DisableTool(ctx context.Context, toolID, orgID string) error {
+	query := `UPDATE tools SET enabled = false, updated_at = $1 WHERE id = $2 AND org_id = $3`
+	res, err := r.db.ExecContext(ctx, query, time.Now(), toolID, orgID)
+	if err != nil {
+		return err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
 }
 
-// UpdateTool updates mutable fields of an existing tool
-func (r *Registry) UpdateTool(ctx context.Context, tool *Tool) error {
+// UpdateTool updates mutable fields of an existing tool. Only tools owned by
+// orgID can be updated through this path — system-wide tools (org_id IS NULL)
+// are intentionally excluded and require direct platform administration.
+func (r *Registry) UpdateTool(ctx context.Context, tool *Tool, orgID string) error {
 	query := `
 		UPDATE tools SET
-			name = $2,
-			description = $3,
-			connector_type = $4,
-			endpoint = $5,
-			config = $6,
-			input_schema = $7,
-			output_schema = $8,
-			timeout_seconds = $9,
-			enabled = $10,
-			requires_auth = $11,
+			name = $3,
+			description = $4,
+			connector_type = $5,
+			endpoint = $6,
+			config = $7,
+			input_schema = $8,
+			output_schema = $9,
+			timeout_seconds = $10,
+			enabled = $11,
+			requires_auth = $12,
 			updated_at = NOW()
-		WHERE id = $1
+		WHERE id = $1 AND org_id = $2
 	`
 	configBuf, _ := json.Marshal(tool.Config)
 	inputBuf, _ := json.Marshal(tool.InputSchema)
 	outputBuf, _ := json.Marshal(tool.OutputSchema)
 
-	_, err := r.db.ExecContext(ctx, query,
-		tool.ID, tool.Name, tool.Description, tool.ConnectorType, tool.Endpoint,
+	res, err := r.db.ExecContext(ctx, query,
+		tool.ID, orgID, tool.Name, tool.Description, tool.ConnectorType, tool.Endpoint,
 		configBuf, inputBuf, outputBuf, tool.TimeoutSeconds,
 		tool.Enabled, tool.RequiresAuth,
 	)
-	return err
+	if err != nil {
+		return err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
 }
 
 // ListByConnectorType returns all tools of a specific connector type
