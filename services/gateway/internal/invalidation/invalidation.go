@@ -96,7 +96,9 @@ func New(store Store, db *sql.DB, ttl time.Duration) *Invalidator {
 func versionKey(orgID string) string       { return "cachever:" + orgID }
 func toolIndexKey(org, tool string) string { return fmt.Sprintf("toolkeys:%s:%s", org, tool) }
 
-// Version returns the current cache version tag for an org. Missing => "0".
+// Version returns the current cache version tag for an org, or "" when no
+// version has ever been set (Bump not yet called) so callers reproduce the
+// legacy, unversioned key format until an actual invalidation occurs.
 // Uses a short in-memory cache so the hot path avoids a Valkey round-trip on
 // every request; bounded staleness (verTTL) is acceptable for versioning.
 func (i *Invalidator) Version(ctx context.Context, orgID string) string {
@@ -113,10 +115,7 @@ func (i *Invalidator) Version(ctx context.Context, orgID string) string {
 	v, err := i.store.GetRaw(ctx, versionKey(orgID))
 	if err != nil {
 		slog.Warn("cache version lookup failed; using baseline", "org_id", orgID, "error", err)
-		return "0"
-	}
-	if v == "" {
-		v = "0"
+		return ""
 	}
 	i.setVerCache(orgID, v)
 	return v

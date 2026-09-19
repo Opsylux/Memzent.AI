@@ -90,8 +90,8 @@ func TestVersion_DefaultAndBump(t *testing.T) {
 	inv := New(newFakeStore(), nil, time.Minute)
 	ctx := context.Background()
 
-	if v := inv.Version(ctx, "org1"); v != "0" {
-		t.Errorf("initial version = %q, want 0", v)
+	if v := inv.Version(ctx, "org1"); v != "" {
+		t.Errorf("initial version = %q, want empty (legacy key format until first bump)", v)
 	}
 	v, err := inv.Bump(ctx, "org1")
 	if err != nil {
