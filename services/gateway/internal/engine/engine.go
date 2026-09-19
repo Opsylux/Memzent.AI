@@ -992,7 +992,7 @@ func (e *MemzentEngine) Process(ctx context.Context, req *PromptRequest) (*Promp
 			if t.RelevanceScore > float32(e.toolThreshold) {
 				slog.Info("Resolving tool for execution", "tool_id", t.Id, "score", t.RelevanceScore)
 
-				toolMetadata, err := e.registry.GetTool(ctx, t.Id)
+				toolMetadata, err := e.registry.GetTool(ctx, t.Id, orgID)
 				if err != nil {
 					slog.Error("Failed to fetch tool metadata", "tool_id", t.Id, "error", err)
 					continue
@@ -1121,7 +1121,9 @@ func (e *MemzentEngine) Process(ctx context.Context, req *PromptRequest) (*Promp
 		cost := e.costCalc.CalculateCost(selectedProvider.GetMetadata().Name, req.Model, tokenUsage.PromptTokens, tokenUsage.CompletionTokens)
 		if cost > 0 {
 			go func() {
-				_ = e.ledger.Deduct(context.Background(), orgID, cost, "llm_usage", fmt.Sprintf("Generation via %s", selectedProvider.GetProviderName()))
+				if err := e.ledger.Deduct(context.Background(), orgID, cost, "llm_usage", fmt.Sprintf("Generation via %s", selectedProvider.GetProviderName())); err != nil {
+					slog.Error("billing deduction failed", "error", err, "org_id", orgID, "type", "llm_usage")
+				}
 			}()
 		}
 	}
@@ -1240,7 +1242,9 @@ func (e *MemzentEngine) chargeCacheHit(ctx context.Context, orgID, provider, mod
 		if cost > 0 {
 			go func() {
 				// Async deduction to not block latency
-				_ = e.ledger.Deduct(context.Background(), orgID, cost, "cache_hit", "Semantic Cache Hit Discount")
+				if err := e.ledger.Deduct(context.Background(), orgID, cost, "cache_hit", "Semantic Cache Hit Discount"); err != nil {
+					slog.Error("billing deduction failed", "error", err, "org_id", orgID, "type", "cache_hit")
+				}
 			}()
 		}
 	}

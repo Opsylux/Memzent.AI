@@ -162,10 +162,11 @@ func TestHandleDisableTool(t *testing.T) {
 	t.Run("Success", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodDelete, "/v1/tools/test-tool", nil)
 		ctx := context.WithValue(req.Context(), "user_role", "admin")
+		ctx = context.WithValue(ctx, "org_id", "org1")
 		req = req.WithContext(ctx)
 
 		mock.ExpectExec("UPDATE tools SET enabled = false").
-			WithArgs(sqlmock.AnyArg(), "test-tool").
+			WithArgs(sqlmock.AnyArg(), "test-tool", "org1").
 			WillReturnResult(sqlmock.NewResult(1, 1))
 
 		rec := httptest.NewRecorder()

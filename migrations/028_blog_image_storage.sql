@@ -13,11 +13,13 @@ VALUES (
 ON CONFLICT (id) DO NOTHING;
 
 -- Allow public read access to all blog images
+DROP POLICY IF EXISTS "Public read access for blog images" ON storage.objects;
 CREATE POLICY "Public read access for blog images"
 ON storage.objects FOR SELECT
 USING (bucket_id = 'blog-images');
 
 -- Allow authenticated users to upload blog images
+DROP POLICY IF EXISTS "Authenticated users can upload blog images" ON storage.objects;
 CREATE POLICY "Authenticated users can upload blog images"
 ON storage.objects FOR INSERT
 WITH CHECK (
@@ -26,6 +28,7 @@ WITH CHECK (
 );
 
 -- Allow authenticated users to delete their uploads
+DROP POLICY IF EXISTS "Authenticated users can delete blog images" ON storage.objects;
 CREATE POLICY "Authenticated users can delete blog images"
 ON storage.objects FOR DELETE
 USING (

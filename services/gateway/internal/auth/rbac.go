@@ -178,6 +178,23 @@ func (c *RBACClient) clearPrevKeyHash(keyID string) {
 }
 
 
+// IsMember reports whether userID has an explicit membership row for orgID.
+// Unlike GetMemberRole (which returns a "guest" sentinel on no-match for
+// permission-check convenience), this is used to verify org ownership before
+// trusting a caller-supplied org context (e.g. the X-Org-ID header).
+func (c *RBACClient) IsMember(ctx context.Context, orgID, userID string) (bool, error) {
+	if orgID == "" || userID == "" {
+		return false, nil
+	}
+	var exists bool
+	err := c.db.QueryRowContext(ctx,
+		"SELECT EXISTS(SELECT 1 FROM members WHERE org_id = $1 AND user_id = $2)", orgID, userID).Scan(&exists)
+	if err != nil {
+		return false, err
+	}
+	return exists, nil
+}
+
 func (c *RBACClient) GetMemberRole(ctx context.Context, orgID, userID string) (string, error) {
 	var role string
 	// We use the 'members' table established in migration 004
