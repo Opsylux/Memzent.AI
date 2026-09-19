@@ -1,0 +1,144 @@
+# ==========================================================
+# 🪶 Memzent LITE — Single-host Beta Deployment
+# ==========================================================
+# Goal: run the full pipeline (Gateway + Router + Qdrant + Valkey + Dashboard)
+# on ONE small VM/host for beta traffic at minimum cost.
+#
+# Differences vs docker-compose.prod.yml:
+#   - No Envoy load balancer, no Router replicas (1 instance each)
+#   - Conservative memory limits sized for a 4GB host (e.g. Azure B2s)
+#   - Postgres is NOT included — use a managed free-tier instance
+#     (Supabase/Neon) and set POSTGRES_URL in .env
+#   - Ollama is NOT included — either run Ollama on the host and use
+#     OLLAMA_URL=http://host.docker.internal:11434, or use a paid
+#     provider (OPENAI/ANTHROPIC/GEMINI) via API key only (no local GPU/CPU cost)
+#
+# Usage:
+#   cp .env.example .env   # fill in POSTGRES_URL, JWT_SECRET, provider keys
+#   docker compose -f docker-compose.lite.yml up -d --build
+#
+# Sizing guidance (single host):
+#   - Minimum viable: 2 vCPU / 4GB RAM (Azure B2s or equivalent)
+#   - Comfortable:    2 vCPU / 8GB RAM (Azure B2ms)
+#   - Qdrant data and Valkey are ephemeral-friendly for beta; back up
+#     ./data/qdrant if you need durability across host rebuilds.
+
+services:
+  # ─── Cache Layer ────────────────────────────────────────────────────────
+  valkey:
+    image: valkey/valkey:8.0-alpine
+    container_name: memzent-valkey-lite
+    command: [ "valkey-server", "--maxmemory", "256mb", "--maxmemory-policy", "allkeys-lru" ]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "valkey-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 300M
+
+  # ─── Vector Store (semantic cache + tool + memory vectors) ────────────
+  qdrant:
+    image: qdrant/qdrant:v1.14.0
+    container_name: memzent-qdrant-lite
+    volumes:
+      - qdrant_data:/qdrant/storage
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:6333/healthz || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+
+  # ─── Semantic Router (Rust) — single instance, no Envoy ────────────────
+  router:
+    build:
+      context: .
+      dockerfile: ./services/router/Dockerfile.prod
+    container_name: memzent-router-lite
+    environment:
+      QDRANT_URL: "http://qdrant:6334"
+    depends_on:
+      qdrant:
+        condition: service_healthy
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
+  # ─── Gateway (Go) — talks to Router directly, no load balancer ─────────
+  gateway:
+    build:
+      context: .
+      dockerfile: services/gateway/Dockerfile.prod
+    container_name: memzent-gateway-lite
+    ports:
+      - "8080:8080"
+    env_file: .env
+    environment:
+      - VALKEY_URL=valkey:6379
+      - ROUTER_URL=router:50051
+      - JWT_SECRET=${JWT_SECRET}
+      - OLLAMA_URL=${OLLAMA_URL:-http://host.docker.internal:11434}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY}
+      - STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET}
+      - STRIPE_PRO_PRODUCT_ID=${STRIPE_PRO_PRODUCT_ID}
+      - STRIPE_BIZ_PRODUCT_ID=${STRIPE_BIZ_PRODUCT_ID}
+      - STRIPE_PRO_PRICE_ID=${STRIPE_PRO_PRICE_ID}
+      - STRIPE_BIZ_PRICE_ID=${STRIPE_BIZ_PRICE_ID}
+      - POSTGRES_URL=${POSTGRES_URL}
+      - ENVIRONMENT=production
+    depends_on:
+      router:
+        condition: service_started
+      valkey:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
+  # ─── Dashboard (Next.js) ────────────────────────────────────────────────
+  dashboard:
+    build:
+      context: ./services/dashboard
+      dockerfile: Dockerfile.prod
+      args:
+        NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL}
+        NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY}
+        NEXT_PUBLIC_GATEWAY_URL: ${NEXT_PUBLIC_GATEWAY_URL:-http://localhost:8080}
+        NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: ${NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY}
+    container_name: memzent-dashboard-lite
+    ports:
+      - "3002:3000"
+    environment:
+      - NEXT_PUBLIC_GATEWAY_URL=${NEXT_PUBLIC_GATEWAY_URL:-http://localhost:8080}
+      - GATEWAY_INTERNAL_URL=http://gateway:8080
+    depends_on:
+      - gateway
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
+volumes:
+  qdrant_data:
