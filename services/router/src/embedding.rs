@@ -80,7 +80,8 @@ impl Embedder {
         let embeddings = self.model
             .embed(vec![text.to_string()], None)
             .map_err(|e| Status::internal(format!("Failed to generate embeddings: {}", e)))?;
-        let vector = embeddings[0].clone();
+        let vector = embeddings.into_iter().next()
+            .ok_or_else(|| Status::internal("Embedding model returned no vectors"))?;
         self.cache.set(text, vector.clone());
         Ok(vector)
     }

@@ -75,7 +75,7 @@ func TestRegistry_GetTool(t *testing.T) {
 	now := time.Now()
 
 	mock.ExpectQuery("SELECT id, org_id, name, description, connector_type, endpoint").
-		WithArgs("tool-01").
+		WithArgs("tool-01", "org1").
 		WillReturnRows(sqlmock.NewRows([]string{
 			"id", "org_id", "name", "description", "connector_type", "endpoint",
 			"config", "input_schema", "output_schema", "timeout_seconds",
@@ -86,7 +86,7 @@ func TestRegistry_GetTool(t *testing.T) {
 			true, true, now, now,
 		))
 
-	tool, err := registry.GetTool(ctx, "tool-01")
+	tool, err := registry.GetTool(ctx, "tool-01", "org1")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -99,10 +99,10 @@ func TestRegistry_GetTool(t *testing.T) {
 
 	// ErrNoRows
 	mock.ExpectQuery("SELECT id, org_id, name, description, connector_type, endpoint").
-		WithArgs("missing-tool").
+		WithArgs("missing-tool", "org1").
 		WillReturnError(sql.ErrNoRows)
 
-	tool, err = registry.GetTool(ctx, "missing-tool")
+	tool, err = registry.GetTool(ctx, "missing-tool", "org1")
 	if err != nil {
 		t.Errorf("expected no error on ErrNoRows, got: %v", err)
 	}
@@ -154,10 +154,10 @@ func TestRegistry_DisableTool(t *testing.T) {
 	ctx := context.Background()
 
 	mock.ExpectExec("UPDATE tools SET enabled = false").
-		WithArgs(sqlmock.AnyArg(), "tool-01").
+		WithArgs(sqlmock.AnyArg(), "tool-01", "org1").
 		WillReturnResult(sqlmock.NewResult(1, 1))
 
-	err = registry.DisableTool(ctx, "tool-01")
+	err = registry.DisableTool(ctx, "tool-01", "org1")
 	if err != nil {
 		t.Errorf("unexpected error: %v", err)
 	}

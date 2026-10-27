@@ -107,18 +107,36 @@ func UnifiedAuthMiddleware(secret string, jwks *JWKSProvider, rbac *RBACClient) 
 			// Extract Multi-Tenant Identity
 			appMetadata, _ := claims["app_metadata"].(map[string]interface{})
 			userMetadata, _ := claims["user_metadata"].(map[string]interface{})
-			userID := claims["sub"].(string)
+			userID, ok := claims["sub"].(string)
+			if !ok || userID == "" {
+				http.Error(w, "Unauthorized: missing or invalid subject claim", http.StatusUnauthorized)
+				return
+			}
 
 			// Resolve Org ID (Priority: JWT app_metadata -> JWT user_metadata -> X-Org-ID Header)
 			var orgID string
-			
-			if oid, ok := appMetadata["org_id"].(string); ok {
+
+			if oid, ok := appMetadata["org_id"].(string); ok && oid != "" {
 				orgID = oid
-			} else if oid, ok := userMetadata["org_id"].(string); ok {
+			} else if oid, ok := userMetadata["org_id"].(string); ok && oid != "" {
 				orgID = oid
 			} else if xOrgID != "" {
-				// Trust X-Org-ID if provided by the dashboard as long as the JWT is valid
-				orgID = xOrgID
+				// X-Org-ID is caller-supplied and must NOT be trusted blindly: verify the
+				// authenticated user actually belongs to that org before accepting it.
+				if rbac != nil {
+					isMember, err := rbac.IsMember(r.Context(), xOrgID, userID)
+					if err != nil {
+						http.Error(w, "unauthorized: membership check failed", http.StatusInternalServerError)
+						return
+					}
+					if !isMember {
+						http.Error(w, "Forbidden: you are not a member of the requested organization", http.StatusForbidden)
+						return
+					}
+					orgID = xOrgID
+				}
+				// If rbac is nil (no DB configured) we cannot verify membership, so the
+				// X-Org-ID header is ignored entirely rather than trusted.
 			}
 
 			// Block requests that lack an organizational context (required for RBAC and Audit Logging)

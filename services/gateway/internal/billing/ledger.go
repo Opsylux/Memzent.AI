@@ -3,6 +3,7 @@ package billing
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"time"
 )
@@ -212,7 +213,15 @@ func (l *Ledger) SetSpendLimits(ctx context.Context, orgID string, dailyLimit, m
 	return err
 }
 
-// Deduct subtracts the amount from the org's balance and records the transaction
+// ErrInsufficientBalance is returned by Deduct when the org's balance would
+// go negative as a result of the deduction (guards against concurrent
+// requests double-spending the same balance).
+var ErrInsufficientBalance = errors.New("insufficient balance for deduction")
+
+// Deduct subtracts the amount from the org's balance and records the transaction.
+// The balance check and update are done atomically in a single conditional
+// UPDATE (balance >= amount) so that concurrent deductions cannot race each
+// other into an unbounded negative balance.
 func (l *Ledger) Deduct(ctx context.Context, orgID string, amount float64, txType, desc string) error {
 	if amount == 0 || orgID == "default" || orgID == "" {
 		return nil
@@ -224,9 +233,19 @@ func (l *Ledger) Deduct(ctx context.Context, orgID string, amount float64, txTyp
 	}
 	defer tx.Rollback()
 
-	_, err = tx.ExecContext(ctx, "UPDATE organizations SET token_balance = COALESCE(token_balance, 0) - $1 WHERE id = $2", amount, orgID)
+	res, err := tx.ExecContext(ctx,
+		"UPDATE organizations SET token_balance = COALESCE(token_balance, 0) - $1 WHERE id = $2 AND COALESCE(token_balance, 0) >= $1",
+		amount, orgID,
+	)
 	if err != nil {
 		return err
+	}
+	rows, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rows == 0 {
+		return ErrInsufficientBalance
 	}
 
 	// Record ledger entry (negative amount for deduction)

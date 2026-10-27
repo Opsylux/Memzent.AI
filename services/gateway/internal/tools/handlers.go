@@ -4,6 +4,7 @@ import (
 	"memzent-gateway/internal/metrics"
 	"memzent-gateway/internal/router"
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -140,10 +141,20 @@ func HandleUpdateTool(registry *Registry, routerClient *router.RouterClient, aud
 			return
 		}
 
-		// Get existing tool first
-		existing, err := registry.GetTool(r.Context(), toolID)
+		orgID, _ := r.Context().Value("org_id").(string)
+		if orgID == "" {
+			http.Error(w, "Forbidden: organizational context required", http.StatusForbidden)
+			return
+		}
+
+		// Get existing tool first, scoped to this org (or system-wide, for display only)
+		existing, err := registry.GetTool(r.Context(), toolID, orgID)
 		if err != nil || existing == nil {
 			http.Error(w, "Tool not found", http.StatusNotFound)
+			return
+		}
+		if existing.OrgID == nil || *existing.OrgID != orgID {
+			http.Error(w, "Forbidden: cannot modify a tool owned by another organization or a system-wide tool", http.StatusForbidden)
 			return
 		}
 
@@ -197,7 +208,11 @@ func HandleUpdateTool(registry *Registry, routerClient *router.RouterClient, aud
 			existing.RequiresAuth = *req.RequiresAuth
 		}
 
-		if err := registry.UpdateTool(r.Context(), existing); err != nil {
+		if err := registry.UpdateTool(r.Context(), existing, orgID); err != nil {
+			if err == sql.ErrNoRows {
+				http.Error(w, "Forbidden: cannot modify a tool owned by another organization", http.StatusForbidden)
+				return
+			}
 			slog.Error("Failed to update tool", "error", err, "tool_id", toolID)
 			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 			return
@@ -245,7 +260,13 @@ func HandleGetTool(registry *Registry) http.HandlerFunc {
 			return
 		}
 
-		tool, err := registry.GetTool(r.Context(), toolID)
+		orgID, _ := r.Context().Value("org_id").(string)
+		if orgID == "" {
+			http.Error(w, "Forbidden: organizational context required", http.StatusForbidden)
+			return
+		}
+
+		tool, err := registry.GetTool(r.Context(), toolID, orgID)
 		if err != nil {
 			slog.Error("Failed to get tool", "error", err, "tool_id", toolID)
 			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
@@ -285,7 +306,17 @@ func HandleDisableTool(registry *Registry) http.HandlerFunc {
 			return
 		}
 
-		if err := registry.DisableTool(r.Context(), toolID); err != nil {
+		orgID, _ := r.Context().Value("org_id").(string)
+		if orgID == "" {
+			http.Error(w, "Forbidden: organizational context required", http.StatusForbidden)
+			return
+		}
+
+		if err := registry.DisableTool(r.Context(), toolID, orgID); err != nil {
+			if err == sql.ErrNoRows {
+				http.Error(w, "Forbidden: cannot disable a tool owned by another organization, or tool not found", http.StatusForbidden)
+				return
+			}
 			slog.Error("Failed to disable tool", "error", err, "tool_id", toolID)
 			metrics.GlobalAuditBuffer.Add(metrics.AuditEvent{
 				Timestamp: time.Now(),

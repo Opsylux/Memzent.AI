@@ -110,6 +110,11 @@ func corsMiddleware(allowedOrigins []string) func(http.Handler) http.Handler {
 func main() {
 	// 1. Initialize Config
 	cfg := config.LoadConfig()
+	if err := cfg.Validate(); err != nil {
+		fmt.Fprintln(os.Stderr, "FATAL: refusing to start with insecure production configuration:")
+		fmt.Fprintln(os.Stderr, err.Error())
+		os.Exit(1)
+	}
 
 	// 2. Initialize Structured Logging
 	var handler slog.Handler

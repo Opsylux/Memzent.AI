@@ -1,3 +1,21 @@
+-- ============================================================================
+-- DEPRECATED / SUPERSEDED — DO NOT APPLY TO NEW ENVIRONMENTS.
+--
+-- This file predates and conflicts with the canonical multi-tenant schema:
+--   - `org_memberships` here duplicates `members` (004_org_rbac.sql), which is
+--     the table actually used by the Go gateway, dashboard, and the real
+--     auth-provisioning trigger (20260410_auth_provisioning.sql).
+--   - `user_tools` here duplicates `tools`/`org_tools`.
+--   - `get_user_org_claims()` reads from `org_memberships`, which the app
+--     never writes to — if this were ever wired up as a Supabase Auth Hook,
+--     every issued JWT would get an empty org_id/role claim, silently
+--     breaking org-scoped auth.
+--
+-- Kept only for historical/audit reference on environments where it may have
+-- already been applied. New environments should use 004_org_rbac.sql and
+-- 20260410_auth_provisioning.sql instead, and must NOT configure
+-- `get_user_org_claims` as an Auth Hook.
+-- ============================================================================
 -- Memzent SaaS Foundation Migration
 -- 1. Create Organizations Table
 CREATE TABLE IF NOT EXISTS organizations (

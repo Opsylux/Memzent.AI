@@ -7,32 +7,53 @@ import { BLOG_CATEGORIES } from "@/lib/blog-types";
 import { Save, Eye, ArrowLeft, Upload, Image, X, Loader2 } from "lucide-react";
 import Link from "next/link";
 
+/** Escapes HTML metacharacters so raw markup/scripts embedded in stored
+ * content cannot execute when rendered via dangerouslySetInnerHTML. */
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+/** Only allow safe URL schemes (or relative/hash URLs) in href/src attributes,
+ * rejecting javascript:/vbscript:/data: URIs that could execute script. */
+function sanitizeUrl(url: string): string {
+  const trimmed = url.trim();
+  if (/^(https?:|mailto:|tel:|#|\/)/i.test(trimmed)) return trimmed;
+  if (/^[a-z][a-z0-9+.-]*:/i.test(trimmed)) return "about:blank";
+  return trimmed;
+}
+
 function renderPreviewMarkdown(md: string): string {
   const codeBlocks: string[] = [];
   let html = md.replace(/```(\w*)\n([\s\S]*?)```/g, (_m, lang, code) => {
-    const escaped = code.replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    const escaped = escapeHtml(code);
+    const safeLang = escapeHtml(lang);
     const idx = codeBlocks.length;
     codeBlocks.push(
       `<div class="my-4 rounded-lg overflow-hidden border border-white/10 bg-black/60">` +
-        (lang ? `<div class="px-3 py-1 border-b border-white/10 bg-white/[0.02]"><span class="text-[10px] font-bold uppercase tracking-widest text-white/20">${lang}</span></div>` : "") +
+        (lang ? `<div class="px-3 py-1 border-b border-white/10 bg-white/[0.02]"><span class="text-[10px] font-bold uppercase tracking-widest text-white/20">${safeLang}</span></div>` : "") +
         `<pre class="p-3 overflow-x-auto text-[13px] font-mono leading-relaxed text-slate-300"><code>${escaped}</code></pre></div>`
     );
     return `%%CB_${idx}%%`;
   });
 
   // Escape raw HTML so preview can't execute injected markup/scripts.
-  html = html.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  html = escapeHtml(html);
 
   html = html.replace(/!\[([^\]]*)\]\(([^)]+)\)/g,
-    '<figure class="my-4"><img src="$2" alt="$1" class="rounded-lg border border-white/10 max-w-full" /><figcaption class="text-[10px] text-white/30 text-center mt-1">$1</figcaption></figure>');
+    (_m, alt, url) => `<figure class="my-4"><img src="${sanitizeUrl(url)}" alt="${alt}" class="rounded-lg border border-white/10 max-w-full" /><figcaption class="text-[10px] text-white/30 text-center mt-1">${alt}</figcaption></figure>`);
   html = html.replace(/^### (.+)$/gm, '<h3 class="text-base font-bold mt-6 mb-2">$1</h3>');
   html = html.replace(/^## (.+)$/gm, '<h2 class="text-lg font-bold mt-8 mb-3">$1</h2>');
   html = html.replace(/^# (.+)$/gm, '<h1 class="text-xl font-bold mt-8 mb-3">$1</h1>');
-  html = html.replace(/^> (.+)$/gm, '<blockquote class="border-l-2 border-memzent-glow/30 pl-4 my-3 text-white/40 italic text-sm">$1</blockquote>');
+  html = html.replace(/^&gt; (.+)$/gm, '<blockquote class="border-l-2 border-memzent-glow/30 pl-4 my-3 text-white/40 italic text-sm">$1</blockquote>');
   html = html.replace(/\*\*(.+?)\*\*/g, '<strong class="text-white">$1</strong>');
   html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
   html = html.replace(/`([^`]+)`/g, '<code class="px-1.5 py-0.5 rounded bg-white/10 text-[12px] font-mono text-memzent-glow/80">$1</code>');
-  html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" class="text-memzent-glow underline">$1</a>');
+  html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_m, text, url) => `<a href="${sanitizeUrl(url)}" class="text-memzent-glow underline">${text}</a>`);
   html = html.replace(/^- (.+)$/gm, '<li class="ml-4 list-disc text-sm text-white/60">$1</li>');
   html = html.replace(/^(\d+)\. (.+)$/gm, '<li class="ml-4 list-decimal text-sm text-white/60">$2</li>');
   html = html.replace(/^---$/gm, '<hr class="border-white/10 my-6" />');
